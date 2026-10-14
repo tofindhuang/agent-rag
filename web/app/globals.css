@@ -1,0 +1,105 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #0f1115;
+  color: #e6e8ee;
+}
+
+.chat {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 96px;
+}
+
+.chat h1 {
+  font-size: 18px;
+  margin: 8px 0 20px;
+  color: #9aa3b2;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  padding: 10px 14px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #2b4c7e;
+  max-width: 85%;
+}
+
+.message.assistant {
+  align-self: flex-start;
+  background: #1c2230;
+  max-width: 95%;
+}
+
+.status {
+  color: #6b7280;
+  font-size: 13px;
+  padding: 4px 14px;
+}
+
+.error {
+  color: #f87171;
+  font-size: 13px;
+  padding: 4px 14px;
+}
+
+.composer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #0f1115ee;
+  padding: 12px 16px;
+}
+
+.composer-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+.composer input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #2a3242;
+  background: #161a23;
+  color: inherit;
+  font-size: 15px;
+}
+
+.composer button {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.composer button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

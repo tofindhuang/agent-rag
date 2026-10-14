@@ -1,0 +1,23 @@
+# Sandbox execution image for run_code (requirements.md FR-3).
+#
+# The executor (server/, M1) MUST launch it with these isolation flags:
+#
+#   docker run --rm \
+#     --network none \              # no network (AC: requests.get fails)
+#     --memory 512m --cpus 1 \      # resource limits (AC: runaway loop contained)
+#     --pids-limit 64 \
+#     --read-only \                 # immutable rootfs; writes only to /work tmpfs
+#     --tmpfs /work:size=64m,uid=1000,gid=1000 \
+#     -u 1000:1000 \                # non-root
+#     --cap-drop ALL --security-opt no-new-privileges \
+#     agent-core-sandbox:python-3.12 python /work/main.py
+#
+# Build:
+#   docker build -t agent-core-sandbox:python-3.12 -f Dockerfile.python .
+
+FROM python:3.12-slim
+
+RUN useradd --create-home --uid 1000 runner
+
+USER runner
+WORKDIR /work

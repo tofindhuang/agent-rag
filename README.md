@@ -5,4 +5,45 @@
 核心能力：多轮对话（流式）、知识库检索（RAG）、沙箱代码执行、上下文自动压缩（compaction）、用户习惯长期记忆。
 
 - 需求文档：[docs/requirements.md](docs/requirements.md)
-- 架构：Next.js（前端）+ Java/Spring Boot（业务层）+ Node Gateway（pi SDK 引擎层）+ MySQL / Redis / 向量库 / Docker 沙箱
+- 当前分支：`dev`（功能完成后合并请求回 `main`）
+
+## 结构
+
+```
+├── docs/              需求文档
+├── gateway/           Node 网关：托管 pi AgentSession，注册 kb_search / run_code 工具
+├── server/            Java 21 + Spring Boot 3：业务编排、RAG、沙箱调度（M1）
+├── web/               Next.js 前端：聊天界面，SSE 流式渲染
+├── sandbox/           沙箱执行镜像（Python 3.12，隔离参数见 Dockerfile 注释）
+└── docker-compose.yml MySQL 8 + Redis 7（向量库待 M0 选型）
+```
+
+## 运行（开发）
+
+前置：Node 20+、Java 21+、Docker（仅基础设施与沙箱需要）。
+
+```bash
+# 0. 基础设施（当前骨架阶段可跳过）
+docker compose up -d
+
+# 1. 网关（端口 3001）
+cd gateway && npm install && npm run dev
+
+# 2. 业务层（端口 8080）
+cd server && mvn spring-boot:run
+
+# 3. 前端（端口 3000）
+cd web && npm install && npm run dev
+```
+
+模型凭证：gateway 复用 pi 的本机凭证存储（`~/.pi/agent/`），开发机用 `pi auth` 配置过即可，无需额外环境变量。
+
+## 已验证（骨架阶段）
+
+- gateway：类型检查通过；冒烟验证了 prompt 整体替换（`systemPromptOverride`）与工具白名单（仅 `kb_search` / `run_code`，内置工具全部禁用）
+- gateway：端到端真实 LLM 调用，SSE 事件流（`text_delta` → `agent_settled` → `prompt_settled`）完整
+- server / web：标准骨架，未在本机编译验证（开发机暂无 JDK；`mvn spring-boot:run` 与 `npm run build` 待 CI 或本机验证）
+
+## M0 剩余
+
+见需求文档 §7：冻结 Java↔gateway 事件契约 v1、向量库选型、kb_search/run_code 接 Java 实端。

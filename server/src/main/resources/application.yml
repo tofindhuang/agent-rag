@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+app:
+  gateway:
+    base-url: ${GATEWAY_URL:http://localhost:3001}
+    # Shared token; must match the gateway's GATEWAY_API_TOKEN when set.
+    api-token: ${GATEWAY_API_TOKEN:}
+
+# Values below are placeholders for M1 wiring (JPA/Redis starters are not on
+# the classpath yet, so nothing connects at boot). docker-compose.yml provides
+# matching local defaults.
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/agent_core
+    username: ${MYSQL_USER:agent_core}
+    password: ${MYSQL_PASSWORD:agent_core}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}

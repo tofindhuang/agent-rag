@@ -1,0 +1,40 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: agent_core
+      MYSQL_USER: agent_core
+      MYSQL_PASSWORD: agent_core
+      MYSQL_ROOT_PASSWORD: root-dev-only
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Vector store template; enable after the M0 selection decision
+  # (requirements.md §5 / R5):
+  #
+  # qdrant:
+  #   image: qdrant/qdrant:v1.12.4
+  #   ports:
+  #     - "6333:6333"
+  #   volumes:
+  #     - qdrant-data:/qdrant/storage
+
+volumes:
+  mysql-data:
