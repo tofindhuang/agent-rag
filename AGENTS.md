@@ -47,6 +47,8 @@ docker compose up -d                # mysql + redis
 | ADRs | `docs/adrs/`（跨模块）、`<module>/docs/adrs/`（模块内） | `/domain-modeling` |
 | 领域词汇表 | `CONTEXT.md` | `/domain-modeling` |
 
+同一套 skills 存放两份：`.pi/skills/`（pi 自动发现）与 `.agents/skills/`（其他 agent 工具的通用位置）。**改动任一份后必须同步另一份**（`cp -R .pi/skills/. .agents/skills/` 或反向），保持两处一致。
+
 规范流程：讨论定型 → `/to-spec` 写 spec → `/to-tickets` 切 tracer-bullet 票 → `/implement`（配合 `/tdd`）逐票实现 → `/code-review` 审查 → `/skill:pre-push-checks` 后 push。
 
 ## Git
