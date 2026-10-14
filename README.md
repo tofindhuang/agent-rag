@@ -10,13 +10,18 @@
 ## 结构
 
 ```
-├── docs/              需求文档
+├── docs/              需求文档、specs、tickets、ADRs
 ├── gateway/           Node 网关：托管 pi AgentSession，注册 kb_search / run_code 工具
 ├── server/            Java 21 + Spring Boot 3：业务编排、RAG、沙箱调度（M1）
 ├── web/               Next.js 前端：聊天界面，SSE 流式渲染
 ├── sandbox/           沙箱执行镜像（Python 3.12，隔离参数见 Dockerfile 注释）
+├── .pi/skills/        开发流程 skills（见 AGENTS.md 规范流程）
+├── AGENTS.md          模块地图、命令、编码规范、文档约定（agent 必读）
+├── CONTEXT.md         领域词汇表
 └── docker-compose.yml MySQL 8 + Redis 7（向量库待 M0 选型）
 ```
+
+规范开发流程（在 pi 中自动发现，也可 `/skill:<name>` 显式调用）：讨论定型 → `/to-spec` → `/to-tickets` → `/implement`（配合 `/tdd`）→ `/code-review` → `/skill:pre-push-checks` → push。详见 `AGENTS.md`。
 
 ## 运行（开发）
 
