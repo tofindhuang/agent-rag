@@ -227,3 +227,4 @@ Redis key 草案：
 | O1 | Java↔gateway 契约（事件流 schema、会话生命周期指令）需 M0 冻结 v1 | — |
 | O2 | 用户画像注入的 token 预算（事实条数上限与筛选策略） | M1 实测定 |
 | O3 | 多语言沙箱扩展顺序（Python 之后） | M2 定 |
+| O4 | 浏览器渲染 / agent 工作区能力是否引入 AIO Sandbox（agent-infra/sandbox，Apache-2.0）作为独立 workspace 层 | M2 后评估；不作为 run_code 底座（ADR-0003） |
