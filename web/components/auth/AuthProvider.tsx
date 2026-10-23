@@ -21,6 +21,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Drops local auth state after a server-side token revocation. */
+  endSession: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -95,9 +97,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const endSession = useCallback(() => {
+    clearAccessToken();
+    setUser(null);
+    setStatus("anonymous");
+  }, []);
+
   const value = useMemo(
-    () => ({ status, user, error, login, register, logout }),
-    [status, user, error, login, register, logout],
+    () => ({ status, user, error, login, register, logout, endSession }),
+    [status, user, error, login, register, logout, endSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

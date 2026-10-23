@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AccountSettings } from "./AccountSettings";
 import { ModelSettings } from "./ModelSettings";
 import styles from "./settings.module.css";
 
@@ -13,7 +14,10 @@ export function SettingsPage() {
         </Link>
         <h1 className={styles.title}>设置</h1>
       </header>
-      <ModelSettings />
+      <div className={styles.sections}>
+        <ModelSettings />
+        <AccountSettings />
+      </div>
     </main>
   );
 }

@@ -34,6 +34,12 @@
   background: #0c0f15;
 }
 
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .sectionHeader {
   display: flex;
   align-items: center;

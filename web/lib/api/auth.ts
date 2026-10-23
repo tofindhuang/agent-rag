@@ -1,6 +1,6 @@
 import { API_BASE } from "@/lib/env";
 import { ApiError, toApiError } from "./errors";
-import { apiJson } from "./http";
+import { apiJson, authFetch } from "./http";
 import { clearAccessToken, extractAccessToken, setAccessToken } from "./token";
 
 export interface AuthUser {
@@ -53,4 +53,31 @@ export async function logout(): Promise<void> {
 /** Current user; the first call after a page reload refreshes via cookie. */
 export function me(): Promise<AuthUser> {
   return apiJson<AuthUser>("/api/auth/me");
+}
+
+/**
+ * Replaces the password after verifying the current one. The server revokes
+ * every refresh token, so the caller must end the local session afterwards.
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const response = await authFetch(
+    "/api/auth/change-password",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    },
+    true,
+    false,
+  );
+  if (!response.ok) throw await toApiError(response);
+}
+
+/** Revokes every refresh token of the account; the current access token dies at expiry. */
+export async function logoutAll(): Promise<void> {
+  const response = await authFetch("/api/auth/logout-all", { method: "POST" });
+  if (!response.ok) throw await toApiError(response);
 }

@@ -41,11 +41,17 @@ async function refreshAccessToken(): Promise<string> {
 /**
  * Authenticated fetch: attaches the in-memory Bearer token, sends cookies, and
  * retries once after a silent refresh on 401.
+ *
+ * `expireOn401=false` keeps a 401 that survives the refresh as a normal
+ * response. Business endpoints that use 401 for a bad credential (e.g. the
+ * wrong current password on change-password) need that: treating it as an
+ * expired session would log the user out and hide the error.
  */
 export async function authFetch(
   path: string,
   init: RequestInit = {},
   retryOn401 = true,
+  expireOn401 = true,
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   const token = getAccessToken();
@@ -66,8 +72,8 @@ export async function authFetch(
       notifyAuthExpired();
       throw cause;
     }
-    const retried = await authFetch(path, init, false);
-    if (retried.status === 401) {
+    const retried = await authFetch(path, init, false, expireOn401);
+    if (retried.status === 401 && expireOn401) {
       clearAccessToken();
       notifyAuthExpired();
     }

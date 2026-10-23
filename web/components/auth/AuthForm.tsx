@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { takeAuthNotice } from "@/lib/auth-notice";
 import { userMessage } from "@/lib/api/errors";
 import { useAuth } from "./AuthProvider";
 import styles from "./auth.module.css";
@@ -19,7 +20,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // StrictMode may run this twice; only a real notice overwrites the state.
+    const notice = takeAuthNotice();
+    if (notice !== null) setFlash(notice);
+  }, []);
 
   useEffect(() => {
     if (status === "authenticated") router.replace("/");
@@ -83,6 +91,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             required
           />
         </label>
+        {flash ? (
+          <p className={styles.notice} role="status">
+            {flash}
+          </p>
+        ) : null}
         {error ? (
           <p className={styles.error} role="alert">
             {error}
