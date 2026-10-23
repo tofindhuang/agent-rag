@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useAuth } from "@/components/auth/AuthProvider";
+import { AccountMenu } from "@/components/auth/AccountMenu";
 import { Banner } from "@/components/ui/Banner";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
@@ -13,7 +13,6 @@ import { SwitchModelDialog } from "./SwitchModelDialog";
 import styles from "./chat.module.css";
 
 export function ChatPage() {
-  const { user, logout } = useAuth();
   const chat = useChat();
   const [creating, setCreating] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -62,15 +61,7 @@ export function ChatPage() {
                 </span>
               ) : null}
             </div>
-            <div className={styles.account}>
-              <span className={styles.email}>{user?.email}</span>
-              <Link className={styles.accountLink} href="/settings">
-                设置
-              </Link>
-              <button className={styles.logout} type="button" onClick={() => void logout()}>
-                退出登录
-              </button>
-            </div>
+            <AccountMenu />
           </header>
 
           {needsSetup && !creating ? (

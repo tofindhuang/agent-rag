@@ -229,7 +229,7 @@
 }
 
 .chat {
-  max-width: 760px;
+  max-width: 900px;
   margin: 0 auto;
   padding: var(--space-5) var(--space-4) 120px;
 }
@@ -298,47 +298,6 @@
   border-radius: 999px;
   color: var(--text-muted);
   font-size: var(--text-xs);
-}
-
-.account {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.email {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.accountLink {
-  color: var(--text-secondary);
-  text-decoration: none;
-}
-
-.accountLink:hover,
-.accountLink:focus-visible {
-  color: var(--text-primary);
-}
-
-.logout {
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.logout:hover,
-.logout:focus-visible {
-  background: var(--surface-hover);
 }
 
 .modelBanner {
@@ -519,7 +478,7 @@
 .composerInner {
   display: flex;
   gap: var(--space-2);
-  max-width: 760px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
