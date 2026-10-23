@@ -6,10 +6,11 @@ import { formatSseFrame, HEARTBEAT_FRAME, HEARTBEAT_INTERVAL_MS } from "./contra
 import { RunTranslator } from "./contract/translate.js";
 import type { RunIdentity } from "./identity.js";
 import { logPiEvent } from "./log.js";
-import { EndpointBlockedError } from "./outbound.js";
+import { EndpointBlockedError, EndpointResolutionError } from "./outbound.js";
 import type { GatewayPool } from "./pool-contract.js";
 import { InvalidSessionIdError, SessionConflictError } from "./pool-contract.js";
 import { probeProvider, ProbeError, type ProviderApi } from "./providers.js";
+import type { SessionModelConfig } from "./pool-contract.js";
 
 export type GatewayErrorCode =
   | "INVALID_REQUEST"
@@ -23,6 +24,7 @@ export type GatewayErrorCode =
   | "PROVIDER_UNREACHABLE"
   | "PROVIDER_AUTH_FAILED"
   | "PROVIDER_PROBE_FAILED"
+  | "MODEL_UNAVAILABLE"
   | "INTERNAL";
 
 export interface AppDependencies {
@@ -86,14 +88,29 @@ export function createApp({ config, pool }: AppDependencies): Express {
     const userId = requireUserId(req, res);
     if (!userId) return;
 
+    const parsedModel = readSessionModel((req.body ?? {}) as Record<string, unknown>);
+    if ("error" in parsedModel) {
+      sendError(res, 400, "INVALID_REQUEST", parsedModel.error);
+      return;
+    }
+
     try {
-      const result = await pool.ensure(req.params.id, userId);
+      const result = await pool.ensure(req.params.id, userId, parsedModel.model);
       res.status(200).json({
         sessionId: req.params.id,
         created: result.created,
         restored: result.restored,
+        ...(result.model ? { model: result.model } : {}),
       });
     } catch (err) {
+      if (err instanceof EndpointBlockedError) {
+        sendError(res, 400, "INVALID_REQUEST", err.message);
+        return;
+      }
+      if (err instanceof EndpointResolutionError) {
+        sendError(res, 400, "INVALID_REQUEST", "cannot resolve model provider host");
+        return;
+      }
       if (err instanceof InvalidSessionIdError) {
         sendError(res, 400, "INVALID_REQUEST", "invalid session id");
         return;
@@ -256,6 +273,60 @@ export function createApp({ config, pool }: AppDependencies): Express {
   });
 
   return app;
+}
+
+type ParsedModel = { model?: SessionModelConfig } | { error: string };
+
+/** Validates the optional per-session model pushed by Java (ADR-0010). */
+function readSessionModel(body: Record<string, unknown>): ParsedModel {
+  const raw = body.model;
+  if (raw === undefined || raw === null) return {};
+  if (typeof raw !== "object") return { error: "model must be an object" };
+
+  const value = raw as Record<string, unknown>;
+  const api = value.api;
+  if (api !== "openai-completions" && api !== "anthropic-messages") {
+    return { error: "model.api is invalid" };
+  }
+  const baseUrl = typeof value.baseUrl === "string" ? value.baseUrl.trim() : "";
+  const apiKey = typeof value.apiKey === "string" ? value.apiKey : "";
+  const modelId = typeof value.modelId === "string" ? value.modelId.trim() : "";
+  if (baseUrl.length === 0 || baseUrl.length > 1_000) {
+    return { error: "model.baseUrl is invalid" };
+  }
+  if (apiKey.length === 0 || apiKey.length > 4_096) {
+    return { error: "model.apiKey is invalid" };
+  }
+  if (modelId.length === 0 || modelId.length > 200) {
+    return { error: "model.modelId is invalid" };
+  }
+  const optionalName = (field: unknown): string | undefined =>
+    typeof field === "string" && field.length > 0 && field.length <= 200 ? field : undefined;
+  const contextWindow =
+    typeof value.contextWindow === "number" &&
+    Number.isInteger(value.contextWindow) &&
+    value.contextWindow > 0 &&
+    value.contextWindow <= 10_000_000
+      ? value.contextWindow
+      : undefined;
+
+  return {
+    model: {
+      providerId:
+        typeof value.providerId === "string" || typeof value.providerId === "number"
+          ? value.providerId
+          : undefined,
+      name: optionalName(value.name),
+      api,
+      baseUrl,
+      apiKey,
+      modelId,
+      displayName: optionalName(value.displayName),
+      contextWindow,
+      reasoning: value.reasoning === true,
+      vision: value.vision === true,
+    },
+  };
 }
 
 function requireUserId(req: Request, res: Response): string | null {

@@ -21,10 +21,20 @@ import {
 import type { GatewayConfig } from "./config.js";
 import { kbSearchExtension, runCodeExtension } from "./extensions.js";
 import type { RunIdentity, RunRef } from "./identity.js";
-import type { EnsureSessionResult, GatewayPool } from "./pool-contract.js";
+import type {
+  EnsureSessionResult,
+  GatewayPool,
+  ModelRef,
+  SessionModelConfig,
+} from "./pool-contract.js";
 import { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { SessionFileStore, type SessionLease } from "./session-store.js";
+import {
+  buildSessionModel,
+  modelRefFromConfig,
+  modelRefFromSession,
+} from "./session-model.js";
 
 export type PiSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
 
@@ -33,6 +43,7 @@ export type SessionFactory = (
   manager: SessionManager,
   runRef: RunRef,
   userId: string,
+  modelConfig?: SessionModelConfig,
 ) => Promise<PiSession>;
 
 export interface PoolEntry {
@@ -43,6 +54,7 @@ export interface PoolEntry {
   lastActiveAt: number;
   activeRun: RunIdentity | null;
   runRef: RunRef;
+  model?: ModelRef;
 }
 
 interface EnsureOutcome {
@@ -78,35 +90,43 @@ export class SessionPool implements GatewayPool {
    * the same session share one creation promise, so retries cannot duplicate
    * sessions.
    */
-  async ensure(sessionId: string, userId: string): Promise<EnsureSessionResult> {
+  async ensure(
+    sessionId: string,
+    userId: string,
+    modelConfig?: SessionModelConfig,
+  ): Promise<EnsureSessionResult> {
     const existing = this.entries.get(sessionId);
     if (existing) {
       if (existing.userId !== userId) throw new SessionConflictError(sessionId);
-      return { created: false, restored: false };
+      return ensureResult(false, false, existing.model);
     }
 
     const inflight = this.pendingCreates.get(sessionId);
     if (inflight) {
       const outcome = await inflight;
       if (outcome.entry.userId !== userId) throw new SessionConflictError(sessionId);
-      return { created: false, restored: false };
+      return ensureResult(false, false, outcome.entry.model);
     }
 
-    const creation = this.createEntry(sessionId, userId).finally(() => {
+    const creation = this.createEntry(sessionId, userId, modelConfig).finally(() => {
       this.pendingCreates.delete(sessionId);
     });
     this.pendingCreates.set(sessionId, creation);
 
     const outcome = await creation;
-    return { created: outcome.created, restored: outcome.restored };
+    return ensureResult(outcome.created, outcome.restored, outcome.entry.model);
   }
 
-  private async createEntry(sessionId: string, userId: string): Promise<EnsureOutcome> {
+  private async createEntry(
+    sessionId: string,
+    userId: string,
+    modelConfig?: SessionModelConfig,
+  ): Promise<EnsureOutcome> {
     if (this.entries.has(sessionId)) throw new SessionExistsError(sessionId);
 
     const lease: SessionLease = this.store.acquire(sessionId, userId);
     const runRef: RunRef = { current: null };
-    const session = await this.factory(lease.manager, runRef, userId);
+    const session = await this.factory(lease.manager, runRef, userId, modelConfig);
 
     const now = Date.now();
     const entry: PoolEntry = {
@@ -117,6 +137,9 @@ export class SessionPool implements GatewayPool {
       lastActiveAt: now,
       activeRun: null,
       runRef,
+      model:
+        modelRefFromSession(session.model) ??
+        (modelConfig ? modelRefFromConfig(modelConfig) : undefined),
     };
     this.entries.set(sessionId, entry);
     return { entry, created: lease.created, restored: lease.restored };
@@ -126,6 +149,7 @@ export class SessionPool implements GatewayPool {
     manager: SessionManager,
     runRef: RunRef,
     userId: string,
+    modelConfig?: SessionModelConfig,
   ): Promise<PiSession> {
     const loader = new DefaultResourceLoader({
       cwd: process.cwd(),
@@ -142,12 +166,18 @@ export class SessionPool implements GatewayPool {
     });
     await loader.reload();
 
+    const built = modelConfig
+      ? await buildSessionModel(modelConfig, {
+          allowPrivate: this.config.allowPrivateModelEndpoints,
+        })
+      : undefined;
     const { session } = await createAgentSession({
       resourceLoader: loader,
       // Only the extension-registered tools are active; every built-in tool
       // (bash/edit/write/read/...) is excluded (FR-6 tool whitelist).
       tools: ["kb_search", "run_code"],
       sessionManager: manager,
+      ...(built ? { modelRuntime: built.runtime, model: built.model } : {}),
     });
     return session;
   }
@@ -208,6 +238,14 @@ export class SessionPool implements GatewayPool {
   async disposeAll(): Promise<void> {
     await Promise.allSettled([...this.entries.keys()].map((id) => this.dispose(id)));
   }
+}
+
+function ensureResult(
+  created: boolean,
+  restored: boolean,
+  model?: ModelRef,
+): EnsureSessionResult {
+  return model ? { created, restored, model } : { created, restored };
 }
 
 export { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";

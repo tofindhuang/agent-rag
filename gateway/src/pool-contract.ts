@@ -13,16 +13,46 @@ export interface GatewaySessionEntry {
   session: GatewaySession;
 }
 
+import type { ProviderApi } from "./providers.js";
+
+export type { ProviderApi };
+
+/** Per-session model configuration pushed by Java at ensure time. */
+export interface SessionModelConfig {
+  providerId?: string | number;
+  name?: string;
+  api: ProviderApi;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+  displayName?: string;
+  contextWindow?: number;
+  reasoning?: boolean;
+  vision?: boolean;
+}
+
+export interface ModelRef {
+  provider: string;
+  id: string;
+  name: string;
+}
+
 export interface EnsureSessionResult {
   created: boolean;
   restored: boolean;
+  /** Actual model of the session; absent when the engine reports none. */
+  model?: ModelRef;
 }
 
 /** The subset of SessionPool used by the HTTP layer (and by tests). */
 export interface GatewayPool {
   readonly size: number;
   get(sessionId: string): GatewaySessionEntry | undefined;
-  ensure(sessionId: string, userId: string): Promise<EnsureSessionResult>;
+  ensure(
+    sessionId: string,
+    userId: string,
+    model?: SessionModelConfig,
+  ): Promise<EnsureSessionResult>;
   beginRun(sessionId: string, identity: RunIdentity): GatewaySessionEntry | null;
   endRun(sessionId: string, runId: string): void;
   abort(sessionId: string): boolean;

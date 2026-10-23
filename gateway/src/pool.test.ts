@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -42,6 +42,51 @@ const fakeFactory: SessionFactory = async (manager) => {
 
 after(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+});
+
+test("ensure echoes the requested model and keeps its key off disk", async () => {
+  const cfg = config();
+  const pool = new SessionPool(cfg, fakeFactory);
+
+  const result = await pool.ensure("s-model", "u1", {
+    providerId: 1,
+    name: "SiliconFlow",
+    api: "openai-completions",
+    baseUrl: "https://api.example.com/v1",
+    apiKey: "sk-secret-key",
+    modelId: "deepseek-chat",
+    displayName: "DeepSeek Chat",
+  });
+
+  assert.deepEqual(result.model, {
+    provider: "SiliconFlow",
+    id: "deepseek-chat",
+    name: "DeepSeek Chat",
+  });
+  const again = await pool.ensure("s-model", "u1");
+  assert.deepEqual(again.model, result.model);
+
+  const sidecar = readFileSync(join(cfg.sessionDir, "s-model.meta.json"), "utf8");
+  assert.ok(!sidecar.includes("sk-secret-key"));
+  const file = SessionManager.findById(process.cwd(), "s-model", cfg.sessionDir);
+  assert.ok(file);
+  assert.ok(!readFileSync(file, "utf8").includes("sk-secret-key"));
+
+  await pool.disposeAll();
+
+  const restarted = new SessionPool(cfg, fakeFactory);
+  const restored = await restarted.ensure("s-model", "u1", {
+    providerId: 1,
+    name: "SiliconFlow",
+    api: "openai-completions",
+    baseUrl: "https://api.example.com/v1",
+    apiKey: "sk-secret-key",
+    modelId: "deepseek-chat",
+    displayName: "DeepSeek Chat",
+  });
+  assert.equal(restored.restored, true);
+  assert.deepEqual(restored.model, result.model);
+  await restarted.disposeAll();
 });
 
 test("ensure creates, dispose keeps the file, restart restores", async () => {

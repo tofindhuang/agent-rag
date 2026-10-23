@@ -7,7 +7,12 @@ import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { createApp } from "./app.js";
 import type { GatewayConfig } from "./config.js";
 import type { RunIdentity } from "./identity.js";
-import type { GatewayPool, GatewaySession, GatewaySessionEntry } from "./pool-contract.js";
+import type {
+  GatewayPool,
+  GatewaySession,
+  GatewaySessionEntry,
+  SessionModelConfig,
+} from "./pool-contract.js";
 import { SessionConflictError } from "./pool-contract.js";
 
 class FakeSession implements GatewaySession {
@@ -52,11 +57,18 @@ class FakePool implements GatewayPool {
     return this.entries.get(sessionId);
   }
 
-  async ensure(sessionId: string, userId: string) {
+  async ensure(sessionId: string, userId: string, model?: SessionModelConfig) {
+    const modelRef = model
+      ? {
+          provider: model.name ?? "custom",
+          id: model.modelId,
+          name: model.displayName ?? model.modelId,
+        }
+      : undefined;
     const existing = this.entries.get(sessionId);
     if (existing) {
       if (existing.userId !== userId) throw new SessionConflictError(sessionId);
-      return { created: false, restored: false };
+      return { created: false, restored: false, model: modelRef };
     }
     this.entries.set(sessionId, {
       sessionId,
@@ -64,7 +76,7 @@ class FakePool implements GatewayPool {
       activeRun: null,
       session: new FakeSession(),
     });
-    return { created: true, restored: false };
+    return { created: true, restored: false, model: modelRef };
   }
 
   beginRun(sessionId: string, identity: RunIdentity): FakeEntry | null {
@@ -313,6 +325,48 @@ test("DELETE is idempotent and enforces ownership", async () => {
       body: JSON.stringify({ text: "hi", turnId: "t1" }),
     });
     assert.equal(afterDelete.status, 404);
+  });
+});
+
+test("PUT echoes the requested session model", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s-model`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-user-id": "u1" },
+      body: JSON.stringify({
+        model: {
+          providerId: 7,
+          name: "SiliconFlow",
+          api: "openai-completions",
+          baseUrl: "https://api.example.com/v1",
+          apiKey: "sk-secret",
+          modelId: "deepseek-chat",
+          displayName: "DeepSeek Chat",
+        },
+      }),
+    });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      model: { provider: string; id: string; name: string };
+    };
+    assert.deepEqual(body.model, {
+      provider: "SiliconFlow",
+      id: "deepseek-chat",
+      name: "DeepSeek Chat",
+    });
+  });
+});
+
+test("PUT rejects an invalid session model", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s-model`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-user-id": "u1" },
+      body: JSON.stringify({ model: { api: "nope" } }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
   });
 });
 

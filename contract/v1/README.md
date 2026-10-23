@@ -31,7 +31,7 @@
 | 方法 | 路径 | 请求 | 成功响应 |
 |---|---|---|---|
 | `GET` | `/health` | — | `200 { ok: true, contractVersion: "1", sessions: <number> }` |
-| `PUT` | `/sessions/:id` | `X-User-Id`，空 body | `200 { sessionId, created, restored }` |
+| `PUT` | `/sessions/:id` | `X-User-Id`，可选 body `{ model }` | `200 { sessionId, created, restored, model? }` |
 | `POST` | `/sessions/:id/prompt` | `X-User-Id`，`{ text, turnId }` | `200` SSE |
 | `POST` | `/sessions/:id/abort` | `X-User-Id`，空 body | `202` |
 | `DELETE` | `/sessions/:id` | `X-User-Id` | `204` |
@@ -41,6 +41,7 @@
 - **ID 由 Java 生成**，gateway 不生成业务会话 ID。
 - `PUT` 幂等：不存在则创建（`created: true`）；已存在且归属相同返回 `created: false`；归属不同返回 `409 SESSION_CONFLICT`。
 - `restored` 表示本次调用是否从持久化的 pi session 恢复；已驻留内存的会话重试返回 `false`。
+- `model` 可选，由 Java 按用户选择的供应商模型下发：`{ providerId?, name?, api, baseUrl, apiKey, modelId, displayName?, contextWindow?, reasoning?, vision? }`。gateway 为该会话构建隔离的模型运行时，密钥仅存内存、不进 session 文件；响应回显实际模型 `{ provider, id, name }`。未携带时使用部署默认模型；baseUrl 与探测走同一出站策略（默认公网 HTTPS，元数据地址永远拒绝），被策略拒绝时返回 `400 INVALID_REQUEST`。
 - `prompt` 的 `turnId` 由 Java 生成，必须非空；`run_started` 与 `run_settled` 回显该值。
 - **一个会话同时只允许一个 Run**：已有进行中的 Run 时，第二个 prompt 在写 SSE 头之前返回 `409 RUN_IN_PROGRESS`，不排队。
 - 显式 `abort` 返回 `202`；当前 Run 以 `run_settled { status: "aborted" }` 收尾；空闲时返回 `409 NO_ACTIVE_RUN`。
