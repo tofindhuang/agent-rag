@@ -3,6 +3,7 @@ package com.agentcore.server.service.impl;
 import com.agentcore.server.common.crypto.ApiKeyCipher;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.config.ModelProperties;
 import com.agentcore.server.dao.ModelProviderDao;
@@ -23,8 +24,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -43,11 +42,8 @@ public class ModelProviderServiceImpl implements ModelProviderService {
     private final UserModelDefaultDao defaultDao;
     private final ApiKeyCipher cipher;
     private final ModelProperties modelProperties;
-    private final GatewayProperties gateway;
+    private final GatewayClient client;
     private final ObjectMapper objectMapper;
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
 
     public ModelProviderServiceImpl(
             ModelProviderDao providerDao,
@@ -55,14 +51,14 @@ public class ModelProviderServiceImpl implements ModelProviderService {
             UserModelDefaultDao defaultDao,
             ApiKeyCipher cipher,
             ModelProperties modelProperties,
-            GatewayProperties gateway,
+            GatewayClient client,
             ObjectMapper objectMapper) {
         this.providerDao = providerDao;
         this.modelDao = modelDao;
         this.defaultDao = defaultDao;
         this.cipher = cipher;
         this.modelProperties = modelProperties;
-        this.gateway = gateway;
+        this.client = client;
         this.objectMapper = objectMapper;
     }
 
@@ -196,24 +192,17 @@ public class ModelProviderServiceImpl implements ModelProviderService {
             throw new ApiException(ErrorCode.INTERNAL, "failed to serialize probe request", ex);
         }
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder(
-                        URI.create(gateway.baseUrl() + "/providers/probe"))
+        HttpRequest.Builder builder = client.request("/providers/probe")
                 .timeout(Duration.ofSeconds(15))
                 .header("content-type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body));
-        if (gateway.hasToken()) {
-            builder.header("authorization", "Bearer " + gateway.apiToken());
-        }
 
         HttpResponse<String> response;
         try {
-            response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-        } catch (IOException ex) {
+            response = client.send(builder.build());
+        } catch (ApiException ex) {
             throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE,
                     "cannot reach model provider gateway", ex);
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "probe interrupted", ex);
         }
 
         if (response.statusCode() == 200) {
@@ -240,19 +229,10 @@ public class ModelProviderServiceImpl implements ModelProviderService {
     }
 
     private ApiException probeError(int status, String body) {
-        String code = "PROVIDER_PROBE_FAILED";
-        String message = "model provider probe failed";
-        try {
-            JsonNode error = objectMapper.readTree(body).path("error");
-            if (!error.path("code").asText("").isEmpty()) {
-                code = error.path("code").asText();
-            }
-            if (!error.path("message").asText("").isEmpty()) {
-                message = error.path("message").asText();
-            }
-        } catch (IOException ignored) {
-            // fall back to the generic provider error
-        }
+        GatewayClient.GatewayError error = client.errorBody(body);
+        String code = error.code().isEmpty() ? "PROVIDER_PROBE_FAILED" : error.code();
+        String message =
+                error.message().isEmpty() ? "model provider probe failed" : error.message();
         ErrorCode mapped = switch (code) {
             case "PROVIDER_UNREACHABLE" -> ErrorCode.PROVIDER_UNREACHABLE;
             case "PROVIDER_AUTH_FAILED" -> ErrorCode.PROVIDER_AUTH_FAILED;

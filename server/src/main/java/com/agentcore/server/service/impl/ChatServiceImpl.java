@@ -2,6 +2,7 @@ package com.agentcore.server.service.impl;
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.common.sse.SseFrame;
 import com.agentcore.server.common.sse.SseFrameParser;
 import com.agentcore.server.config.GatewayProperties;
@@ -26,7 +27,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -72,9 +72,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatProjectionService projection;
     private final SessionModelService sessionModelService;
     private final TransactionTemplate transactionTemplate;
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+    private final GatewayClient client;
 
     public ChatServiceImpl(
             GatewayProperties gateway,
@@ -86,7 +84,8 @@ public class ChatServiceImpl implements ChatService {
             MessageCache messageCache,
             ChatProjectionService projection,
             SessionModelService sessionModelService,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            GatewayClient client) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
@@ -97,6 +96,7 @@ public class ChatServiceImpl implements ChatService {
         this.projection = projection;
         this.sessionModelService = sessionModelService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.client = client;
     }
 
     @Override
@@ -212,14 +212,9 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private void deleteGatewayFiles(String sessionId, long userId) {
-        HttpRequest request = gatewaySession(sessionId, userId)
-                .uri(URI.create(gateway.baseUrl()
-                        + "/sessions/" + urlEncode(sessionId) + "/files"))
-                .DELETE()
-                .build();
         HttpResponse<String> response;
         try {
-            response = sendForString(request);
+            response = client.send(gatewaySession(sessionId, userId, "/files").DELETE().build());
         } catch (ApiException ex) {
             // Transport failure: rows stay, the user retries.
             throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
@@ -246,10 +241,8 @@ public class ChatServiceImpl implements ChatService {
         // The gateway is allowed to forget the AgentSession; a restart already
         // means it has nothing to dispose, so this stays best-effort.
         try {
-            HttpRequest request = gatewaySession(sessionId, userId)
-                    .DELETE()
-                    .build();
-            HttpResponse<String> response = sendForString(request);
+            HttpResponse<String> response =
+                    client.send(gatewaySession(sessionId, userId, "").DELETE().build());
             if (response.statusCode() >= 400 && response.statusCode() != 404) {
                 log.warn("gateway dispose returned {} for archived session {}",
                         response.statusCode(), sessionId);
@@ -314,28 +307,19 @@ public class ChatServiceImpl implements ChatService {
             throw ex;
         }
 
-        HttpRequest.Builder builder = gatewaySession(sessionId, userId)
-                .uri(URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId) + "/prompt"))
+        HttpRequest.Builder builder = gatewaySession(sessionId, userId, "/prompt")
                 .header("content-type", "application/json")
                 .header("accept", "text/event-stream")
                 .header("X-Request-Id", requestId)
                 .POST(HttpRequest.BodyPublishers.ofString(
                         toJson(Map.of("text", text, "turnId", turnId))));
-        if (gateway.hasToken()) {
-            builder.header("authorization", "Bearer " + gateway.apiToken());
-        }
 
         HttpResponse<InputStream> response;
         try {
-            response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
-        } catch (IOException e) {
+            response = client.sendStreaming(builder.build());
+        } catch (ApiException e) {
             projection.failBeforeStream(turn, ErrorCode.UPSTREAM_UNAVAILABLE.name(), e.getMessage());
-            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "gateway unreachable: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            projection.failBeforeStream(
-                    turn, ErrorCode.UPSTREAM_UNAVAILABLE.name(), "interrupted while calling gateway");
-            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "interrupted while calling gateway", e);
+            throw e;
         }
         if (response.statusCode() != 200) {
             String detail = readFully(response.body());
@@ -503,21 +487,11 @@ public class ChatServiceImpl implements ChatService {
         return objectMapper.writeValueAsString(toolCalls);
     }
 
-    /** Extracts the contract error envelope; falls back to the HTTP status. */
+    /** Contract error envelope; falls back to the HTTP status. */
     private String[] gatewayError(String detail, int status) {
-        String code = ErrorCode.UPSTREAM_ERROR.name();
-        String message = "gateway status " + status;
-        try {
-            JsonNode error = objectMapper.readTree(detail).path("error");
-            if (!error.path("code").asText("").isEmpty()) {
-                code = error.path("code").asText();
-            }
-            if (!error.path("message").asText("").isEmpty()) {
-                message = error.path("message").asText();
-            }
-        } catch (IOException ignored) {
-            // keep the generic code; the detail is still on the exception
-        }
+        GatewayClient.GatewayError error = client.errorBody(detail);
+        String code = error.code().isEmpty() ? ErrorCode.UPSTREAM_ERROR.name() : error.code();
+        String message = error.message().isEmpty() ? "gateway status " + status : error.message();
         return new String[] {code, message};
     }
 
@@ -546,11 +520,11 @@ public class ChatServiceImpl implements ChatService {
             throw new ApiException(ErrorCode.INTERNAL, "failed to serialize session model", ex);
         }
 
-        HttpRequest request = gatewaySession(sessionId, userId)
+        HttpRequest request = gatewaySession(sessionId, userId, "")
                 .header("content-type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(payload))
                 .build();
-        HttpResponse<String> response = sendForString(request);
+        HttpResponse<String> response = client.send(request);
         if (response.statusCode() == 409) {
             throw new ApiException(ErrorCode.USER_MISMATCH, "session belongs to another user");
         }
@@ -578,16 +552,15 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private void disposeGatewaySession(String sessionId, long userId) {
-        HttpRequest request = gatewaySession(sessionId, userId).DELETE().build();
-        HttpResponse<String> response = sendForString(request);
+        HttpRequest request = gatewaySession(sessionId, userId, "").DELETE().build();
+        HttpResponse<String> response = client.send(request);
         if (response.statusCode() >= 400 && response.statusCode() != 404) {
             throw upstreamError("dispose session", response);
         }
     }
 
-    private HttpRequest.Builder gatewaySession(String sessionId, long userId) {
-        return HttpRequest.newBuilder(
-                        URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId)))
+    private HttpRequest.Builder gatewaySession(String sessionId, long userId, String suffix) {
+        return client.request("/sessions/" + urlEncode(sessionId) + suffix)
                 .header("X-User-Id", Long.toString(userId));
     }
 
@@ -620,21 +593,6 @@ public class ChatServiceImpl implements ChatService {
                 + objectMapper.writeValueAsString(data) + "\n\n";
         out.write(frame.getBytes(StandardCharsets.UTF_8));
         out.flush();
-    }
-
-    private HttpResponse<String> sendForString(HttpRequest request) {
-        HttpRequest.Builder authorized = HttpRequest.newBuilder(request, (name, value) -> true);
-        if (gateway.hasToken()) {
-            authorized.header("authorization", "Bearer " + gateway.apiToken());
-        }
-        try {
-            return http.send(authorized.build(), HttpResponse.BodyHandlers.ofString());
-        } catch (IOException e) {
-            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "gateway unreachable: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "interrupted while calling gateway", e);
-        }
     }
 
     private ApiException upstreamError(String what, HttpResponse<String> response) {

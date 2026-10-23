@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
@@ -81,7 +82,8 @@ class ChatServiceImplTest {
                 mock(MessageCache.class),
                 projection,
                 sessionModelService,
-                transactionManager());
+                transactionManager(),
+                new GatewayClient(properties, mapper));
     }
 
     private static PlatformTransactionManager transactionManager() {

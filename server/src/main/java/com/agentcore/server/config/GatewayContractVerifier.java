@@ -1,10 +1,10 @@
 package com.agentcore.server.config;
 
+import com.agentcore.server.common.error.ApiException;
+import com.agentcore.server.common.gateway.GatewayClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
@@ -25,28 +25,23 @@ public class GatewayContractVerifier implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(GatewayContractVerifier.class);
     private static final String SUPPORTED_MAJOR = "1";
 
-    private final GatewayProperties gateway;
+    private final GatewayClient client;
     private final ObjectMapper objectMapper;
-    private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(2))
-            .build();
 
-    public GatewayContractVerifier(GatewayProperties gateway, ObjectMapper objectMapper) {
-        this.gateway = gateway;
+    public GatewayContractVerifier(GatewayClient client, ObjectMapper objectMapper) {
+        this.client = client;
         this.objectMapper = objectMapper;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(gateway.baseUrl() + "/health"))
+        HttpRequest request = client.request("/health")
                 .timeout(Duration.ofSeconds(2))
-                .GET();
-        if (gateway.hasToken()) {
-            builder.header("authorization", "Bearer " + gateway.apiToken());
-        }
+                .GET()
+                .build();
 
         try {
-            HttpResponse<String> response = http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request);
             if (response.statusCode() != 200) {
                 log.warn("gateway health returned {}; contract version check skipped", response.statusCode());
                 return;
@@ -59,11 +54,10 @@ public class GatewayContractVerifier implements ApplicationRunner {
                                 + " is incompatible with server major " + SUPPORTED_MAJOR);
             }
             log.info("gateway contract v{} verified", version.asText());
-        } catch (IOException e) {
+        } catch (ApiException e) {
             log.warn("gateway unreachable at startup; contract version check skipped: {}", e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("gateway contract check interrupted");
+        } catch (JsonProcessingException e) {
+            log.warn("gateway health body is not JSON; contract version check skipped: {}", e.getMessage());
         }
     }
 }

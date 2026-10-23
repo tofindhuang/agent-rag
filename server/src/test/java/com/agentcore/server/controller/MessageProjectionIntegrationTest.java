@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.agentcore.server.dao.MessageCache;
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
@@ -75,6 +76,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private GatewayClient gatewayClient;
 
     @BeforeEach
     void resetGatewayMode() {
@@ -284,7 +288,8 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 messageCacheDao,
                 projection,
                 sessionModelService,
-                transactionManager);
+                transactionManager,
+                gatewayClient);
 
         assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }

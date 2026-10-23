@@ -3,6 +3,7 @@ package com.agentcore.server.config;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -37,7 +38,7 @@ class GatewayContractVerifierTest {
     @Test
     void skipsCheckWhenGatewayIsUnreachable() {
         GatewayProperties properties = new GatewayProperties("http://127.0.0.1:1", null);
-        GatewayContractVerifier verifier = new GatewayContractVerifier(properties, new ObjectMapper());
+        GatewayContractVerifier verifier = new GatewayContractVerifier(new GatewayClient(properties, new ObjectMapper()), new ObjectMapper());
 
         assertDoesNotThrow(() -> verifier.run(null));
     }
@@ -54,6 +55,6 @@ class GatewayContractVerifierTest {
         server.start();
         GatewayProperties properties = new GatewayProperties(
                 "http://127.0.0.1:" + server.getAddress().getPort(), null);
-        return new GatewayContractVerifier(properties, new ObjectMapper());
+        return new GatewayContractVerifier(new GatewayClient(properties, new ObjectMapper()), new ObjectMapper());
     }
 }

@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
@@ -66,6 +67,9 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private GatewayClient gatewayClient;
 
     @Autowired
     private SessionModelDao sessionModelDao;
@@ -158,7 +162,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 messageCacheDao,
                 projection,
                 sessionModelService,
-                transactionManager);
+                transactionManager,
+                gatewayClient);
         List<Session> listed = fresh.listSessions(userId, "active", null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);

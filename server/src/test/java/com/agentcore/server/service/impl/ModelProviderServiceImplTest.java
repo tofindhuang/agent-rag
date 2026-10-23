@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import com.agentcore.server.common.crypto.ApiKeyCipher;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.config.ModelProperties;
 import com.agentcore.server.dao.ModelProviderDao;
@@ -28,7 +29,8 @@ class ModelProviderServiceImplTest {
                 mock(UserModelDefaultDao.class),
                 new ApiKeyCipher(modelProperties),
                 modelProperties,
-                new GatewayProperties("http://127.0.0.1:1", null),
+                new GatewayClient(
+                        new GatewayProperties("http://127.0.0.1:1", null), new ObjectMapper()),
                 new ObjectMapper());
 
         assertThatThrownBy(() -> service.probe(1L, new ProbeCommand(
