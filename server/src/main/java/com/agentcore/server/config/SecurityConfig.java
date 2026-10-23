@@ -58,7 +58,8 @@ public class SecurityConfig {
                                 "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .requestMatchers(ToolTokenFilter.PATTERNS).hasAuthority("TOOL")
-                        .requestMatchers("/api/auth/me", "/api/chat/**").hasAuthority("USER")
+                        .requestMatchers("/api/auth/me", "/api/chat/**", "/api/models/**")
+                        .hasAuthority("USER")
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(unauthorized(objectMapper))

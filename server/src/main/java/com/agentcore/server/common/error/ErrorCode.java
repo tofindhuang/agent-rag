@@ -17,11 +17,17 @@ public enum ErrorCode {
     SESSION_NOT_FOUND(404, false),
     SESSION_CONFLICT(409, false),
     EMAIL_ALREADY_EXISTS(409, false),
+    MODEL_NOT_CONFIGURED(409, false),
+    MODEL_UNAVAILABLE(409, false),
+    MODEL_SWITCH_NOT_ALLOWED(409, false),
     CONFLICT(409, false),
     RUN_IN_PROGRESS(409, false),
     NO_ACTIVE_RUN(409, false),
     INTERNAL(500, false),
     NOT_IMPLEMENTED(501, false),
+    PROVIDER_UNREACHABLE(502, true),
+    PROVIDER_AUTH_FAILED(502, false),
+    PROVIDER_PROBE_FAILED(502, false),
     UPSTREAM_ERROR(502, false),
     UPSTREAM_UNAVAILABLE(503, true);
 

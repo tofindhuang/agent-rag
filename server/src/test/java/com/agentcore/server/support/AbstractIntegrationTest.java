@@ -23,6 +23,8 @@ public abstract class AbstractIntegrationTest {
     protected static final String JWT_SECRET =
             "test-only-jwt-secret-that-is-long-enough-32+";
     protected static final String GATEWAY_API_TOKEN = "test-gateway-token";
+    protected static final String MODEL_SECRET_KEY =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     private static final boolean DOCKER_AVAILABLE = DockerClientFactory.instance().isDockerAvailable();
 
@@ -56,5 +58,6 @@ public abstract class AbstractIntegrationTest {
         registry.add("app.auth.jwt-secret", () -> JWT_SECRET);
         registry.add("app.gateway.api-token", () -> GATEWAY_API_TOKEN);
         registry.add("app.gateway.base-url", GATEWAY::baseUrl);
+        registry.add("app.models.secret-key", () -> MODEL_SECRET_KEY);
     }
 }

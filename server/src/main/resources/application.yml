@@ -2,6 +2,10 @@ server:
   port: 8080
 
 app:
+  models:
+    # Base64 of 32 bytes; encrypts user-supplied provider API keys (ADR-0010).
+    secret-key: ${MODEL_SECRET_KEY:}
+    allow-system-default: ${ALLOW_SYSTEM_DEFAULT_MODEL:true}
   message-cache:
     ttl: 24h
     max-entries: 100

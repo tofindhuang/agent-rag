@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -16,11 +18,17 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class FakeGateway {
 
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private final HttpServer server;
     private final AtomicReference<String> lastCreateSessionUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
     private final AtomicReference<String> promptMode = new AtomicReference<>("complete");
     private final AtomicInteger putCount = new AtomicInteger();
+    private final AtomicReference<String> probeMode = new AtomicReference<>("ok");
+    private final AtomicReference<String> lastProbeApiKey = new AtomicReference<>();
+    private final AtomicReference<String> lastProbeApi = new AtomicReference<>();
+    private final AtomicReference<String> lastProbeBaseUrl = new AtomicReference<>();
 
     public FakeGateway() {
         try {
@@ -56,6 +64,22 @@ public final class FakeGateway {
         putCount.set(0);
     }
 
+    public void setProbeMode(String mode) {
+        probeMode.set(mode);
+    }
+
+    public String lastProbeApiKey() {
+        return lastProbeApiKey.get();
+    }
+
+    public String lastProbeApi() {
+        return lastProbeApi.get();
+    }
+
+    public String lastProbeBaseUrl() {
+        return lastProbeBaseUrl.get();
+    }
+
     private void handle(HttpExchange exchange) throws IOException {
         try {
             String path = exchange.getRequestURI().getPath();
@@ -79,10 +103,40 @@ public final class FakeGateway {
                 handlePrompt(exchange);
                 return;
             }
+            if (path.equals("/providers/probe") && method.equals("POST")) {
+                handleProbe(exchange);
+                return;
+            }
             sendJson(exchange, 404, "{\"error\":\"not found\"}");
         } finally {
             exchange.close();
         }
+    }
+
+    private void handleProbe(HttpExchange exchange) throws IOException {
+        String raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        JsonNode body = MAPPER.readTree(raw);
+        lastProbeApi.set(body.path("api").asText(""));
+        lastProbeBaseUrl.set(body.path("baseUrl").asText(""));
+        lastProbeApiKey.set(body.path("apiKey").asText(""));
+        String mode = probeMode.get();
+        if ("auth".equals(mode)) {
+            sendJson(exchange, 502,
+                    "{\"error\":{\"code\":\"PROVIDER_AUTH_FAILED\",\"message\":\"bad key\",\"retryable\":false}}");
+            return;
+        }
+        if ("failed".equals(mode)) {
+            sendJson(exchange, 502,
+                    "{\"error\":{\"code\":\"PROVIDER_PROBE_FAILED\",\"message\":\"bad response\",\"retryable\":false}}");
+            return;
+        }
+        if ("unreachable".equals(mode)) {
+            sendJson(exchange, 502,
+                    "{\"error\":{\"code\":\"PROVIDER_UNREACHABLE\",\"message\":\"down\",\"retryable\":true}}");
+            return;
+        }
+        sendJson(exchange, 200,
+                "{\"models\":[{\"id\":\"model-a\",\"name\":\"Model A\"},{\"id\":\"model-b\",\"name\":\"Model B\"}]}");
     }
 
     private void handlePrompt(HttpExchange exchange) throws IOException {

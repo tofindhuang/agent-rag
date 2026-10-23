@@ -50,7 +50,7 @@
 
 - `model_providers`：id BIGINT 自增；user_id FK；name；api ENUM(`openai-completions`,`anthropic-messages`)；base_url；api_key_cipher（AES-GCM，IV 与密文一起 base64）；api_key_hint（末 4 位，仅展示）；created_at/updated_at。
 - `provider_models`：id BIGINT 自增；provider_id FK ON DELETE CASCADE；model_id；display_name；context_window；supports_reasoning；supports_vision；created_at；UNIQUE(provider_id, model_id)。只存用户启用/手填的模型。
-- `users.default_model_id` BIGINT 可空（应用层校验归属，不加 FK，避免与 provider 删除形成环）。
+- `user_model_defaults`：user_id 主键、model_id FK provider_models ON DELETE CASCADE；独立表避免 MySQL 不支持 `ADD COLUMN IF NOT EXISTS` 的非幂等迁移，也避免与 provider 删除形成环。
 - `sessions` 增加模型快照：`model_provider_model_id`（FK ON DELETE SET NULL）、`model_label`（如 `SiliconFlow / deepseek-chat`，默认「系统默认」）、`model_source` ENUM(`system`,`user`)。
 - 会话模型在创建/恢复时由 Java 解析并写入；历史会话在供应商删除后仍保留 label。
 

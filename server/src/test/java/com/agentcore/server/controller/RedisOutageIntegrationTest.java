@@ -37,6 +37,8 @@ class RedisOutageIntegrationTest {
 
     private static final String JWT_SECRET = "test-only-jwt-secret-that-is-long-enough-32+";
     private static final String GATEWAY_API_TOKEN = "test-gateway-token";
+    private static final String MODEL_SECRET_KEY =
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
     @Container
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
@@ -63,6 +65,7 @@ class RedisOutageIntegrationTest {
         registry.add("app.auth.jwt-secret", () -> JWT_SECRET);
         registry.add("app.gateway.api-token", () -> GATEWAY_API_TOKEN);
         registry.add("app.gateway.base-url", GATEWAY::baseUrl);
+        registry.add("app.models.secret-key", () -> MODEL_SECRET_KEY);
     }
 
     @Autowired
