@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 ## Status
 
-Accepted
+Accepted（由 ADR-0011 修订：用户主动彻底删除会话时删除 pi 文件与 sidecar；普通归档仍无限保留）
 
 ## Context
 

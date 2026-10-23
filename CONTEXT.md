@@ -14,9 +14,24 @@ _Avoid_: account、tenant、member
 不透明随机串，经 httpOnly cookie 传输，服务端只存哈希；每次刷新即轮换，检测到旧令牌重用时撤销同族全部令牌。
 _Avoid_: session token、persistent token、remember-me
 
+### 模型供应商（Model Provider）
+
+用户自行添加的外部模型服务配置（协议、Base URL、加密的 API Key），仅对添加者可见，是会话选择模型的来源。
+_Avoid_: channel、vendor、endpoint（泛指时）
+
+### 供应商模型（Provider Model）
+
+从某个模型供应商启用的具体模型及其能力元数据，是新建会话时的可选项。
+_Avoid_: model registry、catalog（后者指全局目录，本项目没有）
+
+### 系统默认模型（System Default Model）
+
+部署者通过 gateway 的 pi 配置提供的兜底模型；`ALLOW_SYSTEM_DEFAULT_MODEL=false` 时禁用，用户必须自带供应商。
+_Avoid_: global model、platform model
+
 ### 会话（Session）
 
-一段持续的多轮对话及其上下文，归属单一用户，由业务层（Java）创建与管理。
+一段持续的多轮对话及其上下文，归属单一用户，由业务层（Java）创建与管理。可处于 active 或 archived（归档）状态；归档保留历史，可恢复或彻底删除。
 _Avoid_: conversation、chat、对话（作名词指 Session 时统一用「会话」）
 
 ### AgentSession
