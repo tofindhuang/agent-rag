@@ -21,6 +21,7 @@
     <java.version>21</java.version>
     <mybatis-plus.version>3.5.17</mybatis-plus.version>
     <nimbus-jose-jwt.version>10.10</nimbus-jose-jwt.version>
+    <aws-sdk.version>2.46.7</aws-sdk.version>
     <!-- Docker Engine 29 requires API >= 1.40; Boot 3.4.2 manages 1.20.4. -->
     <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
@@ -57,6 +58,26 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-redis</artifactId>
+    </dependency>
+    <!-- KB ingestion queue (FR-2); topology is declared in KbQueueConfiguration. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
+    <!--
+      S3-compatible object storage (ADR-0013). AWS SDK v2 talks to Silo / MinIO /
+      cloud S3 through the standard S3 API; the URL connection client keeps the
+      dependency tree free of Netty/Apache HTTP.
+    -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <version>${aws-sdk.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+      <version>${aws-sdk.version}</version>
     </dependency>
     <dependency>
       <groupId>com.nimbusds</groupId>

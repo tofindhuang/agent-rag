@@ -6,6 +6,43 @@ app:
     # Base64 of 32 bytes; encrypts user-supplied provider API keys (ADR-0010).
     secret-key: ${MODEL_SECRET_KEY:}
     allow-system-default: ${ALLOW_SYSTEM_DEFAULT_MODEL:true}
+  # Knowledge base / RAG (FR-2). User settings override embedding/rerank;
+  # deployment values below are the fallback.
+  kb:
+    enabled: ${KB_ENABLED:true}
+    allow-private-endpoints: ${KB_ALLOW_PRIVATE_ENDPOINTS:false}
+    max-documents-per-user: ${KB_MAX_DOCUMENTS_PER_USER:200}
+    max-bytes-per-user: ${KB_MAX_BYTES_PER_USER:1073741824}
+    worker-threads: ${KB_WORKER_THREADS:3}
+    queue:
+      prefix: ${KB_QUEUE_PREFIX:kb}
+    qdrant:
+      url: ${QDRANT_URL:http://localhost:6333}
+      api-key: ${QDRANT_API_KEY:}
+      collection-prefix: ${QDRANT_COLLECTION_PREFIX:kb_passages}
+    s3:
+      endpoint: ${S3_ENDPOINT:http://localhost:9000}
+      # Credentials come from the environment only; blank means not configured.
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      bucket: ${S3_BUCKET:agent-core-kb}
+      region: ${S3_REGION:us-east-1}
+      path-style: ${S3_PATH_STYLE:true}
+    embedding:
+      base-url: ${EMBEDDING_BASE_URL:}
+      api-key: ${EMBEDDING_API_KEY:}
+      model: ${EMBEDDING_MODEL:BAAI/bge-m3}
+      dim: ${EMBEDDING_DIM:1024}
+      batch-size: ${EMBEDDING_BATCH_SIZE:32}
+      path: ${EMBEDDING_PATH:/embeddings}
+    rerank:
+      enabled: ${RERANK_ENABLED:true}
+      base-url: ${RERANK_BASE_URL:}
+      api-key: ${RERANK_API_KEY:}
+      model: ${RERANK_MODEL:BAAI/bge-reranker-v2-m3}
+      path: ${RERANK_PATH:/rerank}
+      candidates: ${RERANK_CANDIDATES:10}
+      top-n: ${RERANK_TOP_N:5}
   message-cache:
     ttl: 24h
     max-entries: 100
@@ -32,6 +69,19 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    # A broker outage must not block startup; publishers declare topology lazily.
+    connection-timeout: 3s
+    publisher-confirm-type: correlated
+    listener:
+      simple:
+        auto-startup: ${KB_ENABLED:true}
+        prefetch: 1
 
 mybatis-plus:
   configuration:

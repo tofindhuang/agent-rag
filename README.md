@@ -21,7 +21,7 @@
 ├── .pi/skills/        开发流程 skills（见 AGENTS.md 规范流程）
 ├── AGENTS.md          模块地图、命令、编码规范、文档约定（agent 必读）
 ├── CONTEXT.md         领域词汇表
-└── docker-compose.yml MySQL 8 + Redis 7（向量库待 M0 选型）
+└── docker-compose.yml MySQL 8 + Redis 7 + Qdrant + RabbitMQ + Silo（S3 兼容）
 ```
 
 规范开发流程（在 pi 中自动发现，也可 `/skill:<name>` 显式调用）：**`/skill:grilling`（Phase 1，强制）** → `/to-spec` → `/to-tickets` → `/implement`（配合 `/tdd`）→ `/code-review` → `/skill:pre-push-checks` → push。新功能/需求、架构组件、跨模块改动、schema/迁移、外部集成不得跳过 Phase 1，详见 `AGENTS.md`。
@@ -31,7 +31,8 @@
 前置：Node 22+（gateway 依赖 pi SDK 的 `fs.globSync`）、Java 21+、Docker（仅基础设施与沙箱需要）。
 
 ```bash
-# 0. 基础设施（当前骨架阶段可跳过）
+# 0. 基础设施：MySQL/Redis(:3306/:6379)、Qdrant(:6333)、
+#    RabbitMQ(:5672/:15672)、Silo S3(:9000/:9001)
 docker compose up -d
 
 # 1. 网关（端口 3001）

@@ -83,7 +83,7 @@ AC：
 
 ### FR-2 知识库 / RAG（P0）
 
-- 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与切片文本入 MySQL，原文入对象存储（MinIO/S3，见 ADR-0013），向量入 Qdrant（ADR-0005）
+- 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与切片文本入 MySQL，原文入 S3 兼容对象存储（默认 Silo，MinIO 兼容 fork，见 ADR-0013），向量入 Qdrant（ADR-0005）
 - 支持格式（首期）：PDF、Markdown、TXT、docx、HTML URL 抓取
 - 检索工具 `kb_search`：模型在对话中按需调用；Java 侧执行向量检索 + 重排（rerank），返回 top-k 片段
 - 知识库隔离：按用户/工作区隔离，检索只命中授权范围
@@ -179,6 +179,8 @@ AC：
 | 持久化 | MySQL 8 | 用户、会话、消息投影、画像、文档元数据、执行审计、用量 |
 | 缓存 | Redis 7 | 活跃会话路由表、限流、沙箱并发信号量、分布式锁 |
 | 向量库 | Qdrant | 知识切片的向量检索；M0 spike 定稿（ADR-0005） |
+| 消息队列 | RabbitMQ 4 | 知识库摄取任务、TTL 重试与 DLQ（FR-2） |
+| 对象存储 | Silo（MinIO 兼容 fork） | 知识库原文；标准 S3 API，可替换云 S3（ADR-0013） |
 | 沙箱 | Docker Engine（docker-java 调用） | 首期 runc；gVisor (runsc) 作为 P2 加固选项 |
 | embedding / rerank | 可配置的 OpenAI 兼容端点（SiliconFlow / 本地 TEI 等） | 业务层调用；生成式 LLM 仍只走 gateway（ADR-0005） |
 

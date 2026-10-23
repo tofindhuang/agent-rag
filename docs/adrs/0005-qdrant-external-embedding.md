@@ -18,7 +18,8 @@ FR-2 的 RAG 管线需要向量库、embedding 与 rerank。约束如下：
 
 ## Decision
 
-- 向量库直接选 **Qdrant**，不做三选一 benchmark；单 collection `kb_passages`，payload 带 `user_id`、`document_id`、`seq`、`text`，对 `user_id` / `document_id` 建 payload 索引，检索用服务端过滤强制用户隔离。
+- 向量库直接选 **Qdrant**，不做三选一 benchmark；payload 带 `user_id`、`document_id`、`seq`、`page`、`title`、`text`，对 `user_id` / `document_id` 建 payload 索引，检索用服务端过滤强制用户隔离。
+- **2026-10-23 实施修订**：按 KB spec 的决策 7 改为**每用户独立 collection** `kb_passages_u{userId}`（懒创建、维度锁定），替代原「单 collection」方案；payload 中仍保留 `user_id` 并发起服务端过滤，作为纵深防御。
 - embedding / rerank 走**可配置的 OpenAI 兼容 HTTP 端点**（默认 `/embeddings`、`/rerank`），可以是托管免费服务，也可以是本地 TEI；不兼容的服务用 adapter 适配。
 - 业务层持有 encoder/reranker 的 endpoint 与 key；这把「生成式 LLM 凭证」和「encoder 推理凭证」分开，gateway 仍是唯一生成式模型通路。
 - `EMBEDDING_DIM` 与 collection 维度锁死，启动时校验；更换 embedding 模型必须全量重建索引，并作为显式运维动作。

@@ -27,9 +27,9 @@ M1 要交付一个可用闭环：上传文档 → 异步摄取 → 对话中检�
 7. **凭证归属**：embedding/rerank 为**用户级设置**（AES-GCM 加密），未配置时回落部署 env；Qdrant 连接为部署级；每用户独立 collection（懒创建，维度锁定）。
 8. **检索**：query embedding → Qdrant `user_id` 过滤 top-10 → rerank top-5；空结果与失败严格区分，不降级为空。
 9. **UI**：新增 `/knowledge` 页（上传/列表/状态轮询/删除/重建），入口放账号菜单；引用走契约 `tool_result.details` 加法。
-10. **设置校验**：保存前强制探测（断言维度）；改 embedding model/dim 将全部文档标记 `stale`，需「全部重建」，期间检索返回可读错误。
+10. **设置校验**：保存前强制探测（断言维度）；改 embedding model/dim 将全部文档标记 `stale`，需「全部重建」，期间检索返回可读错误。维度变化时同步以新维度重建该用户 collection（旧向量作废），否则启动维度守卫会拒绝启动。
 11. **配额**：单用户 200 文档 / 1 GB 原文，超限 `KB_QUOTA_EXCEEDED`；worker 3 线程，同一用户同时只处理 1 篇。
-12. **原文存储**：MinIO（S3 兼容）存原文；MySQL 存元数据与切片文本；Qdrant 存向量。删除顺序：对象 → Qdrant → MySQL。
+12. **原文存储**：S3 兼容对象存储（默认 Silo，MinIO 的社区维护 fork）存原文；MySQL 存元数据与切片文本；Qdrant 存向量。删除顺序：对象 → Qdrant → MySQL。
 13. **验收**：AC1 100 页 PDF ≤5 分钟可检索；AC2 引用展示；AC3 跨用户隔离；故障/重试/DLQ/stale/配额均有测试。
 
 ## 数据模型（MySQL，Flyway up-only）
@@ -50,11 +50,11 @@ M1 要交付一个可用闭环：上传文档 → 异步摄取 → 对话中检�
 - `GET/PUT /api/kb/settings`：读取（key 只回显末四位）/替换；`POST /api/kb/settings/probe` 探测维度与延迟
 - `POST /api/kb/search`：内部 TOOL 身份，返回 passages（含 `page`）
 
-新增错误码：`KB_NOT_CONFIGURED`（409）、`KB_QUOTA_EXCEEDED`（409）、`KB_INDEX_STALE`（409）、`KB_UNAVAILABLE`（503，retryable）、`KB_UNSUPPORTED_FORMAT`（400）、`KB_FILE_TOO_LARGE`（413）。
+新增错误码：`KB_DISABLED`（409，`KB_ENABLED=false`）、`KB_NOT_CONFIGURED`（409）、`KB_QUOTA_EXCEEDED`（409）、`KB_INDEX_STALE`（409）、`KB_UNAVAILABLE`（503，retryable）、`KB_UNSUPPORTED_FORMAT`（400）、`KB_FILE_TOO_LARGE`（413）。
 
 ## 配置（环境变量）
 
-- 队列：`RABBITMQ_HOST/PORT/USERNAME/PASSWORD/VHOST`、队列名前缀
+- 队列：`RABBITMQ_HOST/PORT/USERNAME/PASSWORD/VHOST`、队列名前缀（`KB_QUEUE_PREFIX`，默认 `kb`）
 - Qdrant：`QDRANT_URL/QDRANT_API_KEY/QDRANT_COLLECTION_PREFIX`
 - 对象存储：`S3_ENDPOINT/S3_ACCESS_KEY/S3_SECRET_KEY/S3_BUCKET/S3_REGION/S3_PATH_STYLE`
 - 默认 embedding/rerank：`EMBEDDING_*`、`RERANK_*`（用户未配置时回落）
@@ -76,7 +76,7 @@ M1 要交付一个可用闭环：上传文档 → 异步摄取 → 对话中检�
 - embedding 429/超时按 5s/30s/2m 重试，3 次后 `failed` + DLQ；publisher 崩溃由 reconciler 补发
 - 维度错配保存即 400；改模型后文档 `stale` 且检索返回 `KB_INDEX_STALE`；重建后恢复
 - 删除后对象/Qdrant/MySQL 无残留；配额超限返回 `KB_QUOTA_EXCEEDED`
-- server Testcontainers（MySQL/Redis/RabbitMQ/Qdrant/MinIO）+ 假 embedding/rerank；gateway 契约测试覆盖 `tool_result.details`
+- server Testcontainers（MySQL/Redis/RabbitMQ/Qdrant/Silo）+ 假 embedding/rerank；gateway 契约测试覆盖 `tool_result.details`
 
 ## Risks
 

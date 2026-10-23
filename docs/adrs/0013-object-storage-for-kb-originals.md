@@ -1,10 +1,10 @@
-# 知识库原文存对象存储（MinIO / S3 兼容）
+# 知识库原文存对象存储（S3 兼容 / Silo）
 
 Date: 2026-10-23
 
 ## Status
 
-Accepted（修订 `docs/requirements.md` FR-2 的「元数据与原文入 MySQL」）
+Accepted（修订 `docs/requirements.md` FR-2 的「元数据与原文入 MySQL」；2026-10-23 实施修订：默认实现改用 Silo）
 
 ## Context
 
@@ -19,7 +19,8 @@ FR-2 原草案要求「元数据与原文入 MySQL」。实现前评估发现：
 
 ## Decision
 
-- 原文（PDF/DOCX/MD/TXT/HTML 快照）存 **MinIO**，通过标准 S3 API 访问；`docker-compose` 固定版本并挂数据卷，未来换云 S3 只改配置。
+- 原文（PDF/DOCX/MD/TXT/HTML 快照）存 **S3 兼容对象存储**，通过标准 S3 API 访问；`docker-compose` 固定版本并挂数据卷，未来换云 S3 只改配置。
+- 默认实现选 **Silo**（`pgsty/silo`，MinIO 的社区维护 fork，保留 `MINIO_*` 环境变量与 S3 存储格式）：上游 MinIO 已停止社区分发，Silo 继续提供多架构镜像与安全修复。代码只依赖 S3 协议，不绑定 Silo；AWS SDK v2 通过 path-style 访问本地端点。
 - MySQL 只存文档元数据、状态与切片文本；Qdrant 存向量与检索 payload。
 - 对象键 `{userId}/{documentId}/{sha256}.{ext}`，桶默认私有，M1 只允许 server 读写（不签 presigned URL、不暴露桶）。
 - 删除顺序：对象（幂等）→ Qdrant 点 → MySQL 行；对象删除失败保持 `deleting` 并重试，避免「行没了文件还在」。
@@ -35,6 +36,7 @@ FR-2 原草案要求「元数据与原文入 MySQL」。实现前评估发现：
 
 ## Consequences
 
-- 多一个必须常驻的组件（MinIO）与数据卷备份项；本地开发 `docker-compose` 多一个容器。
+- 多一个必须常驻的组件（Silo）与数据卷备份项；本地开发 `docker-compose` 多一个容器。
+- 迁移既有 MinIO 数据时沿用其存储格式与 `MINIO_*` 变量，无需改对象键或桶结构。
 - 跨存储一致性由「先写对象、后写 MySQL；删除先对象后行」的状态机兜底，失败可重试。
 - `docs/requirements.md` 的 FR-2 与数据模型说明需要同步修改。

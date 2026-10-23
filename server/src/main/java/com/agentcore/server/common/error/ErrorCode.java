@@ -22,6 +22,12 @@ public enum ErrorCode {
     MODEL_NOT_CONFIGURED(409, false),
     MODEL_UNAVAILABLE(409, false),
     MODEL_SWITCH_NOT_ALLOWED(409, false),
+    KB_DISABLED(409, false),
+    KB_NOT_CONFIGURED(409, false),
+    KB_QUOTA_EXCEEDED(409, false),
+    KB_INDEX_STALE(409, false),
+    KB_UNSUPPORTED_FORMAT(400, false),
+    KB_FILE_TOO_LARGE(413, false),
     CONFLICT(409, false),
     RUN_IN_PROGRESS(409, false),
     NO_ACTIVE_RUN(409, false),
@@ -31,7 +37,8 @@ public enum ErrorCode {
     PROVIDER_AUTH_FAILED(502, false),
     PROVIDER_PROBE_FAILED(502, false),
     UPSTREAM_ERROR(502, false),
-    UPSTREAM_UNAVAILABLE(503, true);
+    UPSTREAM_UNAVAILABLE(503, true),
+    KB_UNAVAILABLE(503, true);
 
     private final int status;
     private final boolean retryable;
