@@ -69,7 +69,7 @@ class ChatServiceImplTest {
         projection = mock(ChatProjectionService.class);
         sessionModelService = mock(SessionModelService.class);
         SessionModelChoice system =
-                new SessionModelChoice(null, "系统默认", "system", null, null, null, null, null, null, null, false, false);
+                SessionModelChoice.system("系统默认");
         when(sessionModelService.forNewSession(anyLong(), any(), anyBoolean())).thenReturn(system);
         when(sessionModelService.forExistingSession(anyLong(), anyString())).thenReturn(system);
         service = new ChatServiceImpl(

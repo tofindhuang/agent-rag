@@ -498,18 +498,19 @@ public class ChatServiceImpl implements ChatService {
     private String ensureGatewaySession(
             String sessionId, long userId, SessionModelChoice choice) {
         Map<String, Object> body = new LinkedHashMap<>();
-        if (choice.usesUserProvider()) {
+        SessionModelChoice.Binding binding = choice.binding();
+        if (binding != null) {
             Map<String, Object> model = new LinkedHashMap<>();
             model.put("providerId", choice.providerModelId());
-            model.put("name", choice.providerName());
-            model.put("api", choice.api());
-            model.put("baseUrl", choice.baseUrl());
-            model.put("apiKey", choice.apiKey());
-            model.put("modelId", choice.modelId());
-            model.put("displayName", choice.displayName());
-            if (choice.contextWindow() != null) model.put("contextWindow", choice.contextWindow());
-            model.put("reasoning", choice.reasoning());
-            model.put("vision", choice.vision());
+            model.put("name", binding.providerName());
+            model.put("api", binding.api());
+            model.put("baseUrl", binding.baseUrl());
+            model.put("apiKey", binding.apiKey());
+            model.put("modelId", binding.modelId());
+            model.put("displayName", binding.displayName());
+            if (binding.contextWindow() != null) model.put("contextWindow", binding.contextWindow());
+            model.put("reasoning", binding.reasoning());
+            model.put("vision", binding.vision());
             body.put("model", model);
         }
 

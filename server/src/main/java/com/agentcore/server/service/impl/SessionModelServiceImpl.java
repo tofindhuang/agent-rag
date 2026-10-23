@@ -70,10 +70,8 @@ public class SessionModelServiceImpl implements SessionModelService {
             return system(userId, false);
         }
         if ("system".equals(snapshot.getModelSource())) {
-            return new SessionModelChoice(
-                    null,
-                    snapshot.getModelLabel() == null ? SYSTEM_LABEL : snapshot.getModelLabel(),
-                    "system", null, null, null, null, null, null, null, false, false);
+            return SessionModelChoice.system(
+                    snapshot.getModelLabel() == null ? SYSTEM_LABEL : snapshot.getModelLabel());
         }
         if (snapshot.getProviderModelId() == null) {
             throw new ApiException(ErrorCode.MODEL_UNAVAILABLE, "session model is no longer available");
@@ -106,19 +104,19 @@ public class SessionModelServiceImpl implements SessionModelService {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "stored API key cannot be decrypted; re-enter it");
         }
-        return new SessionModelChoice(
+        return SessionModelChoice.user(
                 model.getId(),
                 truncate(provider.getName() + " / " + model.getDisplayName()),
-                "user",
-                provider.getName(),
-                provider.getApi(),
-                provider.getBaseUrl(),
-                apiKey,
-                model.getModelId(),
-                model.getDisplayName(),
-                model.getContextWindow(),
-                Boolean.TRUE.equals(model.getSupportsReasoning()),
-                Boolean.TRUE.equals(model.getSupportsVision()));
+                new SessionModelChoice.Binding(
+                        provider.getName(),
+                        provider.getApi(),
+                        provider.getBaseUrl(),
+                        apiKey,
+                        model.getModelId(),
+                        model.getDisplayName(),
+                        model.getContextWindow(),
+                        Boolean.TRUE.equals(model.getSupportsReasoning()),
+                        Boolean.TRUE.equals(model.getSupportsVision())));
     }
 
     private SessionModelChoice system(long userId, boolean enforceGate) {
@@ -126,7 +124,6 @@ public class SessionModelServiceImpl implements SessionModelService {
             throw new ApiException(ErrorCode.MODEL_NOT_CONFIGURED,
                     "no model configured; add a provider or enable the system default");
         }
-        return new SessionModelChoice(
-                null, SYSTEM_LABEL, "system", null, null, null, null, null, null, null, false, false);
+        return SessionModelChoice.system(SYSTEM_LABEL);
     }
 }

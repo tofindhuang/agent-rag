@@ -56,4 +56,24 @@ class SessionModelServiceImplTest {
                 new ApiKeyCipher(properties),
                 properties);
     }
+
+    @Test
+    void factoriesCarryTheSameSemanticsAsTheFlatChoice() {
+        SessionModelChoice system = SessionModelChoice.system("系统默认");
+        assertThat(system.source()).isEqualTo("system");
+        assertThat(system.providerModelId()).isNull();
+        assertThat(system.binding()).isNull();
+        assertThat(system.usesUserProvider()).isFalse();
+
+        SessionModelChoice.Binding binding = new SessionModelChoice.Binding(
+                "Prov", "openai-completions", "https://api.example.com/v1", "sk-key",
+                "model-a", "Model A", 65536, true, false);
+        SessionModelChoice user = SessionModelChoice.user(7L, "Prov / Model A", binding);
+
+        assertThat(user.source()).isEqualTo("user");
+        assertThat(user.providerModelId()).isEqualTo(7L);
+        assertThat(user.label()).isEqualTo("Prov / Model A");
+        assertThat(user.usesUserProvider()).isTrue();
+        assertThat(user.binding()).isSameAs(binding);
+    }
 }
