@@ -1,20 +1,23 @@
 /**
  * agent-core gateway: HTTP front for the pi agent engine.
  *
- * API (contract v0, see docs/requirements.md §8 O1):
- *   GET    /health                    -> { ok, sessions }
+ * API (contract v1, see contract/v1/README.md):
+ *   GET    /health                    -> { ok, contractVersion, sessions }
  *   POST   /sessions                  { sessionId, userId } -> 201 { sessionId }
- *   POST   /sessions/:id/prompt       { text } -> SSE stream of pi session events
- *                                          (event name = pi event type), ending with
- *                                          `prompt_settled` or `prompt_error`
+ *   POST   /sessions/:id/prompt       { text, turnId? } -> SSE contract v1 events
  *   DELETE /sessions/:id              -> dispose session
  *
- * The SSE stream is a passthrough of pi session events; Java and the frontend
- * consume text_delta / tool_execution_* / message_end / agent_settled from it.
+ * The SSE stream is a translation of pi AgentSessionEvent values into the
+ * normalized contract events; pi types are not exposed to Java or the web.
  */
 
+import { randomUUID } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import { loadConfig } from "./config.js";
+import { CONTRACT_VERSION, type DomainEvent } from "./contract/events.js";
+import { formatSseFrame, HEARTBEAT_FRAME, HEARTBEAT_INTERVAL_MS } from "./contract/sse.js";
+import { RunTranslator } from "./contract/translate.js";
+import { logPiEvent } from "./log.js";
 import { SessionExistsError, SessionNotFoundError, SessionPool } from "./pool.js";
 
 const config = loadConfig();
@@ -32,7 +35,7 @@ app.use((req, res, next) => {
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true, sessions: pool.size });
+  res.json({ ok: true, contractVersion: CONTRACT_VERSION, sessions: pool.size });
 });
 
 app.post("/sessions", async (req: Request, res: Response) => {
@@ -63,7 +66,7 @@ app.post("/sessions/:id/prompt", async (req: Request, res: Response) => {
     res.status(404).json({ error: "session not found" });
     return;
   }
-  const { text } = (req.body ?? {}) as { text?: unknown };
+  const { text, turnId } = (req.body ?? {}) as { text?: unknown; turnId?: unknown };
   if (typeof text !== "string" || text.trim().length === 0) {
     res.status(400).json({ error: "text (non-empty string) is required" });
     return;
@@ -75,33 +78,64 @@ app.post("/sessions/:id/prompt", async (req: Request, res: Response) => {
     connection: "keep-alive",
     "x-accel-buffering": "no",
   });
-  const send = (event: string, data: unknown): void => {
-    if (!res.writableEnded) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  };
 
+  const runId = randomUUID();
+  const resolvedTurnId =
+    typeof turnId === "string" && turnId.length > 0 ? turnId : randomUUID();
+  const translator = new RunTranslator({
+    runId,
+    turnId: resolvedTurnId,
+    sessionId: req.params.id,
+    contractVersion: CONTRACT_VERSION,
+  });
+
+  let seq = 0;
   let closed = false;
+  let terminalSent = false;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | null = null;
-  // NOTE: use res 'close', not req 'close'. req 'close' fires as soon as the
-  // request body has been consumed, which would abort every run immediately.
-  // res 'close' with writableEnded == false means the client dropped mid-stream.
+  const sendEvent = (event: DomainEvent): void => {
+    if (closed || terminalSent || res.writableEnded) return;
+    seq += 1;
+    res.write(formatSseFrame(runId, seq, event));
+    if (event.type === "run_settled") {
+      terminalSent = true;
+      if (heartbeat) clearInterval(heartbeat);
+      res.end();
+    }
+  };
+  heartbeat = setInterval(() => {
+    if (!closed && !terminalSent && !res.writableEnded) res.write(HEARTBEAT_FRAME);
+  }, HEARTBEAT_INTERVAL_MS);
+
+  // NOTE: use res 'close', not req 'close' (ADR-0002). A close before
+  // res.end() means the client dropped mid-stream; abort the run.
   res.on("close", () => {
     if (res.writableEnded) return;
     closed = true;
+    if (heartbeat) clearInterval(heartbeat);
     unsubscribe?.();
     entry.session.abort().catch(() => undefined);
   });
 
-  // Subscribe before prompting: fast completions must not race the listener.
-  unsubscribe = entry.session.subscribe((event) => send(event.type, event));
+  for (const event of translator.start()) sendEvent(event);
 
   try {
+    // Subscribe before prompting: fast completions must not race the listener.
+    unsubscribe = entry.session.subscribe((event) => {
+      logPiEvent({ sessionId: req.params.id, runId, turnId: resolvedTurnId }, event);
+      for (const domainEvent of translator.translate(event)) sendEvent(domainEvent);
+    });
+
     await pool.run(req.params.id, text);
-    if (!closed) send("prompt_settled", { sessionId: req.params.id });
+    for (const event of translator.finish("completed")) sendEvent(event);
   } catch (err) {
-    if (!closed) send("prompt_error", { message: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    for (const event of translator.fail("MODEL_ERROR", message)) sendEvent(event);
   } finally {
+    if (heartbeat) clearInterval(heartbeat);
     unsubscribe?.();
-    res.end();
+    if (!closed && !res.writableEnded) res.end();
   }
 });
 
