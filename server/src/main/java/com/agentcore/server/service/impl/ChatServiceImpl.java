@@ -91,8 +91,8 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public String createSession(long userId, String title, Long modelId) {
-        SessionModelChoice choice = sessionModelService.forNewSession(userId, modelId);
+    public String createSession(long userId, String title, Long modelId, boolean useSystemDefault) {
+        SessionModelChoice choice = sessionModelService.forNewSession(userId, modelId, useSystemDefault);
 
         String sessionId = UUID.randomUUID().toString();
         Session session = new Session();

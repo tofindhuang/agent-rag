@@ -32,6 +32,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -65,7 +66,7 @@ class ChatServiceImplTest {
         sessionModelService = mock(SessionModelService.class);
         SessionModelChoice system =
                 new SessionModelChoice(null, "系统默认", "system", null, null, null, null, null, null, null, false, false);
-        when(sessionModelService.forNewSession(anyLong(), any())).thenReturn(system);
+        when(sessionModelService.forNewSession(anyLong(), any(), anyBoolean())).thenReturn(system);
         when(sessionModelService.forExistingSession(anyLong(), anyString())).thenReturn(system);
         service = new ChatServiceImpl(
                 properties,
@@ -85,7 +86,7 @@ class ChatServiceImplTest {
 
     @Test
     void createSessionUsesPutAndIdentityHeader() {
-        String sessionId = service.createSession(1L, null, null);
+        String sessionId = service.createSession(1L, null, null, false);
 
         assertNotNull(sessionId);
         assertEquals("1", lastUserId.get());
@@ -130,7 +131,7 @@ class ChatServiceImplTest {
 
     @Test
     void archiveUsesDeleteWithOwnerHeader() {
-        String sessionId = service.createSession(1L, null, null);
+        String sessionId = service.createSession(1L, null, null, false);
 
         service.archiveSession(1L, sessionId);
 
@@ -140,7 +141,7 @@ class ChatServiceImplTest {
 
     private PromptStream openPrompt(String mode) {
         promptMode.set(mode);
-        String sessionId = service.createSession(1L, null, null);
+        String sessionId = service.createSession(1L, null, null, false);
         return service.openPrompt(1L, sessionId, "hi", null);
     }
 

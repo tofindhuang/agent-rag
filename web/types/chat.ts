@@ -26,6 +26,9 @@ export type HistoryRole = "user" | "assistant" | "tool";
 export interface SessionSummary {
   id: string;
   title: string;
+  /** Snapshot written at create/switch; `provider / model` or the actual system model name. */
+  modelLabel: string | null;
+  modelSource: "system" | "user" | null;
   lastActiveAt: string;
   createdAt: string;
 }

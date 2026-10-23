@@ -6,8 +6,29 @@ interface CreateSessionResponse {
   sessionId?: unknown;
 }
 
-export async function createChatSession(signal?: AbortSignal): Promise<string> {
-  const response = await authFetch("/api/chat/sessions", { method: "POST", signal });
+export interface CreateSessionOptions {
+  title?: string;
+  /** Explicit user model id; omit for the user default, then the system default. */
+  modelId?: number;
+  /** Explicitly start on the system default model, bypassing the user default. */
+  useSystemDefault?: boolean;
+}
+
+export async function createChatSession(
+  options?: CreateSessionOptions,
+  signal?: AbortSignal,
+): Promise<string> {
+  const hasTitle = options?.title != null && options.title.length > 0;
+  const response = await authFetch("/api/chat/sessions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      title: hasTitle ? options?.title : undefined,
+      modelId: options?.modelId,
+      useSystemDefault: options?.useSystemDefault === true ? true : undefined,
+    }),
+    signal,
+  });
   if (!response.ok) throw await toApiError(response);
 
   const data = (await response.json()) as CreateSessionResponse;
@@ -15,6 +36,22 @@ export async function createChatSession(signal?: AbortSignal): Promise<string> {
     throw new ApiError("服务响应缺少 sessionId", response.status);
   }
   return data.sessionId;
+}
+
+/** Switches the session model for fault recovery; takes effect from the next turn. */
+export async function switchChatSessionModel(
+  sessionId: string,
+  modelId: number | null,
+): Promise<void> {
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/model`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ modelId }),
+    },
+  );
+  if (!response.ok) throw await toApiError(response);
 }
 
 export async function listChatSessions(): Promise<SessionPage> {
@@ -92,6 +129,9 @@ function parseSessionPage(value: unknown): SessionPage {
     return {
       id: item.id,
       title: item.title,
+      modelLabel: typeof item.modelLabel === "string" ? item.modelLabel : null,
+      modelSource:
+        item.modelSource === "system" || item.modelSource === "user" ? item.modelSource : null,
       lastActiveAt: typeof item.lastActiveAt === "string" ? item.lastActiveAt : "",
       createdAt: typeof item.createdAt === "string" ? item.createdAt : "",
     };

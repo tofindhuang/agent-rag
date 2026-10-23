@@ -8,14 +8,22 @@ import {
   listChatSessions,
   openChatStream,
   renameChatSession,
+  switchChatSessionModel,
 } from "@/lib/api/chat";
-import { userMessage } from "@/lib/api/errors";
+import { ApiError, userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
 import type { ChatMessage, HistoryItem, SessionSummary, ToolActivity } from "@/types/chat";
 import type { MessageEndData } from "@/types/gateway";
 import { parseGatewayEvent } from "@/types/gateway";
+import type { CreateSessionOptions } from "@/lib/api/chat";
 
 const HISTORY_PAGE_SIZE = 50;
+
+/** Server-side label written when the gateway never reports a model name. */
+const SYSTEM_DEFAULT_SENTINEL = "系统默认";
+
+/** Which action produced the current error; each surface shows only its own. */
+type ErrorSource = "send" | "create" | "switch" | "other";
 
 function newAssistant(): ChatMessage {
   return { role: "assistant", content: "", thinking: "", tools: [], status: "streaming" };
@@ -88,15 +96,24 @@ export function useChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorSource, setErrorSource] = useState<ErrorSource | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
-  const fail = useCallback((cause: unknown) => {
+  const fail = useCallback((cause: unknown, source: ErrorSource = "other") => {
     console.error(cause);
     setError(userMessage(cause));
+    setErrorCode(cause instanceof ApiError ? (cause.code ?? null) : null);
+    setErrorSource(source);
+  }, []);
+  const clearError = useCallback(() => {
+    setError(null);
+    setErrorCode(null);
+    setErrorSource(null);
   }, []);
   const currentIdRef = useRef<string | null>(null);
   const initialized = useRef(false);
@@ -130,10 +147,10 @@ export function useChat() {
       setHistoryHasMore(false);
       setNextBeforeId(null);
       setNotice(null);
-      setError(null);
+      clearError();
       await loadHistory(sessionId);
     },
-    [loadHistory],
+    [clearError, loadHistory],
   );
 
   const refreshSessions = useCallback(async (): Promise<SessionSummary[]> => {
@@ -169,16 +186,38 @@ export function useChat() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const createSession = useCallback(async () => {
-    setError(null);
-    try {
-      const sessionId = await createChatSession();
-      await refreshSessions();
-      await selectSession(sessionId);
-    } catch (cause: unknown) {
-      fail(cause);
-    }
-  }, [fail, refreshSessions, selectSession]);
+  const createSession = useCallback(
+    async (options?: CreateSessionOptions): Promise<boolean> => {
+      clearError();
+      try {
+        const sessionId = await createChatSession(options);
+        await refreshSessions();
+        await selectSession(sessionId);
+        return true;
+      } catch (cause: unknown) {
+        fail(cause, "create");
+        return false;
+      }
+    },
+    [clearError, fail, refreshSessions, selectSession],
+  );
+
+  /** Fault-recovery switch (ADR-0010); the next prompt uses the new model. */
+  const switchModel = useCallback(
+    async (sessionId: string, modelId: number | null): Promise<boolean> => {
+      try {
+        await switchChatSessionModel(sessionId, modelId);
+        await refreshSessions();
+        clearError();
+        setNotice("已切换模型，重新发送消息即可使用新模型");
+        return true;
+      } catch (cause: unknown) {
+        fail(cause, "switch");
+        return false;
+      }
+    },
+    [clearError, fail, refreshSessions],
+  );
 
   const renameSession = useCallback(
     async (sessionId: string, title: string) => {
@@ -212,11 +251,10 @@ export function useChat() {
           await createSession();
         }
       } catch (cause: unknown) {
-        console.error(cause);
-        setError(userMessage(cause));
+        fail(cause);
       }
     },
-    [createSession, refreshSessions, selectSession],
+    [createSession, fail, refreshSessions, selectSession],
   );
 
   const loadOlder = useCallback(async () => {
@@ -312,7 +350,7 @@ export function useChat() {
     if (!sessionId || text.length === 0 || busy) return;
 
     setInput("");
-    setError(null);
+    clearError();
     setNotice(null);
     setBusy(true);
     setMessages((previous) => [...previous, newUser(text)]);
@@ -320,9 +358,11 @@ export function useChat() {
     const controller = new AbortController();
     abortRef.current = controller;
     let settled = false;
+    let opened = false;
 
     try {
       const stream = await openChatStream(sessionId, text, controller.signal);
+      opened = true;
       for await (const frame of parseSse(stream)) {
         const event = parseGatewayEvent(frame.event, frame.data);
         if (!event) continue;
@@ -413,8 +453,14 @@ export function useChat() {
       if (controller.signal.aborted) {
         updateAssistant((message) => ({ ...message, status: "aborted" }));
         setNotice("已停止生成");
+      } else if (!opened) {
+        // The stream never started: roll back the optimistic message so the
+        // user can retry (e.g. after switching a MODEL_UNAVAILABLE model).
+        setMessages((previous) => previous.slice(0, -1));
+        setInput(text);
+        fail(cause, "send");
       } else {
-        fail(cause);
+        fail(cause, "send");
         updateAssistant((message) => ({ ...message, status: "error" }));
       }
     } finally {
@@ -439,19 +485,30 @@ export function useChat() {
     abortRef.current?.abort();
   }, []);
 
-  const currentTitle =
-    sessions.find((session) => session.id === currentSessionId)?.title ?? "agent-core";
+  const currentSession = sessions.find((session) => session.id === currentSessionId);
+  const currentTitle = currentSession?.title ?? "agent-core";
+  // System labels store the actual model name; user labels are `provider / model`.
+  const currentModel = currentSession?.modelLabel
+    ? currentSession.modelSource === "system"
+      ? currentSession.modelLabel === SYSTEM_DEFAULT_SENTINEL
+        ? currentSession.modelLabel
+        : `系统默认 · ${currentSession.modelLabel}`
+      : currentSession.modelLabel
+    : null;
 
   return {
     sessions,
     sessionsLoading,
     currentSessionId,
     currentTitle,
+    currentModel,
     messages,
     input,
     setInput,
     busy,
     error,
+    errorCode,
+    errorSource,
     notice,
     historyLoading,
     historyHasMore,
@@ -460,6 +517,7 @@ export function useChat() {
     stop,
     selectSession,
     createSession,
+    switchModel,
     renameSession,
     archiveSession,
   };

@@ -69,7 +69,7 @@
 - `GET /api/models/providers` / `POST` / `PATCH /{id}` / `DELETE /{id}`：供应商与启用模型 CRUD；编辑 key 为整体替换；删除供应商级联删除其模型并把引用它的 `users.default_model_id` 置空。
 - `PUT /api/models/default`：`{modelId|null}`，null 表示使用系统默认。
 - `POST /api/chat/sessions/{id}/model`：故障恢复用，切换会话模型（下一轮生效）；服务端允许，UI 仅在 `MODEL_UNAVAILABLE` 后暴露。
-- 创建会话 `POST /api/chat/sessions` 增加可选 `title`、`modelId`。
+- 创建会话 `POST /api/chat/sessions` 增加可选 `title`、`modelId`；`useSystemDefault=true` 显式使用系统默认（与 `modelId` 互斥，用于绕过用户默认模型）。
 
 ### 账号安全
 

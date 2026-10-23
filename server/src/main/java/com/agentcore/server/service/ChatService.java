@@ -14,7 +14,7 @@ import java.util.List;
 public interface ChatService {
 
     /** Creates the AgentSession and stores the business session row. */
-    String createSession(long userId, String title, Long modelId);
+    String createSession(long userId, String title, Long modelId, boolean useSystemDefault);
 
     /** Active sessions of the user, newest activity first (composite cursor). */
     List<Session> listSessions(

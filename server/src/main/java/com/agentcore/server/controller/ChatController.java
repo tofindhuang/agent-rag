@@ -63,8 +63,13 @@ public class ChatController {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "title must be at most 255 characters");
         }
         Long modelId = request == null ? null : request.modelId();
+        boolean useSystemDefault = request != null && Boolean.TRUE.equals(request.useSystemDefault());
+        if (useSystemDefault && modelId != null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "modelId and useSystemDefault are mutually exclusive");
+        }
         return new CreateSessionResponse(
-                chatService.createSession(user.userId(), title, modelId));
+                chatService.createSession(user.userId(), title, modelId, useSystemDefault));
     }
 
     @PostMapping("/sessions/{sessionId}/model")

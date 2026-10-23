@@ -101,6 +101,41 @@ class SessionModelBindingIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void explicitSystemChoiceOverridesTheUsersDefaultModel() throws Exception {
+        String token = newUserToken();
+        long modelId = createProviderWithTwoModels(token);
+        mockMvc.perform(put("/api/models/default")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"modelId\":" + modelId + "}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/chat/sessions")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"useSystemDefault\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/chat/sessions").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(jsonPath("$.items[0].modelLabel").value("System Model"))
+                .andExpect(jsonPath("$.items[0].modelSource").value("system"));
+
+        assertThat(GATEWAY.lastModelId()).isNull();
+    }
+
+    @Test
+    void rejectsModelIdTogetherWithUseSystemDefault() throws Exception {
+        String token = newUserToken();
+        long modelId = createProviderWithTwoModels(token);
+
+        mockMvc.perform(post("/api/chat/sessions")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"modelId\":" + modelId + ",\"useSystemDefault\":true}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void rejectsAnotherUsersModel() throws Exception {
         String owner = newUserToken();
         String intruder = newUserToken();
@@ -189,6 +224,7 @@ class SessionModelBindingIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post("/api/chat/sessions/" + sessionId + "/messages")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
                         .content("{\"text\":\"hi\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("MODEL_UNAVAILABLE"));

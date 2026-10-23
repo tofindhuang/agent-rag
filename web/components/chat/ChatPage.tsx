@@ -1,16 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { NewSessionDialog } from "./NewSessionDialog";
 import { SessionSidebar } from "./SessionSidebar";
+import { SwitchModelDialog } from "./SwitchModelDialog";
 import styles from "./chat.module.css";
 
 export function ChatPage() {
   const { user, logout } = useAuth();
   const chat = useChat();
+  const [creating, setCreating] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  // Special error codes get their own affordances instead of plain text.
+  const needsSetup = chat.errorCode === "MODEL_NOT_CONFIGURED";
+  const modelUnavailable =
+    chat.errorCode === "MODEL_UNAVAILABLE" && chat.errorSource === "send";
+  const plainError =
+    chat.error != null && !needsSetup && !modelUnavailable ? chat.error : null;
 
   return (
     <div className={styles.shell}>
@@ -18,7 +30,7 @@ export function ChatPage() {
         sessions={chat.sessions}
         currentSessionId={chat.currentSessionId}
         loading={chat.sessionsLoading}
-        onCreate={() => void chat.createSession()}
+        onCreate={() => setCreating(true)}
         onSelect={(sessionId) => void chat.selectSession(sessionId)}
         onRename={(sessionId, title) => void chat.renameSession(sessionId, title)}
         onArchive={(sessionId) => void chat.archiveSession(sessionId)}
@@ -27,7 +39,14 @@ export function ChatPage() {
       <div className={styles.mainArea}>
         <main className={styles.chat}>
           <header className={styles.header}>
-            <h1 className={styles.title}>{chat.currentTitle}</h1>
+            <div className={styles.titleWrap}>
+              <h1 className={styles.title}>{chat.currentTitle}</h1>
+              {chat.currentModel ? (
+                <span className={styles.modelTag} title="当前会话使用的模型">
+                  {chat.currentModel}
+                </span>
+              ) : null}
+            </div>
             <div className={styles.account}>
               <span className={styles.email}>{user?.email}</span>
               <Link className={styles.accountLink} href="/settings">
@@ -38,6 +57,28 @@ export function ChatPage() {
               </button>
             </div>
           </header>
+
+          {needsSetup && !creating ? (
+            <div className={styles.modelBanner} role="alert">
+              <span>{chat.error}</span>
+              <Link className={styles.bannerLink} href="/settings">
+                前往设置
+              </Link>
+            </div>
+          ) : null}
+
+          {modelUnavailable && !switching && chat.currentSessionId ? (
+            <div className={styles.modelBanner} role="alert">
+              <span>{chat.error}</span>
+              <button
+                className={styles.bannerLink}
+                type="button"
+                onClick={() => setSwitching(true)}
+              >
+                切换模型
+              </button>
+            </div>
+          ) : null}
 
           {chat.historyHasMore ? (
             <button
@@ -53,7 +94,7 @@ export function ChatPage() {
           <MessageList
             messages={chat.messages}
             busy={chat.busy}
-            error={chat.error}
+            error={plainError}
             notice={chat.notice}
             historyLoading={chat.historyLoading}
           />
@@ -68,6 +109,24 @@ export function ChatPage() {
           />
         </main>
       </div>
+
+      {creating ? (
+        <NewSessionDialog
+          error={chat.errorSource === "create" ? chat.error : null}
+          errorCode={chat.errorSource === "create" ? chat.errorCode : null}
+          onSubmit={async (options) => chat.createSession(options)}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
+
+      {switching && chat.currentSessionId ? (
+        <SwitchModelDialog
+          sessionId={chat.currentSessionId}
+          error={chat.errorSource === "switch" ? chat.error : null}
+          onSwitch={async (sessionId, modelId) => chat.switchModel(sessionId, modelId)}
+          onClose={() => setSwitching(false)}
+        />
+      ) : null}
     </div>
   );
 }

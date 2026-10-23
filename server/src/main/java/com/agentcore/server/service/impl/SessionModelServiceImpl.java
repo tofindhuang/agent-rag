@@ -44,7 +44,13 @@ public class SessionModelServiceImpl implements SessionModelService {
     }
 
     @Override
-    public SessionModelChoice forNewSession(long userId, Long modelId) {
+    public SessionModelChoice forNewSession(long userId, Long modelId, boolean useSystemDefault) {
+        // An explicit system choice must bypass the user default, otherwise a
+        // picker selection of "system default" would silently pick the user's
+        // own default model instead.
+        if (useSystemDefault) {
+            return system(userId, true);
+        }
         if (modelId != null) {
             return explicit(userId, modelId);
         }
