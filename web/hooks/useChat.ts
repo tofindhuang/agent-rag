@@ -1,12 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createChatSession, openChatStream } from "@/lib/api/chat";
+import {
+  archiveChatSession,
+  createChatSession,
+  fetchHistory,
+  listChatSessions,
+  openChatStream,
+  renameChatSession,
+} from "@/lib/api/chat";
 import { userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
-import type { ChatMessage, ToolActivity } from "@/types/chat";
+import type { ChatMessage, HistoryItem, SessionSummary, ToolActivity } from "@/types/chat";
 import type { MessageEndData } from "@/types/gateway";
 import { parseGatewayEvent } from "@/types/gateway";
+
+const HISTORY_PAGE_SIZE = 50;
 
 function newAssistant(): ChatMessage {
   return { role: "assistant", content: "", thinking: "", tools: [], status: "streaming" };
@@ -16,34 +25,217 @@ function newUser(content: string): ChatMessage {
   return { role: "user", content, thinking: "", tools: [] };
 }
 
+function toHistoryMessages(items: HistoryItem[]): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+  for (const item of items) {
+    if (item.role === "tool") {
+      const tool: ToolActivity = {
+        toolCallId: `history-${item.id}`,
+        name: "工具结果",
+        argsText: "",
+        output: item.content ?? "",
+        status: item.status === "error" ? "error" : "done",
+      };
+      const previous = messages[messages.length - 1];
+      if (previous && previous.role === "assistant") {
+        previous.tools = [...previous.tools, tool];
+      } else {
+        // A page boundary can start mid-turn; keep the tool row visible.
+        messages.push({
+          role: "assistant",
+          content: "",
+          thinking: "",
+          tools: [tool],
+          status: "complete",
+          historyId: item.id,
+        });
+      }
+      continue;
+    }
+    if (item.role === "user") {
+      messages.push({
+        role: "user",
+        content: item.content ?? "",
+        thinking: "",
+        tools: [],
+        historyId: item.id,
+      });
+      continue;
+    }
+    const status =
+      item.status === "partial" ? "partial" : item.status === "error" ? "error" : "complete";
+    messages.push({
+      role: "assistant",
+      content: item.content ?? "",
+      thinking: item.thinking ?? "",
+      tools: [],
+      status,
+      historyId: item.id,
+    });
+  }
+  return messages;
+}
+
 /**
- * Owns ephemeral chat state and the contract v1 SSE lifecycle. Tool progress
- * is display-only; the model only sees the final tool result.
+ * Owns chat state, the session sidebar data and the contract v1 SSE lifecycle.
+ * Session/history writes go through lib/api; components only render.
  */
 export function useChat() {
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    createChatSession(controller.signal)
-      .then((id) => {
-        if (!controller.signal.aborted) setSessionId(id);
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return;
-        console.error(cause);
-        setError(userMessage(cause));
-      });
-    return () => controller.abort();
+  const abortRef = useRef<AbortController | null>(null);
+  const fail = useCallback((cause: unknown) => {
+    console.error(cause);
+    setError(userMessage(cause));
+  }, []);
+  const currentIdRef = useRef<string | null>(null);
+  const initialized = useRef(false);
+
+  const loadHistory = useCallback(async (sessionId: string) => {
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const page = await fetchHistory(sessionId, null, HISTORY_PAGE_SIZE);
+      if (currentIdRef.current !== sessionId) return;
+      setMessages(toHistoryMessages(page.items));
+      setHistoryHasMore(page.hasMore);
+      setNextBeforeId(page.nextBeforeId);
+    } catch (cause: unknown) {
+      if (currentIdRef.current !== sessionId) return;
+      fail(cause);
+    } finally {
+      if (currentIdRef.current === sessionId) setHistoryLoading(false);
+    }
+  }, [fail]);
+
+  const selectSession = useCallback(
+    async (sessionId: string) => {
+      if (currentIdRef.current === sessionId) return;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setBusy(false);
+      currentIdRef.current = sessionId;
+      setCurrentSessionId(sessionId);
+      setMessages([]);
+      setHistoryHasMore(false);
+      setNextBeforeId(null);
+      setNotice(null);
+      setError(null);
+      await loadHistory(sessionId);
+    },
+    [loadHistory],
+  );
+
+  const refreshSessions = useCallback(async (): Promise<SessionSummary[]> => {
+    const page = await listChatSessions();
+    setSessions(page.items);
+    return page.items;
   }, []);
 
+  useEffect(() => {
+    // StrictMode runs effects twice in development. The guard keeps one
+    // bootstrap in flight; it must not be aborted by the fake cleanup, or the
+    // sidebar would stay in "loading" forever.
+    if (initialized.current) return;
+    initialized.current = true;
+
+    void (async () => {
+      try {
+        const existing = await refreshSessions();
+        if (existing.length > 0) {
+          await selectSession(existing[0].id);
+        } else {
+          const sessionId = await createChatSession();
+          await refreshSessions();
+          await selectSession(sessionId);
+        }
+      } catch (cause: unknown) {
+        fail(cause);
+      } finally {
+        setSessionsLoading(false);
+      }
+    })();
+  }, [fail, refreshSessions, selectSession]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  const createSession = useCallback(async () => {
+    setError(null);
+    try {
+      const sessionId = await createChatSession();
+      await refreshSessions();
+      await selectSession(sessionId);
+    } catch (cause: unknown) {
+      fail(cause);
+    }
+  }, [fail, refreshSessions, selectSession]);
+
+  const renameSession = useCallback(
+    async (sessionId: string, title: string) => {
+      const trimmed = title.trim();
+      if (trimmed.length === 0) return;
+      try {
+        await renameChatSession(sessionId, trimmed);
+        setSessions((previous) =>
+          previous.map((session) =>
+            session.id === sessionId ? { ...session, title: trimmed } : session,
+          ),
+        );
+      } catch (cause: unknown) {
+        fail(cause);
+      }
+    },
+    [fail],
+  );
+
+  const archiveSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await archiveChatSession(sessionId);
+        const remaining = await refreshSessions();
+        if (currentIdRef.current !== sessionId) return;
+        if (remaining.length > 0) {
+          currentIdRef.current = null;
+          await selectSession(remaining[0].id);
+        } else {
+          currentIdRef.current = null;
+          await createSession();
+        }
+      } catch (cause: unknown) {
+        console.error(cause);
+        setError(userMessage(cause));
+      }
+    },
+    [createSession, refreshSessions, selectSession],
+  );
+
+  const loadOlder = useCallback(async () => {
+    const sessionId = currentIdRef.current;
+    if (!sessionId || nextBeforeId == null || historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const page = await fetchHistory(sessionId, nextBeforeId, HISTORY_PAGE_SIZE);
+      if (currentIdRef.current !== sessionId) return;
+      setMessages((previous) => [...toHistoryMessages(page.items), ...previous]);
+      setHistoryHasMore(page.hasMore);
+      setNextBeforeId(page.nextBeforeId);
+    } catch (cause: unknown) {
+      if (currentIdRef.current !== sessionId) return;
+      fail(cause);
+    } finally {
+      if (currentIdRef.current === sessionId) setHistoryLoading(false);
+    }
+  }, [fail, historyLoading, nextBeforeId]);
 
   const updateAssistant = useCallback((update: (message: ChatMessage) => ChatMessage) => {
     setMessages((previous) => {
@@ -116,6 +308,7 @@ export function useChat() {
 
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
+    const sessionId = currentIdRef.current;
     if (!sessionId || text.length === 0 || busy) return;
 
     setInput("");
@@ -192,7 +385,12 @@ export function useChat() {
             settled = true;
             updateAssistant((message) => ({
               ...message,
-              status: event.data.status === "completed" ? "complete" : event.data.status,
+              status:
+                event.data.status === "completed"
+                  ? "complete"
+                  : event.data.status === "aborted"
+                    ? "aborted"
+                    : "error",
             }));
             if (event.data.status === "error") {
               setError(event.data.error?.message ?? "模型调用失败");
@@ -209,19 +407,60 @@ export function useChat() {
 
       if (!settled) {
         setError("连接中断，回复可能不完整。");
-        updateAssistant((message) => ({ ...message, status: "error" }));
+        updateAssistant((message) => ({ ...message, status: "partial" }));
       }
     } catch (cause: unknown) {
-      if (!controller.signal.aborted) {
-        console.error(cause);
-        setError(userMessage(cause));
+      if (controller.signal.aborted) {
+        updateAssistant((message) => ({ ...message, status: "aborted" }));
+        setNotice("已停止生成");
+      } else {
+        fail(cause);
         updateAssistant((message) => ({ ...message, status: "error" }));
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
+      // Title and activity order are projected server-side; refresh the list.
+      void refreshSessions().catch(() => undefined);
     }
-  }, [appendText, appendThinking, busy, finalizeMessage, input, sessionId, updateAssistant, updateTool]);
+  }, [
+    appendText,
+    appendThinking,
+    busy,
+    finalizeMessage,
+    input,
+    fail,
+    refreshSessions,
+    updateAssistant,
+    updateTool,
+  ]);
 
-  return { sessionId, messages, input, setInput, busy, error, notice, send };
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  const currentTitle =
+    sessions.find((session) => session.id === currentSessionId)?.title ?? "agent-core";
+
+  return {
+    sessions,
+    sessionsLoading,
+    currentSessionId,
+    currentTitle,
+    messages,
+    input,
+    setInput,
+    busy,
+    error,
+    notice,
+    historyLoading,
+    historyHasMore,
+    loadOlder,
+    send,
+    stop,
+    selectSession,
+    createSession,
+    renameSession,
+    archiveSession,
+  };
 }

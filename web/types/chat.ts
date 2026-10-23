@@ -1,5 +1,5 @@
 export type ChatRole = "user" | "assistant";
-export type ChatStatus = "streaming" | "complete" | "aborted" | "error";
+export type ChatStatus = "streaming" | "complete" | "partial" | "aborted" | "error";
 export type ToolStatus = "calling" | "running" | "done" | "error";
 
 export interface ToolActivity {
@@ -17,4 +17,38 @@ export interface ChatMessage {
   thinking: string;
   tools: ToolActivity[];
   status?: ChatStatus;
+  /** Stable id for historical messages; live messages use their index. */
+  historyId?: number;
+}
+
+export type HistoryRole = "user" | "assistant" | "tool";
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  lastActiveAt: string;
+  createdAt: string;
+}
+
+export interface SessionPage {
+  items: SessionSummary[];
+  nextCursor: string | null;
+}
+
+export interface HistoryItem {
+  id: number;
+  turnId: string;
+  ordinal: number;
+  role: HistoryRole;
+  content: string | null;
+  thinking: string | null;
+  status: string | null;
+  deliveryStatus: string | null;
+  createdAt: string;
+}
+
+export interface MessagePage {
+  items: HistoryItem[];
+  hasMore: boolean;
+  nextBeforeId: number | null;
 }

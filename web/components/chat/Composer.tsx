@@ -4,10 +4,12 @@ interface ComposerProps {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
+  onStop: () => void;
   disabled: boolean;
+  busy: boolean;
 }
 
-export function Composer({ value, onChange, onSend, disabled }: ComposerProps) {
+export function Composer({ value, onChange, onSend, onStop, disabled, busy }: ComposerProps) {
   return (
     <div className={styles.composer}>
       <div className={styles.composerInner}>
@@ -22,14 +24,20 @@ export function Composer({ value, onChange, onSend, disabled }: ComposerProps) {
           }}
           disabled={disabled}
         />
-        <button
-          type="button"
-          className={styles.button}
-          onClick={onSend}
-          disabled={disabled || !value.trim()}
-        >
-          发送
-        </button>
+        {busy ? (
+          <button type="button" className={styles.button} onClick={onStop}>
+            停止
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.button}
+            onClick={onSend}
+            disabled={disabled || !value.trim()}
+          >
+            发送
+          </button>
+        )}
       </div>
     </div>
   );

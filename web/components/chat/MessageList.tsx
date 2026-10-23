@@ -10,19 +10,36 @@ interface MessageListProps {
   busy: boolean;
   error: string | null;
   notice: string | null;
+  historyLoading?: boolean;
 }
 
-export function MessageList({ messages, busy, error, notice }: MessageListProps) {
+export function MessageList({
+  messages,
+  busy,
+  error,
+  notice,
+  historyLoading = false,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastMessage = messages[messages.length - 1];
 
   useEffect(() => {
+    // Prepending an older page keeps the same last message; don't jump down.
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, busy, error, notice]);
+  }, [lastMessage, busy, error, notice]);
 
   return (
     <div className={styles.messages}>
+      {historyLoading && messages.length === 0 ? (
+        <div className={styles.status} role="status">
+          加载历史…
+        </div>
+      ) : null}
+      {!historyLoading && messages.length === 0 ? (
+        <p className={styles.empty}>还没有消息，发一条开始吧。</p>
+      ) : null}
       {messages.map((message, index) => (
-        <MessageBubble key={index} message={message} />
+        <MessageBubble key={message.historyId ?? `live-${index}`} message={message} />
       ))}
       {busy && (
         <div className={styles.status} role="status">

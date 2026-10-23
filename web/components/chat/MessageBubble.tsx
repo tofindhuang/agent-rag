@@ -50,6 +50,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       {message.content.length > 0 && <div>{message.content}</div>}
       {!hasBody && message.status === "streaming" && <div>...</div>}
 
+      {message.status === "partial" && <div className={styles.messageState}>回复不完整</div>}
       {message.status === "aborted" && <div className={styles.messageState}>已中断</div>}
       {message.status === "error" && <div className={styles.messageStateError}>回复失败</div>}
     </div>

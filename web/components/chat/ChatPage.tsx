@@ -4,34 +4,66 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { SessionSidebar } from "./SessionSidebar";
 import styles from "./chat.module.css";
 
 export function ChatPage() {
   const { user, logout } = useAuth();
-  const { sessionId, messages, input, setInput, busy, error, notice, send } = useChat();
+  const chat = useChat();
 
   return (
-    <main className={styles.chat}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>agent-core {sessionId ? "" : "— 连接中..."}</h1>
-        <div className={styles.account}>
-          <span className={styles.email}>{user?.email}</span>
-          <button
-            className={styles.logout}
-            type="button"
-            onClick={() => void logout()}
-          >
-            退出登录
-          </button>
-        </div>
-      </header>
-      <MessageList messages={messages} busy={busy} error={error} notice={notice} />
-      <Composer
-        value={input}
-        onChange={setInput}
-        onSend={() => void send()}
-        disabled={!sessionId || busy}
+    <div className={styles.shell}>
+      <SessionSidebar
+        sessions={chat.sessions}
+        currentSessionId={chat.currentSessionId}
+        loading={chat.sessionsLoading}
+        onCreate={() => void chat.createSession()}
+        onSelect={(sessionId) => void chat.selectSession(sessionId)}
+        onRename={(sessionId, title) => void chat.renameSession(sessionId, title)}
+        onArchive={(sessionId) => void chat.archiveSession(sessionId)}
       />
-    </main>
+
+      <div className={styles.mainArea}>
+        <main className={styles.chat}>
+          <header className={styles.header}>
+            <h1 className={styles.title}>{chat.currentTitle}</h1>
+            <div className={styles.account}>
+              <span className={styles.email}>{user?.email}</span>
+              <button className={styles.logout} type="button" onClick={() => void logout()}>
+                退出登录
+              </button>
+            </div>
+          </header>
+
+          {chat.historyHasMore ? (
+            <button
+              className={styles.loadOlder}
+              type="button"
+              onClick={() => void chat.loadOlder()}
+              disabled={chat.historyLoading}
+            >
+              {chat.historyLoading ? "加载中…" : "加载更早消息"}
+            </button>
+          ) : null}
+
+          <MessageList
+            messages={chat.messages}
+            busy={chat.busy}
+            error={chat.error}
+            notice={chat.notice}
+            historyLoading={chat.historyLoading}
+          />
+
+          <Composer
+            value={chat.input}
+            onChange={chat.setInput}
+            onSend={() => void chat.send()}
+            onStop={chat.stop}
+            disabled={!chat.currentSessionId || chat.busy || chat.historyLoading}
+            busy={chat.busy}
+          />
+        </main>
+      </div>
+    </div>
   );
 }
