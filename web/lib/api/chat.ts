@@ -54,8 +54,15 @@ export async function switchChatSessionModel(
   if (!response.ok) throw await toApiError(response);
 }
 
-export async function listChatSessions(): Promise<SessionPage> {
-  const response = await authFetch("/api/chat/sessions");
+export type SessionStatus = "active" | "archived";
+
+export async function listChatSessions(
+  status: SessionStatus = "active",
+  cursor?: string | null,
+): Promise<SessionPage> {
+  const params = new URLSearchParams({ status });
+  if (cursor) params.set("cursor", cursor);
+  const response = await authFetch(`/api/chat/sessions?${params.toString()}`);
   if (!response.ok) throw await toApiError(response);
   return parseSessionPage(await response.json());
 }
@@ -73,6 +80,23 @@ export async function archiveChatSession(sessionId: string): Promise<void> {
   const response = await authFetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
   });
+  if (!response.ok) throw await toApiError(response);
+}
+
+export async function restoreChatSession(sessionId: string): Promise<void> {
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/restore`,
+    { method: "POST" },
+  );
+  if (!response.ok) throw await toApiError(response);
+}
+
+/** Files first on the server; failure is retryable and keeps the rows. */
+export async function permanentDeleteChatSession(sessionId: string): Promise<void> {
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/permanent`,
+    { method: "DELETE" },
+  );
   if (!response.ok) throw await toApiError(response);
 }
 

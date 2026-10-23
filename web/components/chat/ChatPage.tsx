@@ -7,7 +7,7 @@ import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { NewSessionDialog } from "./NewSessionDialog";
-import { SessionSidebar } from "./SessionSidebar";
+import { SessionSidebar, type SessionTab } from "./SessionSidebar";
 import { SwitchModelDialog } from "./SwitchModelDialog";
 import styles from "./chat.module.css";
 
@@ -16,6 +16,12 @@ export function ChatPage() {
   const chat = useChat();
   const [creating, setCreating] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [tab, setTab] = useState<SessionTab>("active");
+
+  const changeTab = (next: SessionTab) => {
+    setTab(next);
+    if (next === "archived") void chat.loadArchived();
+  };
 
   // Special error codes get their own affordances instead of plain text.
   const needsSetup = chat.errorCode === "MODEL_NOT_CONFIGURED";
@@ -28,12 +34,20 @@ export function ChatPage() {
     <div className={styles.shell}>
       <SessionSidebar
         sessions={chat.sessions}
+        archivedSessions={chat.archivedSessions}
+        tab={tab}
         currentSessionId={chat.currentSessionId}
         loading={chat.sessionsLoading}
+        archivedLoading={chat.archivedLoading}
+        archivedHasMore={chat.archivedHasMore}
+        onTabChange={changeTab}
         onCreate={() => setCreating(true)}
         onSelect={(sessionId) => void chat.selectSession(sessionId)}
         onRename={(sessionId, title) => void chat.renameSession(sessionId, title)}
         onArchive={(sessionId) => void chat.archiveSession(sessionId)}
+        onRestore={(sessionId) => void chat.restoreSession(sessionId)}
+        onPermanentDelete={(sessionId) => void chat.permanentDeleteSession(sessionId)}
+        onLoadMoreArchived={() => void chat.loadMoreArchived()}
       />
 
       <div className={styles.mainArea}>

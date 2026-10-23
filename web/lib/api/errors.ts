@@ -54,6 +54,7 @@ const CODE_MESSAGES: Record<string, string> = {
   PROVIDER_UNREACHABLE: "无法连接模型供应商，请检查 Base URL 与网络。",
   PROVIDER_AUTH_FAILED: "模型供应商拒绝了 API Key，请检查后重填。",
   PROVIDER_PROBE_FAILED: "模型供应商返回异常，请检查配置后重试。",
+  SESSION_PURGE_FAILED: "删除会话文件失败，请稍后重试。",
   NOT_IMPLEMENTED: "该功能尚未开放。",
   INTERNAL: "服务内部错误，请稍后重试。",
 };

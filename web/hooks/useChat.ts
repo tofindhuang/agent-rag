@@ -7,7 +7,9 @@ import {
   fetchHistory,
   listChatSessions,
   openChatStream,
+  permanentDeleteChatSession,
   renameChatSession,
+  restoreChatSession,
   switchChatSessionModel,
 } from "@/lib/api/chat";
 import { ApiError, userMessage } from "@/lib/api/errors";
@@ -102,6 +104,10 @@ export function useChat() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
+  const [archivedSessions, setArchivedSessions] = useState<SessionSummary[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
+  const [archivedHasMore, setArchivedHasMore] = useState(false);
+  const [archivedCursor, setArchivedCursor] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const fail = useCallback((cause: unknown, source: ErrorSource = "other") => {
@@ -154,10 +160,40 @@ export function useChat() {
   );
 
   const refreshSessions = useCallback(async (): Promise<SessionSummary[]> => {
-    const page = await listChatSessions();
+    const page = await listChatSessions("active");
     setSessions(page.items);
     return page.items;
   }, []);
+
+  /** Fresh first page of archived sessions; called when the tab opens. */
+  const loadArchived = useCallback(async () => {
+    setArchivedLoading(true);
+    try {
+      const page = await listChatSessions("archived");
+      setArchivedSessions(page.items);
+      setArchivedHasMore(page.nextCursor != null);
+      setArchivedCursor(page.nextCursor);
+    } catch (cause: unknown) {
+      fail(cause);
+    } finally {
+      setArchivedLoading(false);
+    }
+  }, [fail]);
+
+  const loadMoreArchived = useCallback(async () => {
+    if (archivedLoading || archivedCursor == null) return;
+    setArchivedLoading(true);
+    try {
+      const page = await listChatSessions("archived", archivedCursor);
+      setArchivedSessions((previous) => [...previous, ...page.items]);
+      setArchivedHasMore(page.nextCursor != null);
+      setArchivedCursor(page.nextCursor);
+    } catch (cause: unknown) {
+      fail(cause);
+    } finally {
+      setArchivedLoading(false);
+    }
+  }, [archivedCursor, archivedLoading, fail]);
 
   useEffect(() => {
     // StrictMode runs effects twice in development. The guard keeps one
@@ -255,6 +291,46 @@ export function useChat() {
       }
     },
     [createSession, fail, refreshSessions, selectSession],
+  );
+
+  const restoreSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await restoreChatSession(sessionId);
+        setArchivedSessions((previous) => previous.filter((session) => session.id !== sessionId));
+        await refreshSessions();
+        clearError();
+        setNotice("会话已恢复");
+      } catch (cause: unknown) {
+        fail(cause);
+      }
+    },
+    [clearError, fail, refreshSessions],
+  );
+
+  const permanentDeleteSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        await permanentDeleteChatSession(sessionId);
+        setArchivedSessions((previous) => previous.filter((session) => session.id !== sessionId));
+        // The main area must not keep rendering a purged session.
+        if (currentIdRef.current === sessionId) {
+          abortRef.current?.abort();
+          abortRef.current = null;
+          currentIdRef.current = null;
+          setCurrentSessionId(null);
+          setMessages([]);
+          setHistoryHasMore(false);
+          setNextBeforeId(null);
+          setBusy(false);
+        }
+        clearError();
+        setNotice("会话已彻底删除");
+      } catch (cause: unknown) {
+        fail(cause);
+      }
+    },
+    [clearError, fail],
   );
 
   const loadOlder = useCallback(async () => {
@@ -499,6 +575,11 @@ export function useChat() {
   return {
     sessions,
     sessionsLoading,
+    archivedSessions,
+    archivedLoading,
+    archivedHasMore,
+    loadArchived,
+    loadMoreArchived,
     currentSessionId,
     currentTitle,
     currentModel,
@@ -518,6 +599,8 @@ export function useChat() {
     selectSession,
     createSession,
     switchModel,
+    restoreSession,
+    permanentDeleteSession,
     renameSession,
     archiveSession,
   };
