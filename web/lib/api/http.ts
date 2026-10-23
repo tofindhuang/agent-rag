@@ -1,0 +1,84 @@
+import { API_BASE } from "@/lib/env";
+import { ApiError, toApiError } from "./errors";
+import { notifyAuthExpired } from "./session-events";
+import { clearAccessToken, extractAccessToken, getAccessToken, setAccessToken } from "./token";
+
+interface RefreshResponse {
+  accessToken?: unknown;
+}
+
+let refreshInFlight: Promise<string> | null = null;
+
+/**
+ * Uses the httpOnly refresh cookie to obtain a new access token. Single-flight:
+ * concurrent 401s share one refresh request.
+ */
+async function refreshAccessToken(): Promise<string> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        clearAccessToken();
+        throw await toApiError(response);
+      }
+      const token = extractAccessToken((await response.json()) as RefreshResponse);
+      if (!token) {
+        clearAccessToken();
+        throw new ApiError("服务响应缺少 access token", response.status);
+      }
+      setAccessToken(token);
+      return token;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+/**
+ * Authenticated fetch: attaches the in-memory Bearer token, sends cookies, and
+ * retries once after a silent refresh on 401.
+ */
+export async function authFetch(
+  path: string,
+  init: RequestInit = {},
+  retryOn401 = true,
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = getAccessToken();
+  if (token) headers.set("authorization", `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+
+  if (response.status === 401 && retryOn401) {
+    try {
+      await refreshAccessToken();
+    } catch (cause) {
+      clearAccessToken();
+      // Let AuthProvider drop its authenticated state; AuthGate then redirects.
+      notifyAuthExpired();
+      throw cause;
+    }
+    const retried = await authFetch(path, init, false);
+    if (retried.status === 401) {
+      clearAccessToken();
+      notifyAuthExpired();
+    }
+    return retried;
+  }
+  return response;
+}
+
+/** Authenticated JSON call; non-2xx responses become {@link ApiError}. */
+export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await authFetch(path, init);
+  if (!response.ok) throw await toApiError(response);
+  return (await response.json()) as T;
+}

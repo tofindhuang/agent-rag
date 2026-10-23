@@ -4,10 +4,48 @@
   padding: 24px 16px 96px;
 }
 
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 20px;
+}
+
 .title {
   font-size: 18px;
-  margin: 8px 0 20px;
+  margin: 0;
   color: #9aa3b2;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #9aa3b2;
+}
+
+.email {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout {
+  padding: 4px 10px;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.logout:focus-visible {
+  outline: 2px solid #5b8cff;
+  outline-offset: 2px;
 }
 
 .messages {

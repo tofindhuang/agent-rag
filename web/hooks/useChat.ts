@@ -8,8 +8,6 @@ import type { ChatMessage, ToolActivity } from "@/types/chat";
 import type { MessageEndData } from "@/types/gateway";
 import { parseGatewayEvent } from "@/types/gateway";
 
-const DEV_USER_ID = "dev-user";
-
 function newAssistant(): ChatMessage {
   return { role: "assistant", content: "", thinking: "", tools: [], status: "streaming" };
 }
@@ -33,7 +31,7 @@ export function useChat() {
 
   useEffect(() => {
     const controller = new AbortController();
-    createChatSession(DEV_USER_ID, controller.signal)
+    createChatSession(controller.signal)
       .then((id) => {
         if (!controller.signal.aborted) setSessionId(id);
       })

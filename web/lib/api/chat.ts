@@ -1,17 +1,12 @@
-import { API_BASE } from "@/lib/env";
 import { ApiError, toApiError } from "./errors";
+import { authFetch } from "./http";
 
 interface CreateSessionResponse {
   sessionId?: unknown;
 }
 
-export async function createChatSession(userId: string, signal?: AbortSignal): Promise<string> {
-  const response = await fetch(`${API_BASE}/api/chat/sessions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ userId }),
-    signal,
-  });
+export async function createChatSession(signal?: AbortSignal): Promise<string> {
+  const response = await authFetch("/api/chat/sessions", { method: "POST", signal });
   if (!response.ok) throw await toApiError(response);
 
   const data = (await response.json()) as CreateSessionResponse;
@@ -27,8 +22,8 @@ export async function openChatStream(
   text: string,
   signal: AbortSignal,
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetch(
-    `${API_BASE}/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
     {
       method: "POST",
       headers: { "content-type": "application/json", accept: "text/event-stream" },
