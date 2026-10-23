@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import styles from "./ui.module.css";
 
 interface DialogProps {
@@ -31,17 +31,21 @@ export function Dialog({
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  // Captured during the first render: autoFocus moves focus into the dialog
+  // during commit, before passive effects run, so reading it there is too late.
+  const [trigger] = useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
     const focusables = panel ? [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)] : [];
     (focusables[0] ?? panel)?.focus();
 
     return () => {
-      previouslyFocused?.focus?.();
+      if (trigger?.isConnected) trigger.focus();
     };
-  }, []);
+  }, [trigger]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
