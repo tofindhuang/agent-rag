@@ -52,7 +52,7 @@ Next.js (SSE) ──HTTPS──> Java (Spring Boot)
                                           └─ JSONL 事件流 → Java → SSE 转发
 ```
 
-*向量库选型为开放问题，见 §8。
+*向量库已定为 Qdrant，embedding/rerank 走可配置端点，见 ADR-0005。
 
 组件职责：
 
@@ -178,9 +178,9 @@ AC：
 | agent 引擎 | Node 20+ 服务，`@earendil-works/pi-coding-agent` SDK | gateway；extension 三件套：kb_search、run_code、prompt 定制 |
 | 持久化 | MySQL 8 | 用户、会话、消息投影、画像、文档元数据、执行审计、用量 |
 | 缓存 | Redis 7 | 活跃会话路由表、限流、沙箱并发信号量、分布式锁 |
-| 向量库 | 待定（Qdrant / Milvus / pgvector 三选一，M0 定） | 知识切片的向量检索 |
+| 向量库 | Qdrant | 知识切片的向量检索；M0 spike 定稿（ADR-0005） |
 | 沙箱 | Docker Engine（docker-java 调用） | 首期 runc；gVisor (runsc) 作为 P2 加固选项 |
-| embedding / rerank | 待定（跟随主模型 provider 或独立服务） | M0 与向量库一并定 |
+| embedding / rerank | 可配置的 OpenAI 兼容端点（SiliconFlow / 本地 TEI 等） | 业务层调用；生成式 LLM 仍只走 gateway（ADR-0005） |
 
 ## 6. 数据模型草案（MySQL）
 
@@ -223,7 +223,7 @@ Redis key 草案：
 | R2 | 沙箱逃逸（容器非绝对边界） | 禁网 + 非 root + 资源上限 + 只读 rootfs；P2 评估 gVisor；镜像最小化 |
 | R3 | compaction 摘要丢细节导致「失忆」 | 原文不删（pi session + MySQL 投影双保）；摘要 prompt 迭代；M1 加「引用第 1 轮事实」回归用例 |
 | R4 | gateway 单进程内存上限未知 | M0 实测单进程可托管会话数，校准 §4 并发目标 |
-| R5 | 向量库/embedding 选型未定 | M0 用 100 页 PDF 走通摄取→检索→引用闭环后定稿 |
+| R5 | 向量库/embedding 选型未定 | 已定：Qdrant + 可配置 embedding/rerank 端点；spike 结果见 `docs/research/2026-10-23-rag-selection-spike.md`（ADR-0005） |
 | O1 | Java↔gateway 契约（事件流 schema、会话生命周期指令）需 M0 冻结 v1 | — |
 | O2 | 用户画像注入的 token 预算（事实条数上限与筛选策略） | M1 实测定 |
 | O3 | 多语言沙箱扩展顺序（Python 之后） | M2 定 |

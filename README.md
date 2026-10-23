@@ -50,7 +50,10 @@ cd web && npm install && npm run dev
 - gateway：端到端真实 LLM 调用，SSE 事件流（`text_delta` → `agent_settled` → `prompt_settled`）完整
 - server：`mvn -q verify` 通过，启动冒烟验证了健康检查与统一错误 envelope
 - web：`npm run typecheck` 与 `npm run build` 通过，`next start` 冒烟返回 200
+- RAG spike：Qdrant + SiliconFlow 的摄取、检索、rerank、隔离与故障注入全部通过，详见 `docs/research/2026-10-23-rag-selection-spike.md`
 
 ## M0 收尾
 
-已收敛为「契约 v1 + RAG 选型 spike」：设计见 [docs/specs/2026-10-23-m0-closeout.md](docs/specs/2026-10-23-m0-closeout.md)，契约见 [contract/v1/README.md](contract/v1/README.md)，拆票见 [docs/tickets/m0-closeout/](docs/tickets/m0-closeout/)。`kb_search` / `run_code` 的实端按 M1 垂直切片推进，不再单独做 M0 薄实现。
+已收敛为「契约 v1 + RAG 选型 spike」：设计见 [docs/specs/2026-10-23-m0-closeout.md](docs/specs/2026-10-23-m0-closeout.md)，契约见 [contract/v1/README.md](contract/v1/README.md)，拆票见 [docs/tickets/m0-closeout/](docs/tickets/m0-closeout/)。
+
+RAG spike 已完成：Qdrant + SiliconFlow `BAAI/bge-m3` / `BAAI/bge-reranker-v2-m3`，rerank 候选 10；实测与限制见 [docs/research/2026-10-23-rag-selection-spike.md](docs/research/2026-10-23-rag-selection-spike.md)。`kb_search` / `run_code` 的实端按 M1 垂直切片推进，不再单独做 M0 薄实现。
