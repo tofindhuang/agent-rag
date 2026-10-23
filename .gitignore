@@ -14,3 +14,7 @@ next-env.d.ts
 
 # Playwright MCP local artifacts
 .playwright-mcp/
+
+# gateway cold-start session files
+gateway/data/
+/data/

@@ -1,13 +1,14 @@
 /**
  * AgentSession pool: one pi AgentSession per conversation.
  *
- * M0 skeleton: sessions live in this process only (in-memory SessionManager),
- * created on demand and kept until disposed. Horizontal scaling, idle
- * eviction, and cold-start restore are M2 (requirements.md FR-1).
+ * M1: pi sessions are file-backed under `GATEWAY_SESSION_DIR` (ADR-0008), so a
+ * gateway restart can restore the engine context and its owning user. Horizontal
+ * scaling and idle eviction remain M2.
  *
  * Lifecycle invariants:
  * - session IDs are owned by Java; the gateway never generates business IDs.
- * - PUT/ensure is idempotent and enforces one userId per session.
+ * - PUT/ensure is idempotent, restores existing files, and enforces one userId
+ *   per session via a sidecar.
  * - at most one Run is active per session; beginRun is the atomic gate.
  */
 
@@ -23,8 +24,16 @@ import type { RunIdentity, RunRef } from "./identity.js";
 import type { EnsureSessionResult, GatewayPool } from "./pool-contract.js";
 import { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";
 import { buildSystemPrompt } from "./prompt.js";
+import { SessionFileStore, type SessionLease } from "./session-store.js";
 
-type PiSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
+export type PiSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
+
+/** Injectable for tests; production builds a real pi AgentSession. */
+export type SessionFactory = (
+  manager: SessionManager,
+  runRef: RunRef,
+  userId: string,
+) => Promise<PiSession>;
 
 export interface PoolEntry {
   sessionId: string;
@@ -36,11 +45,25 @@ export interface PoolEntry {
   runRef: RunRef;
 }
 
+interface EnsureOutcome {
+  entry: PoolEntry;
+  created: boolean;
+  restored: boolean;
+}
+
 export class SessionPool implements GatewayPool {
   private readonly entries = new Map<string, PoolEntry>();
-  private readonly pendingCreates = new Map<string, Promise<PoolEntry>>();
+  private readonly pendingCreates = new Map<string, Promise<EnsureOutcome>>();
+  private readonly store: SessionFileStore;
+  private readonly factory: SessionFactory;
 
-  constructor(private readonly config: GatewayConfig) {}
+  constructor(
+    private readonly config: GatewayConfig,
+    factory?: SessionFactory,
+  ) {
+    this.store = new SessionFileStore(process.cwd(), config.sessionDir);
+    this.factory = factory ?? ((manager, runRef, userId) => this.createPiSession(manager, runRef, userId));
+  }
 
   get size(): number {
     return this.entries.size;
@@ -51,8 +74,9 @@ export class SessionPool implements GatewayPool {
   }
 
   /**
-   * Idempotent create used by PUT /sessions/:id. Concurrent calls for the same
-   * session share one creation promise, so retries cannot create duplicates.
+   * Idempotent create/restore used by PUT /sessions/:id. Concurrent calls for
+   * the same session share one creation promise, so retries cannot duplicate
+   * sessions.
    */
   async ensure(sessionId: string, userId: string): Promise<EnsureSessionResult> {
     const existing = this.entries.get(sessionId);
@@ -63,29 +87,52 @@ export class SessionPool implements GatewayPool {
 
     const inflight = this.pendingCreates.get(sessionId);
     if (inflight) {
-      const entry = await inflight;
-      if (entry.userId !== userId) throw new SessionConflictError(sessionId);
+      const outcome = await inflight;
+      if (outcome.entry.userId !== userId) throw new SessionConflictError(sessionId);
       return { created: false, restored: false };
     }
 
-    const creation = this.create(sessionId, userId).finally(() => {
+    const creation = this.createEntry(sessionId, userId).finally(() => {
       this.pendingCreates.delete(sessionId);
     });
     this.pendingCreates.set(sessionId, creation);
-    await creation;
-    return { created: true, restored: false };
+
+    const outcome = await creation;
+    return { created: outcome.created, restored: outcome.restored };
   }
 
-  async create(sessionId: string, userId: string): Promise<PoolEntry> {
-    const existing = this.entries.get(sessionId);
-    if (existing) throw new SessionExistsError(sessionId);
+  private async createEntry(sessionId: string, userId: string): Promise<EnsureOutcome> {
+    if (this.entries.has(sessionId)) throw new SessionExistsError(sessionId);
 
+    const lease: SessionLease = this.store.acquire(sessionId, userId);
     const runRef: RunRef = { current: null };
+    const session = await this.factory(lease.manager, runRef, userId);
+
+    const now = Date.now();
+    const entry: PoolEntry = {
+      sessionId,
+      userId,
+      session,
+      createdAt: now,
+      lastActiveAt: now,
+      activeRun: null,
+      runRef,
+    };
+    this.entries.set(sessionId, entry);
+    return { entry, created: lease.created, restored: lease.restored };
+  }
+
+  private async createPiSession(
+    manager: SessionManager,
+    runRef: RunRef,
+    userId: string,
+  ): Promise<PiSession> {
     const loader = new DefaultResourceLoader({
       cwd: process.cwd(),
       agentDir: getAgentDir(),
       // Replace pi's coding prompt entirely (requirements.md §1.1).
-      systemPromptOverride: () => buildSystemPrompt({ userName: userId, profileFacts: [] }),
+      systemPromptOverride: () =>
+        buildSystemPrompt({ userName: userId, profileFacts: [] }),
       // Long-term profile facts (FR-5) will be fetched from Java here in M1.
       appendSystemPromptOverride: () => [],
       extensionFactories: [
@@ -100,20 +147,9 @@ export class SessionPool implements GatewayPool {
       // Only the extension-registered tools are active; every built-in tool
       // (bash/edit/write/read/...) is excluded (FR-6 tool whitelist).
       tools: ["kb_search", "run_code"],
-      sessionManager: SessionManager.inMemory(),
+      sessionManager: manager,
     });
-
-    const entry: PoolEntry = {
-      sessionId,
-      userId,
-      session,
-      createdAt: Date.now(),
-      lastActiveAt: Date.now(),
-      activeRun: null,
-      runRef,
-    };
-    this.entries.set(sessionId, entry);
-    return entry;
+    return session;
   }
 
   /** Atomically claim the single Run slot for a session. */
@@ -150,6 +186,11 @@ export class SessionPool implements GatewayPool {
     await entry.session.prompt(text);
   }
 
+  /**
+   * Releases the in-memory AgentSession only. The pi session file and its
+   * sidecar stay on disk (ADR-0008: M1 keeps files; DELETE must not wipe the
+   * engine context).
+   */
   async dispose(sessionId: string): Promise<boolean> {
     const entry = this.entries.get(sessionId);
     if (!entry) return false;

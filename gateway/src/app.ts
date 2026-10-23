@@ -7,7 +7,7 @@ import { RunTranslator } from "./contract/translate.js";
 import type { RunIdentity } from "./identity.js";
 import { logPiEvent } from "./log.js";
 import type { GatewayPool } from "./pool-contract.js";
-import { SessionConflictError } from "./pool-contract.js";
+import { InvalidSessionIdError, SessionConflictError } from "./pool-contract.js";
 
 export type GatewayErrorCode =
   | "INVALID_REQUEST"
@@ -54,6 +54,10 @@ export function createApp({ config, pool }: AppDependencies): Express {
         restored: result.restored,
       });
     } catch (err) {
+      if (err instanceof InvalidSessionIdError) {
+        sendError(res, 400, "INVALID_REQUEST", "invalid session id");
+        return;
+      }
       if (err instanceof SessionConflictError) {
         sendError(res, 409, "SESSION_CONFLICT", err.message);
         return;

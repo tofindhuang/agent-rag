@@ -95,13 +95,7 @@ public class ChatServiceImpl implements ChatService {
         // DB first: if the gateway rejects the session, compensate by removing
         // the row instead of leaving an unreachable AgentSession behind.
         try {
-            HttpRequest request = gatewaySession(sessionId, userId)
-                    .PUT(HttpRequest.BodyPublishers.noBody())
-                    .build();
-            HttpResponse<String> response = sendForString(request);
-            if (response.statusCode() >= 400) {
-                throw upstreamError("create session", response);
-            }
+            ensureGatewaySession(sessionId, userId);
             return sessionId;
         } catch (RuntimeException ex) {
             try {
@@ -191,6 +185,15 @@ public class ChatServiceImpl implements ChatService {
         TurnKey turn = new TurnKey(sessionId, turnId, UUID.randomUUID().toString());
         String requestId = UUID.randomUUID().toString();
         projection.startTurn(turn, text);
+
+        // Cold start (ADR-0008): restore the file-backed AgentSession before
+        // every prompt; PUT is idempotent and cheap.
+        try {
+            ensureGatewaySession(sessionId, userId);
+        } catch (ApiException ex) {
+            projection.failBeforeStream(turn, ex.code().name(), ex.getMessage());
+            throw ex;
+        }
 
         HttpRequest.Builder builder = gatewaySession(sessionId, userId)
                 .uri(URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId) + "/prompt"))
@@ -399,6 +402,19 @@ public class ChatServiceImpl implements ChatService {
         return new String[] {code, message};
     }
 
+    private void ensureGatewaySession(String sessionId, long userId) {
+        HttpRequest request = gatewaySession(sessionId, userId)
+                .PUT(HttpRequest.BodyPublishers.noBody())
+                .build();
+        HttpResponse<String> response = sendForString(request);
+        if (response.statusCode() == 409) {
+            throw new ApiException(ErrorCode.USER_MISMATCH, "session belongs to another user");
+        }
+        if (response.statusCode() >= 400) {
+            throw upstreamError("ensure session", response);
+        }
+    }
+
     private HttpRequest.Builder gatewaySession(String sessionId, long userId) {
         return HttpRequest.newBuilder(
                         URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId)))
@@ -452,8 +468,9 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private ApiException upstreamError(String what, HttpResponse<String> response) {
+        // Never echo the gateway body: it may contain internal details.
         return new ApiException(ErrorCode.UPSTREAM_ERROR,
-                "gateway " + what + " failed: " + response.statusCode() + " " + response.body());
+                "gateway " + what + " failed with status " + response.statusCode());
     }
 
     private String toJson(Map<String, String> value) {

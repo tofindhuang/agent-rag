@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 /**
  * Gateway runtime configuration. All values come from environment variables
  * with localhost defaults for development.
@@ -12,6 +14,8 @@ export interface GatewayConfig {
   sandboxApiUrl: string;
   /** Optional shared token; when set, requests must carry it as `authorization: Bearer <token>`. */
   apiToken?: string;
+  /** Directory holding pi session files and ownership sidecars (ADR-0008). */
+  sessionDir: string;
 }
 
 function intEnv(name: string, fallback: number): number {
@@ -27,5 +31,6 @@ export function loadConfig(): GatewayConfig {
     javaApiUrl: process.env.JAVA_API_URL ?? "http://localhost:8080",
     sandboxApiUrl: process.env.SANDBOX_API_URL ?? "http://localhost:8080",
     apiToken: process.env.GATEWAY_API_TOKEN,
+    sessionDir: resolve(process.env.GATEWAY_SESSION_DIR ?? "data/sessions"),
   };
 }

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { createApp } from "./app.js";
 import type { GatewayConfig } from "./config.js";
@@ -111,13 +114,22 @@ interface TestServer {
   close: () => Promise<void>;
 }
 
+const tempDirs: string[] = [];
+
+after(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
 async function startServer(apiToken?: string): Promise<TestServer> {
+  const sessionDir = mkdtempSync(join(tmpdir(), "gateway-app-"));
+  tempDirs.push(sessionDir);
   const pool = new FakePool();
   const config: GatewayConfig = {
     port: 0,
     javaApiUrl: "http://localhost:0",
     sandboxApiUrl: "http://localhost:0",
     apiToken,
+    sessionDir,
   };
   const app = createApp({ config, pool });
   const server = app.listen(0, "127.0.0.1");

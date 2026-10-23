@@ -30,6 +30,12 @@ export interface GatewayPool {
   run(sessionId: string, text: string): Promise<void>;
 }
 
+export class InvalidSessionIdError extends Error {
+  constructor(sessionId: string) {
+    super(`invalid session id: ${sessionId}`);
+  }
+}
+
 export class SessionExistsError extends Error {
   constructor(sessionId: string) {
     super(`session already exists: ${sessionId}`);

@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -19,6 +20,7 @@ public final class FakeGateway {
     private final AtomicReference<String> lastCreateSessionUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
     private final AtomicReference<String> promptMode = new AtomicReference<>("complete");
+    private final AtomicInteger putCount = new AtomicInteger();
 
     public FakeGateway() {
         try {
@@ -46,6 +48,14 @@ public final class FakeGateway {
         promptMode.set(mode);
     }
 
+    public int putCount() {
+        return putCount.get();
+    }
+
+    public void resetPutCount() {
+        putCount.set(0);
+    }
+
     private void handle(HttpExchange exchange) throws IOException {
         try {
             String path = exchange.getRequestURI().getPath();
@@ -56,6 +66,7 @@ public final class FakeGateway {
                 return;
             }
             if (path.startsWith("/sessions/") && method.equals("PUT")) {
+                putCount.incrementAndGet();
                 lastCreateSessionUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
                 sendJson(exchange, 200, "{}");
                 return;
