@@ -84,8 +84,11 @@ server（Java 21 / Spring Boot 3）：
 
 web（Next.js / React）：
 
-- 函数组件 + hooks；客户端组件标 `"use client"`。
-- 环境变量经 `NEXT_PUBLIC_*` 注入，不硬编码 API 地址。
+- 目录按 `app`（路由/布局）、`components`、`hooks`、`lib`（api/sse/env）、`types` 分层；页面只做组合，HTTP 进 `lib/api`，SSE 解析进 `lib/sse`。详见 `web/README.md`。
+- 默认 Server Component；只有需要状态/副作用/事件处理的最小边界标 `"use client"`。
+- 函数组件 + hooks；环境变量经 `NEXT_PUBLIC_*` 注入，不硬编码 API 地址。
+- 样式：`globals.css` 只放 reset/tokens，组件样式用 CSS Modules。
+- 错误统一转 `ApiError`，UI 不展示堆栈或内部地址。
 
 sandbox：
 

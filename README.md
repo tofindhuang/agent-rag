@@ -48,7 +48,7 @@ cd web && npm install && npm run dev
 - gateway：类型检查通过；冒烟验证了 prompt 整体替换（`systemPromptOverride`）与工具白名单（仅 `kb_search` / `run_code`，内置工具全部禁用）
 - gateway：端到端真实 LLM 调用，SSE 事件流（`text_delta` → `agent_settled` → `prompt_settled`）完整
 - server：`mvn -q verify` 通过，启动冒烟验证了健康检查与统一错误 envelope
-- web：标准骨架，`npm run build` 待 CI 或本机验证
+- web：`npm run typecheck` 与 `npm run build` 通过，`next start` 冒烟返回 200
 
 ## M0 收尾
 
