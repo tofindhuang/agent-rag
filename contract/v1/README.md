@@ -140,6 +140,9 @@ HTTP 错误码：
 | `RUN_IN_PROGRESS` | 409 | false | 同一会话已有进行中的 Run |
 | `NO_ACTIVE_RUN` | 409 | false | 空闲时调用 abort |
 | `UPSTREAM_UNAVAILABLE` | 503 | true | gateway 无法连接业务层或沙箱 |
+| `PROVIDER_UNREACHABLE` | 502 | true | 供应商端点不可达（DNS/连接/超时） |
+| `PROVIDER_AUTH_FAILED` | 502 | false | 供应商拒绝 API Key（401/403） |
+| `PROVIDER_PROBE_FAILED` | 502 | false | 供应商返回非 2xx 或无法解析模型列表 |
 | `INTERNAL` | 500 | false | 未分类错误 |
 
 Run 终态错误码（`run_settled.error.code`）：
@@ -216,7 +219,25 @@ result  { exitCode, durationMs, timedOut, truncated }
 - `stdout`/`stderr` 单块 ≤ 2 KiB，总量仍受 64 KiB 上限约束。
 - `result` 必须出现且唯一；之后关闭流。
 
-## 9. Fixtures
+## 9. 模型供应商探测（内部）
+
+Java 在用户保存供应商前调用，用于校验凭证并获取可选模型。
+
+| 方法 | 路径 | 请求 | 成功响应 |
+|---|---|---|---|
+| `POST` | `/providers/probe` | `Authorization: Bearer <token>`，`{ api, baseUrl, apiKey }` | `200 { models: [{ id, name }] }` |
+
+规则：
+
+- `api`：`openai-completions` 或 `anthropic-messages`。
+- Base URL 归一化：去掉尾部斜杠与 query/fragment；`openai-completions` 请求 `{baseUrl}/models`；`anthropic-messages` 请求 `{baseUrl}/v1/models`（`baseUrl` 已以 `/v1` 结尾时不重复）。
+- 认证头：`openai-completions` 用 `Authorization: Bearer <key>`；`anthropic-messages` 用 `x-api-key: <key>` + `anthropic-version: 2023-06-01`。
+- 只接受 2xx JSON；模型列表取 `data[]` 或 `models[]`；`id` 必填，`name` / `display_name` 可选。
+- 出站策略：默认只允许公网 HTTPS；`MODEL_ALLOW_PRIVATE_ENDPOINTS=true` 时允许私网与 HTTP；link-local 与云元数据地址永远拒绝；请求前解析 DNS 并校验全部解析结果；不跟随重定向。
+- 策略拒绝返回 `400 INVALID_REQUEST`；供应商错误使用第 7 节的 `PROVIDER_*` 错误码。
+- 请求限制：`baseUrl` ≤ 1000 字符、`apiKey` ≤ 4096 字符；URL 内嵌凭证拒绝；单次探测超时 10 秒。
+
+## 10. Fixtures
 
 目录：
 
@@ -260,7 +281,7 @@ contract/v1/fixtures/
 - `expected.frames[].seq` 为 1 基序号；SSE `id` 由 `run_started.data.runId` 与 `seq` 派生为 `<runId>:<seq>`。
 - fixture 是纯数据，禁止注释、时间戳、随机值；相同输入必须得到相同输出。
 
-## 10. 一致性检查清单
+## 11. 一致性检查清单
 
 gateway：
 

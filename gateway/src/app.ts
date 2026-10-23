@@ -6,8 +6,10 @@ import { formatSseFrame, HEARTBEAT_FRAME, HEARTBEAT_INTERVAL_MS } from "./contra
 import { RunTranslator } from "./contract/translate.js";
 import type { RunIdentity } from "./identity.js";
 import { logPiEvent } from "./log.js";
+import { EndpointBlockedError } from "./outbound.js";
 import type { GatewayPool } from "./pool-contract.js";
 import { InvalidSessionIdError, SessionConflictError } from "./pool-contract.js";
+import { probeProvider, ProbeError, type ProviderApi } from "./providers.js";
 
 export type GatewayErrorCode =
   | "INVALID_REQUEST"
@@ -18,6 +20,9 @@ export type GatewayErrorCode =
   | "RUN_IN_PROGRESS"
   | "NO_ACTIVE_RUN"
   | "UPSTREAM_UNAVAILABLE"
+  | "PROVIDER_UNREACHABLE"
+  | "PROVIDER_AUTH_FAILED"
+  | "PROVIDER_PROBE_FAILED"
   | "INTERNAL";
 
 export interface AppDependencies {
@@ -40,6 +45,41 @@ export function createApp({ config, pool }: AppDependencies): Express {
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, contractVersion: CONTRACT_VERSION, sessions: pool.size });
+  });
+
+  app.post("/providers/probe", async (req, res) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const api = body.api;
+    const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
+    const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
+    if (
+      (api !== "openai-completions" && api !== "anthropic-messages") ||
+      baseUrl.length === 0 ||
+      baseUrl.length > 1_000 ||
+      apiKey.length === 0 ||
+      apiKey.length > 4_096
+    ) {
+      sendError(res, 400, "INVALID_REQUEST", "api, baseUrl and apiKey are required");
+      return;
+    }
+
+    try {
+      const models = await probeProvider(
+        { api: api as ProviderApi, baseUrl, apiKey },
+        { allowPrivate: config.allowPrivateModelEndpoints },
+      );
+      res.json({ models });
+    } catch (err) {
+      if (err instanceof EndpointBlockedError) {
+        sendError(res, 400, "INVALID_REQUEST", err.message);
+        return;
+      }
+      if (err instanceof ProbeError) {
+        sendError(res, 502, err.code, err.message, err.retryable);
+        return;
+      }
+      sendError(res, 502, "PROVIDER_PROBE_FAILED", "provider probe failed");
+    }
   });
 
   app.put("/sessions/:id", async (req, res) => {

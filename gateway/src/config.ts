@@ -16,6 +16,8 @@ export interface GatewayConfig {
   apiToken?: string;
   /** Directory holding pi session files and ownership sidecars (ADR-0008). */
   sessionDir: string;
+  /** Allow private/loopback/HTTP model provider endpoints (ADR-0010). */
+  allowPrivateModelEndpoints: boolean;
 }
 
 function intEnv(name: string, fallback: number): number {
@@ -32,5 +34,6 @@ export function loadConfig(): GatewayConfig {
     sandboxApiUrl: process.env.SANDBOX_API_URL ?? "http://localhost:8080",
     apiToken: process.env.GATEWAY_API_TOKEN,
     sessionDir: resolve(process.env.GATEWAY_SESSION_DIR ?? "data/sessions"),
+    allowPrivateModelEndpoints: process.env.MODEL_ALLOW_PRIVATE_ENDPOINTS === "true",
   };
 }

@@ -129,6 +129,7 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     javaApiUrl: "http://localhost:0",
     sandboxApiUrl: "http://localhost:0",
     apiToken,
+    allowPrivateModelEndpoints: true,
     sessionDir,
   };
   const app = createApp({ config, pool });
@@ -312,6 +313,33 @@ test("DELETE is idempotent and enforces ownership", async () => {
       body: JSON.stringify({ text: "hi", turnId: "t1" }),
     });
     assert.equal(afterDelete.status, 404);
+  });
+});
+
+test("provider probe requires the shared token", async () => {
+  await withServer(
+    async ({ base }) => {
+      const response = await fetch(`${base}/providers/probe`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      assert.equal(response.status, 401);
+    },
+    "secret",
+  );
+});
+
+test("provider probe validates its request body", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/providers/probe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api: "unknown", baseUrl: "", apiKey: "" }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
   });
 });
 

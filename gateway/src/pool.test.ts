@@ -18,6 +18,7 @@ function config(): GatewayConfig {
     javaApiUrl: "http://localhost:8080",
     sandboxApiUrl: "http://localhost:8080",
     apiToken: undefined,
+    allowPrivateModelEndpoints: false,
     sessionDir: dir,
   };
 }
