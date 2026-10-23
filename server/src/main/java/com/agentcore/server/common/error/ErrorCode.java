@@ -15,6 +15,7 @@ public enum ErrorCode {
     NOT_FOUND(404, false),
     SESSION_NOT_FOUND(404, false),
     SESSION_CONFLICT(409, false),
+    EMAIL_ALREADY_EXISTS(409, false),
     CONFLICT(409, false),
     RUN_IN_PROGRESS(409, false),
     NO_ACTIVE_RUN(409, false),

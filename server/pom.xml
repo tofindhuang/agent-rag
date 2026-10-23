@@ -19,17 +19,59 @@
 
   <properties>
     <java.version>21</java.version>
+    <mybatis-plus.version>3.5.17</mybatis-plus.version>
+    <!-- Docker Engine 29 requires API >= 1.40; Boot 3.4.2 manages 1.20.4. -->
+    <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
 
   <dependencies>
-    <!-- Skeleton scope: web only. JPA/Redis starters land with M1 features. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
     </dependency>
+    <!-- Persistence: MyBatis-Plus BaseMapper + explicit XML (ADR-0009). -->
+    <dependency>
+      <groupId>com.baomidou</groupId>
+      <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+      <version>${mybatis-plus.version}</version>
+    </dependency>
+    <!-- Schema is owned by Flyway; migrations are up-only (ADR-0009). -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- BCrypt only; the full Security starter lands with ticket 02. -->
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-crypto</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>mysql</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
