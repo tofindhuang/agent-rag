@@ -1,6 +1,6 @@
 package com.agentcore.server.service;
 
-import com.agentcore.server.domain.AccessToken;
+import com.agentcore.server.domain.AuthResult;
 import com.agentcore.server.domain.UserProfile;
 
 /** Account use cases. Controllers depend on this interface. */
@@ -15,10 +15,21 @@ public interface AuthService {
     long register(String email, String password);
 
     /**
-     * Verifies credentials and issues an access token. Unknown accounts and
-     * wrong passwords fail with the same error so accounts cannot be enumerated.
+     * Verifies credentials and issues an access token plus a refresh token.
+     * Unknown accounts and wrong passwords fail with the same error so
+     * accounts cannot be enumerated.
      */
-    AccessToken login(String email, String password);
+    AuthResult login(String email, String password);
+
+    /**
+     * Rotates a refresh token: the presented token is revoked and a new one is
+     * issued in the same family. Reusing an already-rotated token revokes the
+     * whole family.
+     */
+    AuthResult refresh(String refreshToken);
+
+    /** Revokes the presented refresh token; idempotent, including a missing token. */
+    void logout(String refreshToken);
 
     /** Returns the authenticated user's own profile. */
     UserProfile profile(long userId);

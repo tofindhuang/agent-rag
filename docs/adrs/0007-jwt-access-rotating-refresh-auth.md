@@ -16,7 +16,8 @@ M0 骨架的 `ChatController` 直接信任请求体里的 `userId`，任何人�
 
 - **Access token**：JWT HS256，TTL 15 分钟，claims `sub=userId`、`jti`、`iat`、`exp`、`iss=agent-core`；密钥 `JWT_SECRET` 环境变量（≥32 字节），启动 fail-fast 校验。只有 Java 验签；gateway 维持契约 v1 的 `X-User-Id` 信任模型。
 - **传输**：access token 只存前端内存、经 `Authorization: Bearer` 携带；refresh token 放 `agentcore_refresh` httpOnly cookie（`SameSite=Lax`、`Path=/api/auth`、生产开 `Secure`）。XSS 最多暴露 15 分钟凭证。
-- **Refresh token**：32 字节随机 base64url 不透明串，7 天有效；MySQL 存 SHA-256 hash（`refresh_tokens` 表：token_hash 唯一、family_id、expires_at、revoked_at）。每次 `/refresh` 轮换：旧行 revoked、同 family 插入新行；旧 token 重现判定为被盗重用，撤销整个 family。
+- **Refresh token**：32 字节随机 base64url 不透明串，7 天有效（`app.auth.refresh-ttl` 可调）；MySQL 存 SHA-256 hash（`refresh_tokens` 表：token_hash 唯一、family_id、expires_at、revoked_at）。每次 `/refresh` 轮换：在 token 行的 `SELECT ... FOR UPDATE` 锁内把旧行 revoked、同 family 插入新行，并发重放只会有一个赢家；旧 token 重现判定为被盗重用，撤销整个 family。
+- **Cookie 配置**：`agentcore_refresh` 的 `Secure` 由 `app.auth.cookie-secure`（环境变量 `AUTH_COOKIE_SECURE`）控制，`prod` profile 默认开启；dev http 可关。
 - **登出**：撤销当前 refresh token + 清 cookie；**不做 access denylist**，明确接受旧 access token 最长 15 分钟的残留窗口。
 - **端点分层**：auth 四端点与 health 公开；`/api/auth/me` 与 `/api/chat/**` 需 JWT；工具回调 `/api/kb/**`、`/api/exec` 验共享 `GATEWAY_API_TOKEN`（未配置时放行但启动告警，仅限 dev）。
 - **Redis 边界**：凭证类事实永不以 Redis 为真相源；Redis 只服务后续限流/缓存，丢了不能改变认证语义。

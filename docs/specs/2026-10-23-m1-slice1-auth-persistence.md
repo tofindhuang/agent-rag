@@ -142,6 +142,7 @@ JWT 验签后 Java 取 userId，作为一切业务查询的过滤条件与发往
 ## Further Notes
 
 - 三条存储职责（MySQL 真相 / pi 文件引擎上下文 / Redis 加速）是本刀的骨架原则，任何新需求先归位再实现。
-- Redis 缓存键、cookie 名、环境变量（`JWT_SECRET`、`GATEWAY_API_TOKEN`、`GATEWAY_SESSION_DIR`）为首刀约定，改动需同步更新本 spec 与 ADR。
+- Redis 缓存键、cookie 名、环境变量（`JWT_SECRET`、`GATEWAY_API_TOKEN`、`GATEWAY_SESSION_DIR`、`AUTH_COOKIE_SECURE`）为首刀约定，改动需同步更新本 spec 与 ADR。
+- 认证可调项：`app.auth.access-ttl`（默认 15m）、`app.auth.refresh-ttl`（默认 7d）、`app.auth.cookie-secure`（默认 false；`prod` profile 下由 `application-prod.yml` 置 true）。
 - 断连即 abort、partial 落库等流语义继承 ADR-0006，本 spec 不重复论证。
 - M2 钩子：denylist、多实例共享存储、清理任务、限流都已在 ADR-0007/0008 的 Consequences 里挂账。

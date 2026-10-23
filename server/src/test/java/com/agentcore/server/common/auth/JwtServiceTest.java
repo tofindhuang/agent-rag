@@ -56,6 +56,6 @@ class JwtServiceTest {
     }
 
     private static JwtService service(String secret, Duration ttl) {
-        return new JwtService(new AuthProperties(secret, ttl));
+        return new JwtService(new AuthProperties(secret, ttl, null, false));
     }
 }
