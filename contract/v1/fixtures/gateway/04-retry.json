@@ -1,0 +1,108 @@
+{
+  "contractVersion": "1",
+  "kind": "gateway",
+  "name": "retry",
+  "description": "自动重试不是终态，重试后正常完成",
+  "input": {
+    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "events": [
+      { "type": "agent_start" },
+      {
+        "type": "auto_retry_start",
+        "attempt": 1,
+        "maxAttempts": 3,
+        "delayMs": 500,
+        "errorMessage": "rate limited"
+      },
+      { "type": "auto_retry_end", "success": true, "attempt": 1 },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "重试成功。"
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [{ "type": "text", "text": "重试成功。" }],
+          "usage": {
+            "input": 100,
+            "output": 8,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 108,
+            "cost": {
+              "input": 0.0001,
+              "output": 0.0001,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0002
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "type": "agent_settled", "aborted": false }
+    ]
+  },
+  "expected": {
+    "frames": [
+      {
+        "seq": 1,
+        "event": "run_started",
+        "data": {
+          "runId": "run-1",
+          "turnId": "turn-1",
+          "sessionId": "session-1",
+          "contractVersion": "1"
+        }
+      },
+      {
+        "seq": 2,
+        "event": "retry",
+        "data": { "attempt": 1, "maxAttempts": 3, "delayMs": 500, "message": "rate limited" }
+      },
+      { "seq": 3, "event": "text_delta", "data": { "delta": "重试成功。" } },
+      {
+        "seq": 4,
+        "event": "message_end",
+        "data": {
+          "seqInTurn": 1,
+          "role": "assistant",
+          "text": "重试成功。",
+          "thinking": "",
+          "toolCalls": [],
+          "usage": {
+            "input": 100,
+            "output": 8,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 108,
+            "cost": {
+              "input": 0.0001,
+              "output": 0.0001,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0002
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "seq": 5, "event": "run_settled", "data": { "status": "completed", "turnId": "turn-1" } }
+    ],
+    "invariants": {
+      "firstEvent": "run_started",
+      "lastEvent": "run_settled",
+      "terminalCount": 1,
+      "seqStartsAt": 1,
+      "seqMonotonic": true,
+      "contractVersion": "1"
+    }
+  }
+}

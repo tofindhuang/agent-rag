@@ -1,0 +1,104 @@
+{
+  "contractVersion": "1",
+  "kind": "gateway",
+  "name": "error",
+  "description": "模型调用失败：终态 error，错误码 MODEL_ERROR",
+  "input": {
+    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "events": [
+      { "type": "agent_start" },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "部分输出"
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [{ "type": "text", "text": "部分输出" }],
+          "usage": {
+            "input": 80,
+            "output": 5,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 85,
+            "cost": {
+              "input": 0.0001,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0001
+            }
+          },
+          "stopReason": "error",
+          "errorMessage": "upstream 429"
+        }
+      },
+      { "type": "agent_settled", "aborted": false }
+    ]
+  },
+  "expected": {
+    "frames": [
+      {
+        "seq": 1,
+        "event": "run_started",
+        "data": {
+          "runId": "run-1",
+          "turnId": "turn-1",
+          "sessionId": "session-1",
+          "contractVersion": "1"
+        }
+      },
+      { "seq": 2, "event": "text_delta", "data": { "delta": "部分输出" } },
+      {
+        "seq": 3,
+        "event": "message_end",
+        "data": {
+          "seqInTurn": 1,
+          "role": "assistant",
+          "text": "部分输出",
+          "thinking": "",
+          "toolCalls": [],
+          "usage": {
+            "input": 80,
+            "output": 5,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 85,
+            "cost": {
+              "input": 0.0001,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0001
+            }
+          },
+          "stopReason": "error"
+        }
+      },
+      {
+        "seq": 4,
+        "event": "run_settled",
+        "data": {
+          "status": "error",
+          "turnId": "turn-1",
+          "error": { "code": "MODEL_ERROR", "message": "upstream 429", "retryable": true }
+        }
+      }
+    ],
+    "invariants": {
+      "firstEvent": "run_started",
+      "lastEvent": "run_settled",
+      "terminalCount": 1,
+      "seqStartsAt": 1,
+      "seqMonotonic": true,
+      "contractVersion": "1"
+    }
+  }
+}

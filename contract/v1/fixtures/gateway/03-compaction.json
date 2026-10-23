@@ -1,0 +1,113 @@
+{
+  "contractVersion": "1",
+  "kind": "gateway",
+  "name": "compaction",
+  "description": "上下文压缩事件与正常回复",
+  "input": {
+    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "events": [
+      { "type": "agent_start" },
+      { "type": "compaction_start", "reason": "threshold" },
+      {
+        "type": "compaction_end",
+        "reason": "threshold",
+        "result": {
+          "summary": "用户之前讨论了北京天气与出行建议。",
+          "firstKeptEntryId": "entry-1",
+          "tokensBefore": 10000,
+          "estimatedTokensAfter": 2000
+        },
+        "aborted": false,
+        "willRetry": false
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "已压缩上下文，我们继续。"
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [{ "type": "text", "text": "已压缩上下文，我们继续。" }],
+          "usage": {
+            "input": 8000,
+            "output": 20,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 8020,
+            "cost": {
+              "input": 0.001,
+              "output": 0.0001,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0011
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "type": "agent_settled", "aborted": false }
+    ]
+  },
+  "expected": {
+    "frames": [
+      {
+        "seq": 1,
+        "event": "run_started",
+        "data": {
+          "runId": "run-1",
+          "turnId": "turn-1",
+          "sessionId": "session-1",
+          "contractVersion": "1"
+        }
+      },
+      {
+        "seq": 2,
+        "event": "compaction",
+        "data": { "reason": "threshold", "tokensBefore": 10000, "tokensAfter": 2000 }
+      },
+      { "seq": 3, "event": "text_delta", "data": { "delta": "已压缩上下文，我们继续。" } },
+      {
+        "seq": 4,
+        "event": "message_end",
+        "data": {
+          "seqInTurn": 1,
+          "role": "assistant",
+          "text": "已压缩上下文，我们继续。",
+          "thinking": "",
+          "toolCalls": [],
+          "usage": {
+            "input": 8000,
+            "output": 20,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 8020,
+            "cost": {
+              "input": 0.001,
+              "output": 0.0001,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0011
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "seq": 5, "event": "run_settled", "data": { "status": "completed", "turnId": "turn-1" } }
+    ],
+    "invariants": {
+      "firstEvent": "run_started",
+      "lastEvent": "run_settled",
+      "terminalCount": 1,
+      "seqStartsAt": 1,
+      "seqMonotonic": true,
+      "contractVersion": "1"
+    }
+  }
+}

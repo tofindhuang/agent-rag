@@ -11,6 +11,7 @@
 
 ```
 ├── docs/              需求文档、specs、tickets、ADRs
+├── contract/          Java↔gateway 契约（v1 事件、错误、fixture）
 ├── gateway/           Node 网关：托管 pi AgentSession，注册 kb_search / run_code 工具
 ├── server/            Java 21 + Spring Boot 3：业务编排、RAG、沙箱调度（M1）
 ├── web/               Next.js 前端：聊天界面，SSE 流式渲染
@@ -52,4 +53,4 @@ cd web && npm install && npm run dev
 
 ## M0 收尾
 
-已收敛为「契约 v1 + RAG 选型 spike」：设计见 [docs/specs/2026-10-23-m0-closeout.md](docs/specs/2026-10-23-m0-closeout.md)，拆票见 [docs/tickets/m0-closeout/](docs/tickets/m0-closeout/)。`kb_search` / `run_code` 的实端按 M1 垂直切片推进，不再单独做 M0 薄实现。
+已收敛为「契约 v1 + RAG 选型 spike」：设计见 [docs/specs/2026-10-23-m0-closeout.md](docs/specs/2026-10-23-m0-closeout.md)，契约见 [contract/v1/README.md](contract/v1/README.md)，拆票见 [docs/tickets/m0-closeout/](docs/tickets/m0-closeout/)。`kb_search` / `run_code` 的实端按 M1 垂直切片推进，不再单独做 M0 薄实现。

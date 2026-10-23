@@ -1,0 +1,125 @@
+{
+  "contractVersion": "1",
+  "kind": "gateway",
+  "name": "text-thinking",
+  "description": "推理增量与正文增量，正常完成",
+  "input": {
+    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "events": [
+      { "type": "agent_start" },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "thinking_delta",
+          "contentIndex": 0,
+          "delta": "用户想知道天气。"
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "thinking_delta",
+          "contentIndex": 0,
+          "delta": "我需要给出简洁回答。"
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 1,
+          "delta": "北京今天"
+        }
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 1,
+          "delta": "晴，18°C。"
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [
+            { "type": "thinking", "thinking": "用户想知道天气。我需要给出简洁回答。" },
+            { "type": "text", "text": "北京今天晴，18°C。" }
+          ],
+          "usage": {
+            "input": 120,
+            "output": 30,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 8,
+            "totalTokens": 150,
+            "cost": {
+              "input": 0.0001,
+              "output": 0.0002,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0003
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "type": "agent_settled", "aborted": false }
+    ]
+  },
+  "expected": {
+    "frames": [
+      {
+        "seq": 1,
+        "event": "run_started",
+        "data": {
+          "runId": "run-1",
+          "turnId": "turn-1",
+          "sessionId": "session-1",
+          "contractVersion": "1"
+        }
+      },
+      { "seq": 2, "event": "thinking_delta", "data": { "delta": "用户想知道天气。" } },
+      { "seq": 3, "event": "thinking_delta", "data": { "delta": "我需要给出简洁回答。" } },
+      { "seq": 4, "event": "text_delta", "data": { "delta": "北京今天" } },
+      { "seq": 5, "event": "text_delta", "data": { "delta": "晴，18°C。" } },
+      {
+        "seq": 6,
+        "event": "message_end",
+        "data": {
+          "seqInTurn": 1,
+          "role": "assistant",
+          "text": "北京今天晴，18°C。",
+          "thinking": "用户想知道天气。我需要给出简洁回答。",
+          "toolCalls": [],
+          "usage": {
+            "input": 120,
+            "output": 30,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 8,
+            "totalTokens": 150,
+            "cost": {
+              "input": 0.0001,
+              "output": 0.0002,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0003
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "seq": 7, "event": "run_settled", "data": { "status": "completed", "turnId": "turn-1" } }
+    ],
+    "invariants": {
+      "firstEvent": "run_started",
+      "lastEvent": "run_settled",
+      "terminalCount": 1,
+      "seqStartsAt": 1,
+      "seqMonotonic": true,
+      "contractVersion": "1"
+    }
+  }
+}

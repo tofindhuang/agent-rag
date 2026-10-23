@@ -30,6 +30,8 @@ gateway 内部把 pi 事件翻译成一组封闭的领域事件，Java 与 web �
 - `/health` 与 `run_started` 暴露 `contractVersion`，Java 启动时主版本不匹配即 fail fast。
 - 契约只做加法演进；删字段或改语义升主版本。
 
+规范性细节（事件 payload、SSE 帧、生命周期、身份 header、错误码、工具回调、fixture 格式）以 `contract/v1/README.md` 为唯一权威来源。
+
 ## Considered Options(被否的备选)
 
 - **继续透传 pi 事件** — 零改动，但把 pi 内部 schema 变成跨服务 ABI，与 ADR-0001 的方向相反；每轮终态仍需调用方猜。

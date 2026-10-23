@@ -16,6 +16,7 @@ agent-core 是基于 [pi](https://github.com/earendil-works/pi-coding-agent) 为
 | `server/` | Java 21 / Spring Boot 3 | 认证、RAG 管线、沙箱调度、画像记忆、业务编排 |
 | `web/` | Next.js / React | 聊天 UI、知识库与记忆管理界面 |
 | `sandbox/` | Docker 镜像 | 隔离代码执行（无网络、资源受限、非 root、只读根） |
+| `contract/` | — | Java↔gateway 契约 v1、错误码与共享 fixture |
 | `docs/` | — | 需求文档、specs、tickets、ADRs |
 
 ### Per-module commands
