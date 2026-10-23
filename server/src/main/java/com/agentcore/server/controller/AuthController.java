@@ -8,6 +8,7 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.config.AuthProperties;
 import com.agentcore.server.domain.AuthResult;
 import com.agentcore.server.domain.UserProfile;
+import com.agentcore.server.dto.auth.ChangePasswordRequest;
 import com.agentcore.server.dto.auth.LoginRequest;
 import com.agentcore.server.dto.auth.LoginResponse;
 import com.agentcore.server.dto.auth.MeResponse;
@@ -102,6 +103,34 @@ public class AuthController {
     public MeResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
         UserProfile profile = authService.profile(user.userId());
         return new MeResponse(profile.userId(), profile.email());
+    }
+
+    /** Verifies the current password, rotates it and logs every device out. */
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody ChangePasswordRequest request) {
+        // A current password outside BCrypt's range can never match; report the
+        // same 401 as any other mismatch instead of leaking a format hint.
+        if (!PasswordPolicy.isBcryptCompatible(request.currentPassword())) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "current password is incorrect");
+        }
+        if (!PasswordPolicy.isBcryptCompatible(request.newPassword())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "password must be 8-72 bytes");
+        }
+        authService.changePassword(user.userId(), request.currentPassword(), request.newPassword());
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .build();
+    }
+
+    /** Revokes every refresh token of the caller; access tokens expire naturally. */
+    @PostMapping("/logout-all")
+    public ResponseEntity<Void> logoutAll(@AuthenticationPrincipal AuthenticatedUser user) {
+        authService.logoutAll(user.userId());
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .build();
     }
 
     private static LoginResponse loginResponse(AuthResult result) {

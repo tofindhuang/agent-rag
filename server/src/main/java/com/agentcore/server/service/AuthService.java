@@ -33,4 +33,15 @@ public interface AuthService {
 
     /** Returns the authenticated user's own profile. */
     UserProfile profile(long userId);
+
+    /**
+     * Verifies the current password, replaces it and revokes every refresh
+     * token of the user (including the one behind the calling session).
+     * A wrong current password fails with 401, a policy-violating new password
+     * is rejected by the controller with 400.
+     */
+    void changePassword(long userId, String currentPassword, String newPassword);
+
+    /** Revokes every refresh token of the user; access tokens expire naturally. */
+    void logoutAll(long userId);
 }

@@ -21,4 +21,10 @@ public interface RefreshTokenDao extends BaseMapper<RefreshToken> {
      * is presented again (reuse detection).
      */
     int revokeFamily(@Param("familyId") String familyId, @Param("revokedAt") LocalDateTime revokedAt);
+
+    /**
+     * Revokes every still-active token of a user. Used by password changes and
+     * "log out everywhere" (ADR-0007: access tokens expire naturally).
+     */
+    int revokeAllForUser(@Param("userId") long userId, @Param("revokedAt") LocalDateTime revokedAt);
 }

@@ -130,6 +130,28 @@ public class AuthServiceImpl implements AuthService {
         return new UserProfile(user.getId(), user.getEmail());
     }
 
+    @Override
+    @Transactional
+    public void changePassword(long userId, String currentPassword, String newPassword) {
+        User user = userDao.selectById(userId);
+        if (user == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
+        }
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userDao.updateById(user);
+        // Same transaction: a leaked refresh token must die with the old password.
+        refreshTokenDao.revokeAllForUser(userId, nowUtc());
+    }
+
+    @Override
+    @Transactional
+    public void logoutAll(long userId) {
+        refreshTokenDao.revokeAllForUser(userId, nowUtc());
+    }
+
     private AuthResult resultFor(long userId, String refreshToken) {
         AccessToken accessToken =
                 new AccessToken(jwtService.issue(userId), jwtService.accessTtlSeconds());
