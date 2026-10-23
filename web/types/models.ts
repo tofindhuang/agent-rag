@@ -34,6 +34,14 @@ export interface ProbeModel {
   name: string;
 }
 
+/** Probe as sent to the business API (key may reuse a stored provider's). */
+export interface ProbeRequest {
+  api: ProviderApi;
+  baseUrl: string;
+  apiKey?: string;
+  providerId?: number;
+}
+
 export interface ProviderModelInput {
   modelId: string;
   displayName: string;

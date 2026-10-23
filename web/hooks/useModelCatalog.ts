@@ -3,11 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { userMessage } from "@/lib/api/errors";
 import {
+  createProvider,
   deleteProvider,
   fetchModelCatalog,
+  probeModels,
   setDefaultModel,
+  updateProvider,
 } from "@/lib/api/models";
-import type { ModelCatalog } from "@/types/models";
+import type {
+  ModelCatalog,
+  ProbeModel,
+  ProbeRequest,
+  ProviderInput,
+} from "@/types/models";
 
 /** Owns model catalog loading and provider mutations; components only render. */
 export function useModelCatalog() {
@@ -63,6 +71,27 @@ export function useModelCatalog() {
     [reload],
   );
 
+  /** Network calls stay here (web/README: display components never fetch). */
+  const probe = useCallback(
+    (request: ProbeRequest): Promise<ProbeModel[]> => probeModels(request),
+    [],
+  );
+
+  const saveProvider = useCallback(
+    async (id: number | null, input: ProviderInput): Promise<void> => {
+      setError(null);
+      if (id == null) {
+        await createProvider(input);
+        setNotice("供应商已添加，API Key 只显示末四位");
+      } else {
+        await updateProvider(id, input);
+        setNotice("供应商已更新");
+      }
+      await reload();
+    },
+    [reload],
+  );
+
   return {
     catalog,
     loading,
@@ -72,5 +101,7 @@ export function useModelCatalog() {
     reload,
     changeDefault,
     removeProvider,
+    probe,
+    saveProvider,
   };
 }

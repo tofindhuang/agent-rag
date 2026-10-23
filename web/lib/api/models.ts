@@ -3,16 +3,10 @@ import { authFetch } from "./http";
 import type {
   ModelCatalog,
   ProbeModel,
+  ProbeRequest,
   ProviderApi,
   ProviderInput,
 } from "@/types/models";
-
-interface ProbeRequest {
-  api: ProviderApi;
-  baseUrl: string;
-  apiKey?: string;
-  providerId?: number;
-}
 
 async function readJson(response: Response): Promise<unknown> {
   if (!response.ok) throw await toApiError(response);
