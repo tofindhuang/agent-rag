@@ -14,10 +14,25 @@ _Avoid_: conversation、chat、对话（作名词指 Session 时统一用「会�
 gateway 进程内由 pi 托管的引擎侧会话实例，与业务侧 Session 一一对应，是唯一的模型上下文载体。
 _Avoid_: pi session、engine session
 
+### 轮次（Turn）
+
+用户一次发送所对应的业务单位，由 turnId 标识，是消息幂等与重试的边界；同一轮次的重试会产生新的 Run。
+_Avoid_: message、request
+
+### 执行（Run）
+
+一次 prompt 触发的引擎侧完整执行，由 runId 标识，包含一次或多次模型调用与工具调用，以唯一终态结束。
+_Avoid_: job、task、turn
+
 ### Gateway（网关）
 
 托管 AgentSession 的 Node 服务，系统中唯一与 LLM 通信的组件。
 _Avoid_: engine、pi server
+
+### 契约（Contract）
+
+业务层与 Gateway 之间版本化的 HTTP/SSE 协议，定义事件、错误、身份与生命周期。
+_Avoid_: API（泛指时）、interface
 
 ### 业务层（Business Layer）
 
@@ -28,6 +43,11 @@ _Avoid_: backend（泛指时易混淆）
 
 上下文接近模型窗口上限时，把较早消息摘要替换以腾出空间的过程；被压缩的原文保留、可回捞。
 _Avoid_: summarization（那是 Compaction 的手段，不是整体机制）
+
+### 消息投影（Message Projection）
+
+业务层从契约事件写入 MySQL 的消息副本，用于展示、历史与统计，不是引擎上下文的来源。
+_Avoid_: history store、message store、session store
 
 ### 画像事实（Profile Fact）
 

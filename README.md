@@ -47,8 +47,9 @@ cd web && npm install && npm run dev
 
 - gateway：类型检查通过；冒烟验证了 prompt 整体替换（`systemPromptOverride`）与工具白名单（仅 `kb_search` / `run_code`，内置工具全部禁用）
 - gateway：端到端真实 LLM 调用，SSE 事件流（`text_delta` → `agent_settled` → `prompt_settled`）完整
-- server / web：标准骨架，未在本机编译验证（开发机暂无 JDK；`mvn spring-boot:run` 与 `npm run build` 待 CI 或本机验证）
+- server：`mvn -q verify` 通过，启动冒烟验证了健康检查与统一错误 envelope
+- web：标准骨架，`npm run build` 待 CI 或本机验证
 
-## M0 剩余
+## M0 收尾
 
-见需求文档 §7：冻结 Java↔gateway 事件契约 v1、向量库选型、kb_search/run_code 接 Java 实端。
+已收敛为「契约 v1 + RAG 选型 spike」：设计见 [docs/specs/2026-10-23-m0-closeout.md](docs/specs/2026-10-23-m0-closeout.md)，拆票见 [docs/tickets/m0-closeout/](docs/tickets/m0-closeout/)。`kb_search` / `run_code` 的实端按 M1 垂直切片推进，不再单独做 M0 薄实现。
