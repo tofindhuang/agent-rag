@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Select";
+import { TextField } from "@/components/ui/TextField";
 import { userMessage } from "@/lib/api/errors";
 import type {
   ModelProvider,
@@ -181,60 +185,43 @@ export function ProviderForm({
     <form className={styles.form} onSubmit={(event) => void submit(event)}>
       <h3>{initial ? "编辑供应商" : "添加供应商"}</h3>
 
-      <label className={styles.label}>
-        名称
-        <input
-          className={styles.input}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={100}
-          required
-        />
-      </label>
-      <label className={styles.label}>
-        API 类型
-        <select
-          className={styles.input}
-          value={api}
-          onChange={(event) => setApi(event.target.value as ProviderApi)}
-        >
-          <option value="openai-completions">OpenAI-compatible</option>
-          <option value="anthropic-messages">Anthropic Messages</option>
-        </select>
-      </label>
-      <label className={styles.label}>
-        Base URL
-        <input
-          className={styles.input}
-          value={baseUrl}
-          onChange={(event) => setBaseUrl(event.target.value)}
-          placeholder="https://api.example.com/v1"
-          maxLength={1000}
-          required
-        />
-      </label>
-      <label className={styles.label}>
-        API Key
-        <input
-          className={styles.input}
-          type="password"
-          autoComplete="new-password"
-          value={apiKey}
-          onChange={(event) => setApiKey(event.target.value)}
-          placeholder={initial ? `留空保持原 key（${initial.apiKeyHint}）` : ""}
-          maxLength={4096}
-        />
-      </label>
+      <TextField
+        label="名称"
+        value={name}
+        onChange={(event) => setName(event.target.value)}
+        maxLength={100}
+        required
+      />
+      <Select
+        label="API 类型"
+        value={api}
+        onChange={(event) => setApi(event.target.value as ProviderApi)}
+      >
+        <option value="openai-completions">OpenAI-compatible</option>
+        <option value="anthropic-messages">Anthropic Messages</option>
+      </Select>
+      <TextField
+        label="Base URL"
+        value={baseUrl}
+        onChange={(event) => setBaseUrl(event.target.value)}
+        placeholder="https://api.example.com/v1"
+        maxLength={1000}
+        required
+      />
+      <TextField
+        label="API Key"
+        type="password"
+        autoComplete="new-password"
+        value={apiKey}
+        onChange={(event) => setApiKey(event.target.value)}
+        placeholder={initial ? `留空保持原 key（${initial.apiKeyHint}）` : ""}
+        maxLength={4096}
+      />
 
       <div className={styles.row}>
-        <button
-          className={styles.ghost}
-          type="button"
-          onClick={() => void probe()}
-          disabled={busy}
-        >
+        <Button variant="secondary" onClick={() => void probe()} disabled={busy}>
           探测模型
-        </button>
+        </Button>
         {probes.length > 0 ? (
           <span className={styles.hint}>探测到 {probes.length} 个模型</span>
         ) : null}
@@ -249,9 +236,9 @@ export function ProviderForm({
           aria-label="手填模型 ID"
           maxLength={200}
         />
-        <button className={styles.ghost} type="button" onClick={addManual}>
+        <Button variant="secondary" onClick={addManual}>
           添加
-        </button>
+        </Button>
       </div>
 
       {drafts.length > 0 ? (
@@ -333,24 +320,16 @@ export function ProviderForm({
         </ul>
       ) : null}
 
-      {message ? (
-        <p role="status" className={styles.notice}>
-          {message}
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className={styles.error}>
-          {error}
-        </p>
-      ) : null}
+      {message ? <Banner tone="notice">{message}</Banner> : null}
+      {error ? <Banner tone="error">{error}</Banner> : null}
 
       <div className={styles.row}>
-        <button className={styles.primary} type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy}>
           {initial ? "保存修改" : "保存供应商"}
-        </button>
-        <button className={styles.ghost} type="button" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={busy}>
           取消
-        </button>
+        </Button>
       </div>
     </form>
   );

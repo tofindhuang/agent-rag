@@ -1,71 +1,73 @@
+/* Settings page (ticket visual-05). Tokens only; no hex colours. */
+
 .page {
   max-width: 860px;
   margin: 0 auto;
-  padding: 24px 16px 96px;
+  padding: var(--space-5) var(--space-4) 96px;
 }
 
 .pageHeader {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
 
 .back {
-  color: #9aa3b2;
-  font-size: 14px;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
   text-decoration: none;
 }
 
 .back:hover,
 .back:focus-visible {
-  color: #e5e7eb;
+  color: var(--text-primary);
 }
 
 .title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-lg);
 }
 
 .section {
-  border: 1px solid #1f2634;
-  border-radius: 12px;
-  padding: 18px;
-  background: #0c0f15;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
 }
 
 .sections {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .sectionHeader h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--text-md);
 }
 
 .hint {
-  color: #6b7280;
-  font-size: 13px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .notice {
-  color: #34d399;
-  font-size: 13px;
+  color: var(--success);
+  font-size: var(--text-sm);
 }
 
 .error {
-  color: #f87171;
-  font-size: 13px;
+  color: var(--danger);
+  font-size: var(--text-sm);
 }
 
 .providerList,
@@ -73,92 +75,92 @@
 .draftList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 12px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }
 
 .provider {
-  border: 1px solid #1f2634;
-  border-radius: 10px;
-  padding: 12px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 .providerHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .providerActions {
   display: flex;
-  gap: 6px;
   flex-wrap: wrap;
+  gap: var(--space-1);
 }
 
 .tag {
-  margin-left: 8px;
-  padding: 1px 6px;
-  border: 1px solid #2a3242;
+  margin-left: var(--space-2);
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border);
   border-radius: 999px;
-  color: #93c5fd;
-  font-size: 11px;
+  color: var(--accent);
+  font-size: var(--text-xs);
 }
 
 .modelList {
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 .modelItem {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  gap: var(--space-2);
+  font-size: var(--text-base);
 }
 
 .badge {
-  padding: 1px 8px;
+  padding: 1px var(--space-2);
   border-radius: 999px;
-  background: #1d4ed8;
-  color: #fff;
-  font-size: 11px;
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  font-size: var(--text-xs);
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 16px;
-  border: 1px solid #2a3242;
-  border-radius: 10px;
-  background: #11151d;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
 }
 
 .form h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: #cbd5e1;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
 .input,
 .contextInput {
-  padding: 7px 9px;
-  border: 1px solid #2a3242;
-  border-radius: 6px;
-  background: #0c0f15;
-  color: inherit;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-base);
 }
 
 .contextInput {
@@ -168,58 +170,73 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .draft {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-  font-size: 13px;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
 }
 
 .checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  color: #cbd5e1;
+  gap: var(--space-1);
+  color: var(--text-secondary);
 }
 
 .primary,
 .ghost,
 .danger,
 .dangerGhost {
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .primary {
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  color: #fff;
+  border: 1px solid var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
 }
 
 .ghost {
-  border: 1px solid #374151;
+  border: 1px solid var(--border);
   background: transparent;
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .danger {
-  border: 1px solid #b91c1c;
-  background: #b91c1c;
-  color: #fff;
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
 }
 
 .dangerGhost {
-  border: 1px solid #7f1d1d;
+  border: 1px solid var(--danger);
   background: transparent;
-  color: #f87171;
+  color: var(--danger);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.ghost:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.danger:hover:not(:disabled),
+.dangerGhost:hover:not(:disabled) {
+  background: var(--surface-hover);
 }
 
 .primary:disabled,
@@ -228,16 +245,6 @@
 .dangerGhost:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-.primary:focus-visible,
-.ghost:focus-visible,
-.danger:focus-visible,
-.dangerGhost:focus-visible,
-.input:focus-visible,
-.contextInput:focus-visible {
-  outline: 2px solid #5b8cff;
-  outline-offset: 2px;
 }
 
 .themeOptions {
@@ -254,7 +261,7 @@
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface-1);
+  background: var(--surface-0);
   color: var(--text-primary);
   font-size: var(--text-sm);
   cursor: pointer;

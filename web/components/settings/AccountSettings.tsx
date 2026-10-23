@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { TextField } from "@/components/ui/TextField";
 import { changePassword, logoutAll } from "@/lib/api/auth";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import { setAuthNotice } from "@/lib/auth-notice";
@@ -93,58 +96,41 @@ export function AccountSettings() {
 
       <form className={styles.form} onSubmit={(event) => void changePasswordSubmit(event)}>
         <h3>修改密码</h3>
-        <label className={styles.label}>
-          当前密码
-          <input
-            className={styles.input}
-            type="password"
-            autoComplete="current-password"
-            value={current}
-            onChange={(event) => setCurrent(event.target.value)}
-            maxLength={72}
-            required
-          />
-        </label>
-        <label className={styles.label}>
-          新密码
-          <input
-            className={styles.input}
-            type="password"
-            autoComplete="new-password"
-            value={next}
-            onChange={(event) => setNext(event.target.value)}
-            maxLength={72}
-            required
-          />
-        </label>
-        <label className={styles.label}>
-          确认新密码
-          <input
-            className={styles.input}
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(event) => setConfirm(event.target.value)}
-            maxLength={72}
-            required
-          />
-        </label>
+        <TextField
+          label="当前密码"
+          type="password"
+          autoComplete="current-password"
+          value={current}
+          onChange={(event) => setCurrent(event.target.value)}
+          maxLength={72}
+          required
+        />
+        <TextField
+          label="新密码"
+          type="password"
+          autoComplete="new-password"
+          value={next}
+          onChange={(event) => setNext(event.target.value)}
+          maxLength={72}
+          required
+        />
+        <TextField
+          label="确认新密码"
+          type="password"
+          autoComplete="new-password"
+          value={confirm}
+          onChange={(event) => setConfirm(event.target.value)}
+          maxLength={72}
+          required
+        />
 
-        {notice ? (
-          <p className={styles.notice} role="status">
-            {notice}
-          </p>
-        ) : null}
-        {error ? (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        ) : null}
+        {notice ? <Banner tone="notice">{notice}</Banner> : null}
+        {error ? <Banner tone="error">{error}</Banner> : null}
 
         <div className={styles.row}>
-          <button className={styles.primary} type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy}>
             {busy ? "处理中…" : "修改密码"}
-          </button>
+          </Button>
           <span className={styles.hint}>修改后所有设备都需要重新登录</span>
         </div>
       </form>
@@ -164,27 +150,27 @@ export function AccountSettings() {
         <div className={styles.row}>
           {confirmLogoutAll ? (
             <>
-              <button
-                className={styles.danger}
+              <Button
+                variant="danger"
                 type="button"
                 onClick={() => void confirmLogoutAllAction()}
                 disabled={busy}
               >
                 {busy ? "处理中…" : "确认登出所有设备"}
-              </button>
-              <button
-                className={styles.ghost}
+              </Button>
+              <Button
+                variant="secondary"
                 type="button"
                 onClick={() => setConfirmLogoutAll(false)}
                 disabled={busy}
               >
                 取消
-              </button>
+              </Button>
             </>
           ) : (
-            <button className={styles.dangerGhost} type="submit" disabled={busy}>
+            <Button variant="danger" type="submit" disabled={busy}>
               登出所有设备
-            </button>
+            </Button>
           )}
         </div>
       </form>
