@@ -4,6 +4,16 @@
 
 ## Language
 
+### 用户（User）
+
+以邮箱注册的账号主体，全部会话、知识与记忆的归属者；认证后以 userId 出现在 JWT sub 与内部身份 header 中。
+_Avoid_: account、tenant、member
+
+### 刷新令牌（Refresh Token）
+
+不透明随机串，经 httpOnly cookie 传输，服务端只存哈希；每次刷新即轮换，检测到旧令牌重用时撤销同族全部令牌。
+_Avoid_: session token、persistent token、remember-me
+
 ### 会话（Session）
 
 一段持续的多轮对话及其上下文，归属单一用户，由业务层（Java）创建与管理。
