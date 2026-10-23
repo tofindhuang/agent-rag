@@ -19,4 +19,10 @@ public interface KbDocumentService {
 
     /** Marks the document deleting and publishes the async delete task. */
     void delete(long userId, String documentId);
+
+    /** Rebuilds one document with a new version; queues it for ingestion. */
+    void reingest(long userId, String documentId);
+
+    /** Queues every stale document for rebuild; returns the queued count. */
+    int reingestAll(long userId);
 }

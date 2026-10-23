@@ -88,6 +88,8 @@ spring:
         auto-startup: ${KB_ENABLED:true}
         acknowledge-mode: manual
         prefetch: 1
+        concurrency: ${KB_WORKER_THREADS:3}
+        max-concurrency: ${KB_WORKER_THREADS:3}
 
 mybatis-plus:
   configuration:

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.KbPassageDao">
+
+    <sql id="passageColumns">
+        id, document_id, user_id, seq, page, content, char_count, created_at
+    </sql>
+
+    <delete id="deleteByDocument">
+        DELETE FROM kb_passages
+        WHERE document_id = #{documentId}
+          AND user_id = #{userId}
+    </delete>
+
+    <insert id="insertBatch">
+        INSERT INTO kb_passages (document_id, user_id, seq, page, content, char_count)
+        VALUES
+        <foreach collection="passages" item="passage" separator=",">
+            (#{passage.documentId}, #{passage.userId}, #{passage.seq},
+             #{passage.page}, #{passage.content}, #{passage.charCount})
+        </foreach>
+    </insert>
+
+    <select id="listByDocument" resultType="com.agentcore.server.domain.KbPassage">
+        SELECT <include refid="passageColumns"/>
+        FROM kb_passages
+        WHERE document_id = #{documentId}
+          AND user_id = #{userId}
+        ORDER BY seq ASC
+    </select>
+
+</mapper>

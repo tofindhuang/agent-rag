@@ -36,5 +36,47 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
     List<KbDocument> findDeletingForDispatch(
             @Param("before") LocalDateTime before, @Param("limit") int limit);
 
+    /** Reconciler: processing rows whose lease expired after a worker crash. */
+    List<KbDocument> findExpiredProcessingForDispatch(
+            @Param("now") LocalDateTime now,
+            @Param("before") LocalDateTime before,
+            @Param("limit") int limit);
+
     int deleteOwned(@Param("id") String id, @Param("userId") long userId);
+
+    /**
+     * Atomically claims a queued/stale/expired-processing row for this worker.
+     * The lease prevents duplicate deliveries from processing concurrently.
+     */
+    int claimForProcessing(
+            @Param("id") String id,
+            @Param("userId") long userId,
+            @Param("version") int version,
+            @Param("leaseUntil") LocalDateTime leaseUntil,
+            @Param("now") LocalDateTime now);
+
+    int markReady(
+            @Param("id") String id,
+            @Param("userId") long userId,
+            @Param("version") int version,
+            @Param("chunkCount") int chunkCount);
+
+    int markFailed(
+            @Param("id") String id,
+            @Param("userId") long userId,
+            @Param("version") int version,
+            @Param("errorCode") String errorCode,
+            @Param("errorMessage") String errorMessage);
+
+    int markQueuedForRetry(
+            @Param("id") String id,
+            @Param("userId") long userId,
+            @Param("version") int version,
+            @Param("nextAttemptAt") LocalDateTime nextAttemptAt,
+            @Param("enqueuedAt") LocalDateTime enqueuedAt);
+
+    List<KbDocument> findStaleByUser(@Param("userId") long userId);
+
+    /** Reingest: increments version, clears the old attempt/lease state. */
+    int requeue(@Param("id") String id, @Param("userId") long userId);
 }

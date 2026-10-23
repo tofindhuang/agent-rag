@@ -105,6 +105,20 @@ public class KbDocumentController {
         return toView(documentService.detail(user.userId(), documentId));
     }
 
+    @PostMapping("/{documentId}/reingest")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void reingest(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String documentId) {
+        documentService.reingest(user.userId(), documentId);
+    }
+
+    @PostMapping("/reingest-all")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void reingestAll(@AuthenticationPrincipal AuthenticatedUser user) {
+        documentService.reingestAll(user.userId());
+    }
+
     @DeleteMapping("/{documentId}")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void delete(

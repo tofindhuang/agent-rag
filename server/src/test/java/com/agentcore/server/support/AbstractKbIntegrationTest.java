@@ -23,9 +23,12 @@ public abstract class AbstractKbIntegrationTest extends AbstractIntegrationTest 
     protected static final String KB_QUEUE_PREFIX = "kb_it";
     protected static final String KB_INGEST_QUEUE = KB_QUEUE_PREFIX + ".ingest.q";
     protected static final String KB_DELETE_QUEUE = KB_QUEUE_PREFIX + ".ingest.delete.q";
+    protected static final String KB_DLQ = KB_QUEUE_PREFIX + ".ingest.dlq";
 
     private static final boolean DOCKER_AVAILABLE =
             DockerClientFactory.instance().isDockerAvailable();
+
+    protected static final FakeEmbeddingServer EMBEDDING = FakeEmbeddingServer.start(1024);
 
     static final GenericContainer<?> SILO =
             new GenericContainer<>("pgsty/silo:RELEASE.2026-10-18T00-00-00Z")
@@ -65,9 +68,10 @@ public abstract class AbstractKbIntegrationTest extends AbstractIntegrationTest 
         registry.add("app.kb.enabled", () -> "true");
         registry.add("app.kb.allow-private-endpoints", () -> "true");
         registry.add("app.kb.queue.prefix", () -> KB_QUEUE_PREFIX);
-        registry.add("app.kb.embedding.base-url", () -> "https://embedding.example.com/v1");
+        registry.add("app.kb.embedding.base-url", EMBEDDING::baseUrl);
         registry.add("app.kb.embedding.api-key", () -> "test-embedding-key");
         registry.add("app.kb.embedding.model", () -> "test-embedding-model");
+        registry.add("app.kb.embedding.path", () -> "/embeddings");
         registry.add("app.kb.embedding.dim", () -> "1024");
         registry.add("app.kb.qdrant.url",
                 () -> "http://" + QDRANT.getHost() + ":" + QDRANT.getMappedPort(6333));

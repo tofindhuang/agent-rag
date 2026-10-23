@@ -40,9 +40,12 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @AutoConfigureMockMvc
+// This class owns the upload/outbox/delete seam; ingestion has its own test.
+@TestPropertySource(properties = "app.kb.ingest-consumer-enabled=false")
 class KbDocumentIntegrationTest extends AbstractKbIntegrationTest {
 
     private static final String PDF = "%PDF-1.4\nfake knowledge base\n";

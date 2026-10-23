@@ -40,7 +40,7 @@
         SET enqueued_at = #{enqueuedAt}
         WHERE id = #{id}
           AND user_id = #{userId}
-          AND status IN ('queued', 'deleting')
+          AND status IN ('queued', 'deleting', 'processing')
     </update>
 
     <update id="markDeleting">
@@ -72,10 +72,107 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findExpiredProcessingForDispatch"
+            resultType="com.agentcore.server.domain.KbDocument">
+        SELECT <include refid="documentColumns"/>
+        FROM kb_documents
+        WHERE status = 'processing'
+          AND lease_until IS NOT NULL
+          AND lease_until &lt; #{now}
+          AND (enqueued_at IS NULL OR enqueued_at &lt; #{before})
+        ORDER BY created_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
     <delete id="deleteOwned">
         DELETE FROM kb_documents
         WHERE id = #{id}
           AND user_id = #{userId}
     </delete>
+
+    <update id="claimForProcessing">
+        UPDATE kb_documents
+        SET status = 'processing',
+            lease_until = #{leaseUntil},
+            attempts = attempts + 1,
+            next_attempt_at = NULL,
+            enqueued_at = NULL,
+            error_code = NULL,
+            error_message = NULL
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND version = #{version}
+          AND (status IN ('queued', 'stale')
+               OR (status = 'processing'
+                   AND (lease_until IS NULL OR lease_until &lt; #{now})))
+    </update>
+
+    <update id="markReady">
+        UPDATE kb_documents
+        SET status = 'ready',
+            chunk_count = #{chunkCount},
+            attempts = 0,
+            lease_until = NULL,
+            next_attempt_at = NULL,
+            enqueued_at = NULL,
+            error_code = NULL,
+            error_message = NULL
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND version = #{version}
+          AND status = 'processing'
+    </update>
+
+    <update id="markFailed">
+        UPDATE kb_documents
+        SET status = 'failed',
+            chunk_count = 0,
+            lease_until = NULL,
+            next_attempt_at = NULL,
+            error_code = #{errorCode},
+            error_message = #{errorMessage}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND version = #{version}
+          AND status = 'processing'
+    </update>
+
+    <update id="markQueuedForRetry">
+        UPDATE kb_documents
+        SET status = 'queued',
+            lease_until = NULL,
+            next_attempt_at = #{nextAttemptAt},
+            enqueued_at = #{enqueuedAt},
+            error_code = NULL,
+            error_message = NULL
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND version = #{version}
+          AND status = 'processing'
+    </update>
+
+    <select id="findStaleByUser" resultType="com.agentcore.server.domain.KbDocument">
+        SELECT <include refid="documentColumns"/>
+        FROM kb_documents
+        WHERE user_id = #{userId}
+          AND status = 'stale'
+        ORDER BY created_at ASC, id ASC
+    </select>
+
+    <update id="requeue">
+        UPDATE kb_documents
+        SET status = 'queued',
+            version = version + 1,
+            attempts = 0,
+            chunk_count = 0,
+            lease_until = NULL,
+            next_attempt_at = NULL,
+            enqueued_at = NULL,
+            error_code = NULL,
+            error_message = NULL
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status &lt;&gt; 'deleting'
+    </update>
 
 </mapper>

@@ -12,8 +12,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Transactional-outbox reconciler (FR-2): MySQL rows whose publish never got
- * confirmed are re-sent every 30s. Publishing is idempotent from the worker's
+ * Transactional-outbox reconciler (FR-2): queued/deleting rows whose publish
+ * never got confirmed, plus processing rows whose lease expired after a worker
+ * crash, are re-sent every 30s. Publishing is idempotent from the worker's
  * point of view because the document row carries the task state.
  */
 @Component
@@ -34,7 +35,13 @@ public class KbDocumentReconciler {
 
     @Scheduled(fixedDelay = 30_000)
     public void reconcile() {
-        runOnce();
+        try {
+            runOnce();
+        } catch (RuntimeException e) {
+            // The next tick retries; a transient DB outage must not kill the
+            // scheduler or spam an ERROR stack every 30 seconds.
+            log.warn("KB reconciler run skipped: {}", e.getMessage());
+        }
     }
 
     /** Visible for tests; returns the number of successfully re-published rows. */
@@ -51,6 +58,18 @@ public class KbDocumentReconciler {
                 republished++;
             } else {
                 log.warn("KB reconciler could not re-publish ingest for {}", document.getId());
+            }
+        }
+
+        List<KbDocument> expired = documentDao.findExpiredProcessingForDispatch(
+                now, cutoff, BATCH_SIZE);
+        for (KbDocument document : expired) {
+            if (publisher.publishIngest(KbTaskMessage.ingest(
+                    document.getUserId(), document.getId(), document.getVersion()))) {
+                markEnqueued(document, now);
+                republished++;
+            } else {
+                log.warn("KB reconciler could not resume processing for {}", document.getId());
             }
         }
 

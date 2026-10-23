@@ -36,6 +36,10 @@ public class KbTaskPublisher {
         return publish(names.deleteRoutingKey(), message);
     }
 
+    public boolean publishRetry(KbTaskMessage message, KbRetryTier tier) {
+        return publish(names.retryRoutingKey(tier), message);
+    }
+
     private boolean publish(String routingKey, KbTaskMessage message) {
         CorrelationData correlation = new CorrelationData(UUID.randomUUID().toString());
         try {

@@ -22,6 +22,9 @@
     <mybatis-plus.version>3.5.17</mybatis-plus.version>
     <nimbus-jose-jwt.version>10.10</nimbus-jose-jwt.version>
     <aws-sdk.version>2.46.7</aws-sdk.version>
+    <pdfbox.version>3.0.7</pdfbox.version>
+    <poi.version>5.5.1</poi.version>
+    <jsoup.version>1.21.1</jsoup.version>
     <!-- Docker Engine 29 requires API >= 1.40; Boot 3.4.2 manages 1.20.4. -->
     <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
@@ -78,6 +81,29 @@
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>url-connection-client</artifactId>
       <version>${aws-sdk.version}</version>
+    </dependency>
+    <!-- KB ingestion parsers (FR-2): PDF page text, DOCX body, HTML body. -->
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>${pdfbox.version}</version>
+      <exclusions>
+        <!-- Spring's spring-jcl provides the Commons Logging API; avoid a duplicate. -->
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>${poi.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jsoup</groupId>
+      <artifactId>jsoup</artifactId>
+      <version>${jsoup.version}</version>
     </dependency>
     <dependency>
       <groupId>com.nimbusds</groupId>

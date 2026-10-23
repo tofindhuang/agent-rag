@@ -146,6 +146,36 @@ public class KbDocumentServiceImpl implements KbDocumentService {
         }
     }
 
+    @Override
+    public void reingest(long userId, String documentId) {
+        availability.requireEnabled();
+        requireOwned(userId, documentId);
+        if (documentDao.requeue(documentId, userId) == 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "document is being deleted");
+        }
+        KbDocument requeued = documentDao.findOwned(documentId, userId);
+        if (requeued != null) {
+            enqueueIngest(requeued);
+        }
+    }
+
+    @Override
+    public int reingestAll(long userId) {
+        availability.requireEnabled();
+        int queued = 0;
+        for (KbDocument stale : documentDao.findStaleByUser(userId)) {
+            if (documentDao.requeue(stale.getId(), userId) == 0) {
+                continue;
+            }
+            KbDocument requeued = documentDao.findOwned(stale.getId(), userId);
+            if (requeued != null) {
+                enqueueIngest(requeued);
+                queued++;
+            }
+        }
+        return queued;
+    }
+
     private KbDocument newDocument(
             long userId,
             String title,

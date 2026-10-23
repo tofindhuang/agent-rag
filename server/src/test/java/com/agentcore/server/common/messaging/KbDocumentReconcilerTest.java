@@ -26,6 +26,9 @@ class KbDocumentReconcilerTest {
                 .thenReturn(List.of(document("queued", "doc-1")));
         when(dao.findDeletingForDispatch(any(LocalDateTime.class), eq(100)))
                 .thenReturn(List.of(document("deleting", "doc-2")));
+        when(dao.findExpiredProcessingForDispatch(
+                        any(LocalDateTime.class), any(LocalDateTime.class), eq(100)))
+                .thenReturn(List.of());
 
         int republished = new KbDocumentReconciler(dao, publisher).runOnce();
 
@@ -36,6 +39,26 @@ class KbDocumentReconcilerTest {
                 .containsExactly(KbTaskMessage.delete(7, "doc-2", 0));
         verify(dao).markEnqueued(eq("doc-1"), eq(7L), any(LocalDateTime.class));
         verify(dao).markEnqueued(eq("doc-2"), eq(7L), any(LocalDateTime.class));
+    }
+
+    @Test
+    void resumesAProcessingRowWhoseLeaseExpired() {
+        KbDocumentDao dao = Mockito.mock(KbDocumentDao.class);
+        FakePublisher publisher = new FakePublisher();
+        when(dao.findQueuedForDispatch(any(LocalDateTime.class), eq(100)))
+                .thenReturn(List.of());
+        when(dao.findDeletingForDispatch(any(LocalDateTime.class), eq(100)))
+                .thenReturn(List.of());
+        when(dao.findExpiredProcessingForDispatch(
+                        any(LocalDateTime.class), any(LocalDateTime.class), eq(100)))
+                .thenReturn(List.of(document("processing", "doc-3")));
+
+        int republished = new KbDocumentReconciler(dao, publisher).runOnce();
+
+        assertThat(republished).isEqualTo(1);
+        assertThat(publisher.ingested)
+                .containsExactly(KbTaskMessage.ingest(7, "doc-3", 0));
+        verify(dao).markEnqueued(eq("doc-3"), eq(7L), any(LocalDateTime.class));
     }
 
     @Test

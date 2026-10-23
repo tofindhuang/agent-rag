@@ -1,0 +1,105 @@
+package com.agentcore.server.support;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/** Tiny OpenAI-compatible embedding endpoint for KB integration tests. */
+public final class FakeEmbeddingServer {
+
+    public enum Mode {
+        NORMAL,
+        RATE_LIMITED,
+        BAD_REQUEST,
+        WRONG_DIMENSION
+    }
+
+    private final HttpServer server;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final int dimension;
+    private final AtomicInteger requests = new AtomicInteger();
+    private volatile Mode mode = Mode.NORMAL;
+
+    private FakeEmbeddingServer(int dimension) throws IOException {
+        this.dimension = dimension;
+        this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        this.server.createContext("/v1/embeddings", this::handle);
+        this.server.start();
+    }
+
+    public static FakeEmbeddingServer start(int dimension) {
+        try {
+            return new FakeEmbeddingServer(dimension);
+        } catch (IOException e) {
+            throw new IllegalStateException("cannot start fake embedding server", e);
+        }
+    }
+
+    public String baseUrl() {
+        return "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+    }
+
+    public int requests() {
+        return requests.get();
+    }
+
+    public void mode(Mode mode) {
+        this.mode = mode;
+    }
+
+    public void reset() {
+        this.mode = Mode.NORMAL;
+        this.requests.set(0);
+    }
+
+    private void handle(HttpExchange exchange) throws IOException {
+        requests.incrementAndGet();
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+
+        JsonNode body = objectMapper.readTree(exchange.getRequestBody());
+        JsonNode input = body.path("input");
+        int count = input.isArray() ? input.size() : 0;
+
+        Mode current = mode;
+        if (current == Mode.RATE_LIMITED) {
+            respond(exchange, 429, "{\"error\":\"rate limited\"}");
+            return;
+        }
+        if (current == Mode.BAD_REQUEST) {
+            respond(exchange, 400, "{\"error\":\"bad input\"}");
+            return;
+        }
+
+        ObjectNode response = objectMapper.createObjectNode();
+        ArrayNode data = response.putArray("data");
+        int size = current == Mode.WRONG_DIMENSION ? 3 : dimension;
+        for (int i = 0; i < count; i++) {
+            ObjectNode item = data.addObject();
+            item.put("index", i);
+            ArrayNode embedding = item.putArray("embedding");
+            for (int j = 0; j < size; j++) {
+                embedding.add(j == 0 ? (i + 1) : 0f);
+            }
+        }
+        respond(exchange, 200, objectMapper.writeValueAsString(response));
+    }
+
+    private static void respond(HttpExchange exchange, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(status, bytes.length);
+        exchange.getResponseBody().write(bytes);
+        exchange.close();
+    }
+}
