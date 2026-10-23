@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
@@ -29,6 +30,9 @@ export function ChatPage() {
             <h1 className={styles.title}>{chat.currentTitle}</h1>
             <div className={styles.account}>
               <span className={styles.email}>{user?.email}</span>
+              <Link className={styles.accountLink} href="/settings">
+                设置
+              </Link>
               <button className={styles.logout} type="button" onClick={() => void logout()}>
                 退出登录
               </button>

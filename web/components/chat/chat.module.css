@@ -201,6 +201,16 @@
   white-space: nowrap;
 }
 
+.accountLink {
+  color: #9aa3b2;
+  text-decoration: none;
+}
+
+.accountLink:hover,
+.accountLink:focus-visible {
+  color: #e5e7eb;
+}
+
 .logout {
   padding: 4px 10px;
   border: 1px solid #374151;
