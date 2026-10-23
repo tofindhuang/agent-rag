@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
+import { Banner } from "@/components/ui/Banner";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -73,16 +74,16 @@ export function ChatPage() {
           </header>
 
           {needsSetup && !creating ? (
-            <div className={styles.modelBanner} role="alert">
+            <Banner tone="error">
               <span>{chat.error}</span>
               <Link className={styles.bannerLink} href="/settings">
                 前往设置
               </Link>
-            </div>
+            </Banner>
           ) : null}
 
           {modelUnavailable && !switching && chat.currentSessionId ? (
-            <div className={styles.modelBanner} role="alert">
+            <Banner tone="error">
               <span>{chat.error}</span>
               <button
                 className={styles.bannerLink}
@@ -91,7 +92,7 @@ export function ChatPage() {
               >
                 切换模型
               </button>
-            </div>
+            </Banner>
           ) : null}
 
           {chat.historyHasMore ? (

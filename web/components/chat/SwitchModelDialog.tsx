@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
+import { Select } from "@/components/ui/Select";
+import uiStyles from "@/components/ui/ui.module.css";
 import { useModelCatalog } from "@/hooks/useModelCatalog";
-import { ModelSelect, SYSTEM_MODEL_VALUE, defaultModelValue } from "./ModelSelect";
-import styles from "./chat.module.css";
+import { ModelOptions, SYSTEM_MODEL_VALUE, defaultModelValue } from "./ModelSelect";
 
 interface SwitchModelDialogProps {
   sessionId: string;
@@ -13,6 +17,8 @@ interface SwitchModelDialogProps {
   onSwitch: (sessionId: string, modelId: number | null) => Promise<boolean>;
   onClose: () => void;
 }
+
+const FORM_ID = "switch-model-form";
 
 /** Fault-recovery picker shown after MODEL_UNAVAILABLE (ADR-0010). */
 export function SwitchModelDialog({
@@ -43,65 +49,55 @@ export function SwitchModelDialog({
   };
 
   return (
-    <div className={styles.dialogOverlay} role="dialog" aria-modal="true" aria-label="切换模型">
-      <form className={styles.dialog} onSubmit={(event) => void submit(event)}>
-        <h2 className={styles.dialogTitle}>当前模型不可用</h2>
-        <p className={styles.dialogHint}>选择一个可用模型，切换后从下一轮回复生效。</p>
-
-        <label className={styles.dialogLabel}>
-          模型
-          {catalog ? (
-            <ModelSelect
-              catalog={catalog}
-              value={model ?? defaultModelValue(catalog)}
-              onChange={setModel}
-              disabled={!hasModels}
-            />
-          ) : (
-            <input className={styles.dialogInput} disabled placeholder="加载中…" />
-          )}
-        </label>
-
-        {catalogError && catalog == null ? (
-          <p className={styles.dialogError} role="alert">
-            {catalogError}
-          </p>
-        ) : null}
-
-        {catalog && !hasModels ? (
-          <p className={styles.dialogHint} role="status">
-            没有可切换的模型，请先在
-            <Link className={styles.dialogLink} href="/settings">
-              设置
-            </Link>
-            中添加供应商。
-          </p>
-        ) : null}
-
-        {error ? (
-          <p className={styles.dialogError} role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <div className={styles.dialogActions}>
-          <button
-            className={styles.dialogPrimary}
+    <Dialog
+      title="当前模型不可用"
+      description="选择一个可用模型，切换后从下一轮回复生效。"
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
+            取消
+          </Button>
+          <Button
             type="submit"
+            form={FORM_ID}
             disabled={pending || loading || catalog == null || !hasModels}
           >
             {pending ? "切换中…" : "切换模型"}
-          </button>
-          <button
-            className={styles.dialogGhost}
-            type="button"
-            onClick={onClose}
-            disabled={pending}
+          </Button>
+        </>
+      }
+    >
+      <form id={FORM_ID} className={uiStyles.form} onSubmit={(event) => void submit(event)}>
+        {catalog ? (
+          <Select
+            label="模型"
+            value={model ?? defaultModelValue(catalog)}
+            onChange={(event) => setModel(event.target.value)}
+            disabled={!hasModels}
           >
-            取消
-          </button>
-        </div>
+            <ModelOptions catalog={catalog} />
+          </Select>
+        ) : (
+          <Banner tone="status">{loading ? "加载模型…" : "模型列表不可用"}</Banner>
+        )}
+
+        {catalogError && catalog == null ? <Banner tone="error">{catalogError}</Banner> : null}
+
+        {catalog && !hasModels ? (
+          <Banner tone="status">
+            <span>
+              没有可切换的模型，请先在
+              <Link className={uiStyles.link} href="/settings">
+                设置
+              </Link>
+              中添加供应商。
+            </span>
+          </Banner>
+        ) : null}
+
+        {error ? <Banner tone="error">{error}</Banner> : null}
       </form>
-    </div>
+    </Dialog>
   );
 }

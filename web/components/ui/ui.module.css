@@ -200,3 +200,20 @@
   border-color: var(--border);
   color: var(--text-secondary);
 }
+
+/* Forms composed inside a Dialog body */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.link:hover,
+.link:focus-visible {
+  text-decoration: underline;
+}

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/Button";
 import styles from "./chat.module.css";
 
 interface ComposerProps {
@@ -25,18 +26,13 @@ export function Composer({ value, onChange, onSend, onStop, disabled, busy }: Co
           disabled={disabled}
         />
         {busy ? (
-          <button type="button" className={styles.button} onClick={onStop}>
+          <Button variant="secondary" onClick={onStop}>
             停止
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            className={styles.button}
-            onClick={onSend}
-            disabled={disabled || !value.trim()}
-          >
+          <Button onClick={onSend} disabled={disabled || !value.trim()}>
             发送
-          </button>
+          </Button>
         )}
       </div>
     </div>

@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
+import { Select } from "@/components/ui/Select";
+import { TextField } from "@/components/ui/TextField";
+import uiStyles from "@/components/ui/ui.module.css";
 import { useModelCatalog } from "@/hooks/useModelCatalog";
 import type { CreateSessionOptions } from "@/lib/api/chat";
-import { ModelSelect, SYSTEM_MODEL_VALUE, defaultModelValue } from "./ModelSelect";
-import styles from "./chat.module.css";
+import { ModelOptions, SYSTEM_MODEL_VALUE, defaultModelValue } from "./ModelSelect";
 
 interface NewSessionDialogProps {
   /** Only creation failures; other chat errors must not leak into the dialog. */
@@ -14,6 +19,8 @@ interface NewSessionDialogProps {
   onSubmit: (options: CreateSessionOptions) => Promise<boolean>;
   onClose: () => void;
 }
+
+const FORM_ID = "new-session-form";
 
 export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSessionDialogProps) {
   const { catalog, loading, error: catalogError } = useModelCatalog();
@@ -43,84 +50,76 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
   };
 
   return (
-    <div className={styles.dialogOverlay} role="dialog" aria-modal="true" aria-label="新建会话">
-      <form className={styles.dialog} onSubmit={(event) => void submit(event)}>
-        <h2 className={styles.dialogTitle}>新建会话</h2>
-
-        <label className={styles.dialogLabel}>
-          标题（可选）
-          <input
-            className={styles.dialogInput}
-            value={title}
-            maxLength={255}
-            placeholder="新会话"
-            onChange={(event) => setTitle(event.target.value)}
-            autoFocus
-          />
-        </label>
-
-        <label className={styles.dialogLabel}>
-          模型
-          {catalog ? (
-            <ModelSelect
-              catalog={catalog}
-              value={model ?? defaultModelValue(catalog)}
-              onChange={setModel}
-              disabled={!hasModels}
-            />
-          ) : (
-            <input className={styles.dialogInput} disabled placeholder="加载中…" />
-          )}
-        </label>
-
-        {catalogError && catalog == null ? (
-          <p className={styles.dialogError} role="alert">
-            {catalogError}
-          </p>
-        ) : null}
-
-        {catalog && !hasModels ? (
-          <p className={styles.dialogHint} role="status">
-            还没有可用模型，请先在
-            <Link className={styles.dialogLink} href="/settings">
-              设置
-            </Link>
-            中添加供应商。
-          </p>
-        ) : null}
-
-        {error ? (
-          <p className={styles.dialogError} role="alert">
-            {error}
-            {errorCode === "MODEL_NOT_CONFIGURED" ? (
-              <>
-                {" "}
-                <Link className={styles.dialogLink} href="/settings">
-                  前往设置
-                </Link>
-              </>
-            ) : null}
-          </p>
-        ) : null}
-
-        <div className={styles.dialogActions}>
-          <button
-            className={styles.dialogPrimary}
+    <Dialog
+      title="新建会话"
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
+            取消
+          </Button>
+          <Button
             type="submit"
+            form={FORM_ID}
             disabled={pending || loading || catalog == null || !hasModels}
           >
             {pending ? "创建中…" : "创建"}
-          </button>
-          <button
-            className={styles.dialogGhost}
-            type="button"
-            onClick={onClose}
-            disabled={pending}
+          </Button>
+        </>
+      }
+    >
+      <form id={FORM_ID} className={uiStyles.form} onSubmit={(event) => void submit(event)}>
+        <TextField
+          label="标题（可选）"
+          value={title}
+          maxLength={255}
+          placeholder="新会话"
+          onChange={(event) => setTitle(event.target.value)}
+          autoFocus
+        />
+        {catalog ? (
+          <Select
+            label="模型"
+            value={model ?? defaultModelValue(catalog)}
+            onChange={(event) => setModel(event.target.value)}
+            disabled={!hasModels}
           >
-            取消
-          </button>
-        </div>
+            <ModelOptions catalog={catalog} />
+          </Select>
+        ) : (
+          <Banner tone="status">{loading ? "加载模型…" : "模型列表不可用"}</Banner>
+        )}
+
+        {catalogError && catalog == null ? <Banner tone="error">{catalogError}</Banner> : null}
+
+        {catalog && !hasModels ? (
+          <Banner tone="status">
+            <span>
+              还没有可用模型，请先在
+              <Link className={uiStyles.link} href="/settings">
+                设置
+              </Link>
+              中添加供应商。
+            </span>
+          </Banner>
+        ) : null}
+
+        {error ? (
+          <Banner tone="error">
+            <span>
+              {error}
+              {errorCode === "MODEL_NOT_CONFIGURED" ? (
+                <>
+                  {" "}
+                  <Link className={uiStyles.link} href="/settings">
+                    前往设置
+                  </Link>
+                </>
+              ) : null}
+            </span>
+          </Banner>
+        ) : null}
       </form>
-    </div>
+    </Dialog>
   );
 }

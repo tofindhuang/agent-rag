@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Banner } from "@/components/ui/Banner";
 import type { ChatMessage } from "@/types/chat";
 import { MessageBubble } from "./MessageBubble";
 import styles from "./chat.module.css";
@@ -51,11 +52,7 @@ export function MessageList({
           {notice}
         </div>
       )}
-      {error && (
-        <div className={styles.error} role="alert">
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="error">{error}</Banner>}
       <div ref={bottomRef} />
     </div>
   );
