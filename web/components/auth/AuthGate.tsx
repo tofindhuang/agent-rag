@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import styles from "./auth.module.css";
 
 /** Redirects anonymous visitors to /login before rendering the app. */
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -15,15 +16,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") {
     return (
-      <main>
+      <main className={styles.gate}>
         <p role="status">加载中…</p>
       </main>
     );
   }
   if (status === "error") {
     return (
-      <main>
-        <p role="alert">{error ?? "无法连接业务服务，请确认后端已启动。"}</p>
+      <main className={styles.gate}>
+        <p className={styles.error} role="alert">
+          {error ?? "无法连接业务服务，请确认后端已启动。"}
+        </p>
       </main>
     );
   }

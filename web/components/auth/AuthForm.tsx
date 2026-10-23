@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { takeAuthNotice } from "@/lib/auth-notice";
 import { userMessage } from "@/lib/api/errors";
+import { Banner } from "@/components/ui/Banner";
+import { Button } from "@/components/ui/Button";
+import { TextField } from "@/components/ui/TextField";
 import { useAuth } from "./AuthProvider";
 import styles from "./auth.module.css";
 
@@ -67,48 +70,30 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     <main className={styles.page}>
       <form className={styles.card} onSubmit={(event) => void submit(event)}>
         <h1 className={styles.title}>{isLogin ? "登录" : "注册"}</h1>
-        <label className={styles.label}>
-          邮箱
-          <input
-            className={styles.input}
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            disabled={busy}
-            required
-          />
-        </label>
-        <label className={styles.label}>
-          密码
-          <input
-            className={styles.input}
-            type="password"
-            autoComplete={isLogin ? "current-password" : "new-password"}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            disabled={busy}
-            required
-          />
-        </label>
-        {flash ? (
-          <p className={styles.notice} role="status">
-            {flash}
-          </p>
-        ) : null}
-        {error ? (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        ) : null}
-        <button className={styles.submit} type="submit" disabled={busy}>
+        <TextField
+          label="邮箱"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          disabled={busy}
+          required
+        />
+        <TextField
+          label="密码"
+          type="password"
+          autoComplete={isLogin ? "current-password" : "new-password"}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          disabled={busy}
+          required
+        />
+        {flash ? <Banner tone="notice">{flash}</Banner> : null}
+        {error ? <Banner tone="error">{error}</Banner> : null}
+        <Button className={styles.submitButton} type="submit" disabled={busy}>
           {isLogin ? "登录" : "注册并登录"}
-        </button>
-        {busy ? (
-          <p className={styles.status} role="status">
-            处理中…
-          </p>
-        ) : null}
+        </Button>
+        {busy ? <Banner tone="status">处理中…</Banner> : null}
         <p className={styles.switch}>
           {isLogin ? "还没有账号？" : "已有账号？"}{" "}
           <Link href={isLogin ? "/register" : "/login"}>
