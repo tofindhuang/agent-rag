@@ -175,7 +175,7 @@ AC：
 |---|---|---|
 | 前端 | Next.js 14+，SSE | 流式渲染；知识库与记忆管理界面 |
 | 业务层 | Java 21 + Spring Boot 3 | 认证、编排、RAG 管线、沙箱调度；HTTP 客户端调用 gateway，无需 Spring AI 的 agent 能力 |
-| agent 引擎 | Node 20+ 服务，`@earendil-works/pi-coding-agent` SDK | gateway；extension 三件套：kb_search、run_code、prompt 定制 |
+| agent 引擎 | Node 22+ 服务，`@earendil-works/pi-coding-agent` SDK | gateway；extension 三件套：kb_search、run_code、prompt 定制 |
 | 持久化 | MySQL 8 | 用户、会话、消息投影、画像、文档元数据、执行审计、用量 |
 | 缓存 | Redis 7 | 活跃会话路由表、限流、沙箱并发信号量、分布式锁 |
 | 向量库 | Qdrant | 知识切片的向量检索；M0 spike 定稿（ADR-0005） |

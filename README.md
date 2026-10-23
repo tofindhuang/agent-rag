@@ -28,7 +28,7 @@
 
 ## 运行（开发）
 
-前置：Node 20+、Java 21+、Docker（仅基础设施与沙箱需要）。
+前置：Node 22+（gateway 依赖 pi SDK 的 `fs.globSync`）、Java 21+、Docker（仅基础设施与沙箱需要）。
 
 ```bash
 # 0. 基础设施（当前骨架阶段可跳过）
