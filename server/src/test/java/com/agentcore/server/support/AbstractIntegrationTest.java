@@ -2,6 +2,7 @@ package com.agentcore.server.support;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
@@ -18,6 +19,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
+// Most tests have no broker; KB integration tests switch the listener back on.
+@TestPropertySource(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
 public abstract class AbstractIntegrationTest {
 
     protected static final String JWT_SECRET =

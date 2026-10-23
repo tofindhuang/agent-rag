@@ -9,6 +9,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -44,6 +46,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         log.warn("invalid request parameter {}: {}", ex.getName(), ex.getMessage());
         return respond(ErrorCode.INVALID_REQUEST, "invalid parameter: " + ex.getName());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleMaxUpload(MaxUploadSizeExceededException ex) {
+        log.warn("upload rejected: {}", ex.getMessage());
+        return respond(ErrorCode.KB_FILE_TOO_LARGE, "file exceeds the 20 MB limit");
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ApiError> handleMultipart(MultipartException ex) {
+        log.warn("malformed multipart request: {}", ex.getMessage());
+        return respond(ErrorCode.INVALID_REQUEST, "malformed multipart request");
     }
 
     @ExceptionHandler(ResponseStatusException.class)

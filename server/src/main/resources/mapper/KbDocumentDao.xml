@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.KbDocumentDao">
+
+    <sql id="documentColumns">
+        id, user_id, title, source_type, source_url, original_key, original_sha256,
+        mime, size_bytes, status, attempts, next_attempt_at, lease_until, enqueued_at,
+        chunk_count, error_code, error_message, version, created_at, updated_at
+    </sql>
+
+    <select id="findOwned" resultType="com.agentcore.server.domain.KbDocument">
+        SELECT <include refid="documentColumns"/>
+        FROM kb_documents
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="listByUser" resultType="com.agentcore.server.domain.KbDocument">
+        SELECT <include refid="documentColumns"/>
+        FROM kb_documents
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="countByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM kb_documents
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="sumSizeByUser" resultType="long">
+        SELECT COALESCE(SUM(size_bytes), 0)
+        FROM kb_documents
+        WHERE user_id = #{userId}
+    </select>
+
+    <update id="markEnqueued">
+        UPDATE kb_documents
+        SET enqueued_at = #{enqueuedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status IN ('queued', 'deleting')
+    </update>
+
+    <update id="markDeleting">
+        UPDATE kb_documents
+        SET status = 'deleting',
+            enqueued_at = NULL,
+            error_code = NULL,
+            error_message = NULL
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status &lt;&gt; 'deleting'
+    </update>
+
+    <select id="findQueuedForDispatch" resultType="com.agentcore.server.domain.KbDocument">
+        SELECT <include refid="documentColumns"/>
+        FROM kb_documents
+        WHERE status = 'queued'
+          AND (enqueued_at IS NULL OR enqueued_at &lt; #{before})
+        ORDER BY created_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findDeletingForDispatch" resultType="com.agentcore.server.domain.KbDocument">
+        SELECT <include refid="documentColumns"/>
+        FROM kb_documents
+        WHERE status = 'deleting'
+          AND (enqueued_at IS NULL OR enqueued_at &lt; #{before})
+        ORDER BY created_at ASC, id ASC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="deleteOwned">
+        DELETE FROM kb_documents
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </delete>
+
+</mapper>

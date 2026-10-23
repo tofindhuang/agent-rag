@@ -26,6 +26,7 @@ class KbQueueConfigurationTest {
                 .extracting(Queue::getName)
                 .containsExactlyInAnyOrder(
                         "kb.ingest.q",
+                        "kb.ingest.delete.q",
                         "kb.ingest.retry.5s",
                         "kb.ingest.retry.30s",
                         "kb.ingest.retry.2m",
@@ -66,6 +67,7 @@ class KbQueueConfigurationTest {
                 .extracting(Binding::getRoutingKey)
                 .containsExactlyInAnyOrder(
                         "ingest",
+                        "delete",
                         "dlq",
                         "retry.5s",
                         "retry.30s",

@@ -15,9 +15,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * RabbitMQ topology for ingestion (FR-2): one direct exchange, the main work
- * queue, three TTL retry queues that dead-letter back to the ingest queue, and
- * a DLQ. Declarations are lazy (Spring AMQP declares them on the first broker
+ * RabbitMQ topology (FR-2): one direct exchange, the ingest work queue, a
+ * separate delete queue (so deletion never competes with ingestion), three TTL
+ * retry queues that dead-letter back to the ingest queue, and a shared DLQ.
+ * Declarations are lazy (Spring AMQP declares them on the first broker
  * connection), so a broker outage never blocks application startup.
  */
 @Configuration
@@ -33,6 +34,10 @@ public class KbQueueConfiguration {
                 .withArgument("x-dead-letter-routing-key", names.dlqRoutingKey())
                 .build();
         Queue dlq = QueueBuilder.durable(names.dlq()).build();
+        Queue delete = QueueBuilder.durable(names.deleteQueue())
+                .withArgument("x-dead-letter-exchange", names.exchange())
+                .withArgument("x-dead-letter-routing-key", names.dlqRoutingKey())
+                .build();
 
         List<Declarable> declarations = new ArrayList<>();
         declarations.add(exchange);
@@ -44,6 +49,10 @@ public class KbQueueConfiguration {
         declarations.add(BindingBuilder.bind(dlq)
                 .to(exchange)
                 .with(names.dlqRoutingKey()));
+        declarations.add(delete);
+        declarations.add(BindingBuilder.bind(delete)
+                .to(exchange)
+                .with(names.deleteRoutingKey()));
 
         for (KbRetryTier tier : KbRetryTier.values()) {
             Queue retry = QueueBuilder.durable(names.retryQueue(tier))

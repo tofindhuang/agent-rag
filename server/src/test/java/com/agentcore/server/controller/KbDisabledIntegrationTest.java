@@ -5,12 +5,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.agentcore.server.support.AbstractIntegrationTest;
+import com.agentcore.server.support.AuthTestCalls;
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 @TestPropertySource(properties = "app.kb.enabled=false")
 @AutoConfigureMockMvc
@@ -18,6 +23,21 @@ class KbDisabledIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Test
+    void uploadReportsThatTheKnowledgeBaseIsDisabled() throws Exception {
+        String email = "kb-disabled-" + UUID.randomUUID() + "@example.com";
+        AuthTestCalls.register(mockMvc, email, "correct-horse");
+        String token = AuthTestCalls.login(mockMvc, email, "correct-horse");
+
+        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/kb/documents")
+                        .file(new MockMultipartFile(
+                                "file", "a.pdf", "application/pdf",
+                                "%PDF".getBytes(StandardCharsets.UTF_8)))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("KB_DISABLED"));
+    }
 
     @Test
     void searchReportsThatTheKnowledgeBaseIsDisabled() throws Exception {

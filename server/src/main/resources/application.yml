@@ -65,6 +65,11 @@ spring:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/agent_core?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: ${MYSQL_USER:agent_core}
     password: ${MYSQL_PASSWORD:agent_core}
+  servlet:
+    multipart:
+      # A single original is capped at 20 MB (FR-2); request headroom is for the form part.
+      max-file-size: 20MB
+      max-request-size: 21MB
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -81,6 +86,7 @@ spring:
     listener:
       simple:
         auto-startup: ${KB_ENABLED:true}
+        acknowledge-mode: manual
         prefetch: 1
 
 mybatis-plus:

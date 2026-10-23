@@ -29,7 +29,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class ToolTokenFilter extends OncePerRequestFilter {
 
     /** Ant patterns shared with the security matcher so both cannot drift. */
-    public static final String[] PATTERNS = {"/api/kb", "/api/kb/**", "/api/exec"};
+    public static final String[] PATTERNS = {"/api/kb/search", "/api/exec"};
 
     private static final Logger log = LoggerFactory.getLogger(ToolTokenFilter.class);
 
@@ -51,7 +51,7 @@ public class ToolTokenFilter extends OncePerRequestFilter {
     }
 
     static boolean isToolPath(String path) {
-        return path.equals("/api/kb") || path.startsWith("/api/kb/") || path.equals("/api/exec");
+        return path.equals("/api/kb/search") || path.equals("/api/exec");
     }
 
     @Override

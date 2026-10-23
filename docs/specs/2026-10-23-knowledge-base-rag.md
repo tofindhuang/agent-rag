@@ -19,7 +19,7 @@ M1 要交付一个可用闭环：上传文档 → 异步摄取 → 对话中检�
 ## Decisions（grilling 结论）
 
 1. **切片边界（全链路一小刀）**：摄取后端、文档管理 UI、`kb_search` 真实检索、聊天引用展示；不做多知识库、OCR、定时抓取、共享权限。
-2. **任务执行**：RabbitMQ 工作队列；MySQL 的 `kb_documents` 行仍是任务状态唯一真相源。
+2. **任务执行**：RabbitMQ 工作队列；摄取与删除使用独立路由键/队列（`ingest` / `delete`），MySQL 的 `kb_documents` 行仍是任务状态唯一真相源。
 3. **一致性**：文档行内 outbox（`enqueued_at`）+ 每 30s reconciler 补发；消费者按状态幂等。
 4. **重试**：`kb.ingest.q` 失败经 TTL 队列 5s/30s/2m 重试 3 次，最终 `failed` 并投 `kb.ingest.dlq`；瞬时错误重试、永久错误立即失败。
 5. **格式与限额**：PDF / Markdown / TXT / DOCX / HTML URL；单文件 ≤20 MB、URL ≤5 MB 且 30s 超时、≤500 页或 ≤2000 chunk；不做 OCR。

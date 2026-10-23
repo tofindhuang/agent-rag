@@ -26,8 +26,16 @@ public record KbQueueProperties(String prefix) {
         return prefix() + ".ingest.dlq";
     }
 
+    public String deleteQueue() {
+        return prefix() + ".ingest.delete.q";
+    }
+
     public String ingestRoutingKey() {
         return "ingest";
+    }
+
+    public String deleteRoutingKey() {
+        return "delete";
     }
 
     public String dlqRoutingKey() {
