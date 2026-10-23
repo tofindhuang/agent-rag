@@ -83,7 +83,7 @@ AC：
 
 ### FR-2 知识库 / RAG（P0）
 
-- 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与原文入 MySQL
+- 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与切片文本入 MySQL，原文入对象存储（MinIO/S3，见 ADR-0013），向量入 Qdrant（ADR-0005）
 - 支持格式（首期）：PDF、Markdown、TXT、docx、HTML URL 抓取
 - 检索工具 `kb_search`：模型在对话中按需调用；Java 侧执行向量检索 + 重排（rerank），返回 top-k 片段
 - 知识库隔离：按用户/工作区隔离，检索只命中授权范围

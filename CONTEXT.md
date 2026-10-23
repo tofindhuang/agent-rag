@@ -93,3 +93,28 @@ _Avoid_: code runner、REPL
 
 模型可主动调用的操作。首期两个：`kb_search`（知识库检索）、`run_code`（沙箱执行）。
 _Avoid_: function、plugin
+
+### 知识库文档（KB Document）
+
+用户上传或通过 URL 摄取的文件实体；元数据在 MySQL，原文在对象存储，切片与向量由摄取管线生成。
+_Avoid_: file、attachment、resource
+
+### 切片（Passage）
+
+文档切分后的最小检索与引用单位，带文档内序号与可选页码；embedding 与引用都以它为粒度。
+_Avoid_: chunk（口语可用，实体名统一 Passage）、segment
+
+### 摄取（Ingestion）
+
+把文档原文转成可检索切片的过程：解析、切分、embedding、写入向量库；异步执行，可重试与重建。
+_Avoid_: import、indexing（重建索引是 Ingestion 的一种）
+
+### 引用（Citation）
+
+回答所依据的具体 Passage 及其文档标题、段序号与页码的展示。
+_Avoid_: source、reference（口语可用，实体是 Citation）
+
+### 知识库设置（KB Settings）
+
+用户自带的 embedding/rerank 端点与凭证；未配置时回落到部署默认值。
+_Avoid_: embedding config、RAG config
