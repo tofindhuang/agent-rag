@@ -1,7 +1,7 @@
 # 视觉重做（切片 2）：设计 token、双主题与界面收敛
 
 日期：2026-10-23
-状态：Phase 1 grilling 已完成（Q1–Q12），待实现
+状态：已实现并验收（tickets 01–07；脚本门禁与矩阵记录见 `docs/tickets/visual-refresh-slice2/06-acceptance.md`）
 关联需求：FR-1（会话 UI）、FR-6（认证界面）
 关联 ADR：[0012](../adrs/0012-design-tokens-dual-theme.md)
 上游 spec：[2026-10-23-model-providers-account-archive.md](./2026-10-23-model-providers-account-archive.md)（其中「视觉重做、浅深主题」列为切片 2）
