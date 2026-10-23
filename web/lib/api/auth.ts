@@ -1,6 +1,5 @@
-import { API_BASE } from "@/lib/env";
 import { ApiError, toApiError } from "./errors";
-import { apiJson, authFetch } from "./http";
+import { apiJson, authFetch, publicPost } from "./http";
 import { clearAccessToken, extractAccessToken, setAccessToken } from "./token";
 
 export interface AuthUser {
@@ -13,18 +12,9 @@ interface RegisterResponse {
   email?: unknown;
 }
 
-async function postJson(path: string, body: unknown): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-}
-
 /** Signs in and keeps the returned access token in memory. */
 export async function login(email: string, password: string): Promise<void> {
-  const response = await postJson("/api/auth/login", { email, password });
+  const response = await publicPost("/api/auth/login", { email, password });
   if (!response.ok) throw await toApiError(response);
   const token = extractAccessToken(await response.json());
   if (!token) throw new ApiError("服务响应缺少 access token", response.status);
@@ -32,7 +22,7 @@ export async function login(email: string, password: string): Promise<void> {
 }
 
 export async function register(email: string, password: string): Promise<void> {
-  const response = await postJson("/api/auth/register", { email, password });
+  const response = await publicPost("/api/auth/register", { email, password });
   if (!response.ok) throw await toApiError(response);
   const data = (await response.json()) as RegisterResponse;
   if (typeof data.userId !== "number") {
@@ -43,7 +33,7 @@ export async function register(email: string, password: string): Promise<void> {
 /** Revokes the refresh token server-side and clears the in-memory access token. */
 export async function logout(): Promise<void> {
   try {
-    const response = await postJson("/api/auth/logout", {});
+    const response = await publicPost("/api/auth/logout", {});
     if (!response.ok && response.status !== 401) throw await toApiError(response);
   } finally {
     clearAccessToken();
@@ -70,8 +60,7 @@ export async function changePassword(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ currentPassword, newPassword }),
     },
-    true,
-    false,
+    { expireOn401: false },
   );
   if (!response.ok) throw await toApiError(response);
 }

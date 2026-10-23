@@ -69,7 +69,7 @@ export function SwitchModelDialog({
         ) : null}
 
         {catalog && !hasModels ? (
-          <p className={styles.dialogHint} role="alert">
+          <p className={styles.dialogHint} role="status">
             没有可切换的模型，请先在
             <Link className={styles.dialogLink} href="/settings">
               设置

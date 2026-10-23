@@ -80,7 +80,7 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
         ) : null}
 
         {catalog && !hasModels ? (
-          <p className={styles.dialogHint} role="alert">
+          <p className={styles.dialogHint} role="status">
             还没有可用模型，请先在
             <Link className={styles.dialogLink} href="/settings">
               设置

@@ -38,21 +38,29 @@ async function refreshAccessToken(): Promise<string> {
   return refreshInFlight;
 }
 
+export interface AuthFetchOptions {
+  /** Default true: one silent refresh + retry on 401. */
+  retryOn401?: boolean;
+  /**
+   * Default true: a 401 that survives the refresh means the session is gone
+   * (clears the token and notifies AuthProvider). Business endpoints that use
+   * 401 for a bad credential (change-password's wrong current password) pass
+   * false so the error reaches the form instead of logging the user out.
+   */
+  expireOn401?: boolean;
+}
+
 /**
  * Authenticated fetch: attaches the in-memory Bearer token, sends cookies, and
  * retries once after a silent refresh on 401.
- *
- * `expireOn401=false` keeps a 401 that survives the refresh as a normal
- * response. Business endpoints that use 401 for a bad credential (e.g. the
- * wrong current password on change-password) need that: treating it as an
- * expired session would log the user out and hide the error.
  */
 export async function authFetch(
   path: string,
   init: RequestInit = {},
-  retryOn401 = true,
-  expireOn401 = true,
+  options: AuthFetchOptions = {},
 ): Promise<Response> {
+  const retryOn401 = options.retryOn401 ?? true;
+  const expireOn401 = options.expireOn401 ?? true;
   const headers = new Headers(init.headers);
   const token = getAccessToken();
   if (token) headers.set("authorization", `Bearer ${token}`);
@@ -72,7 +80,7 @@ export async function authFetch(
       notifyAuthExpired();
       throw cause;
     }
-    const retried = await authFetch(path, init, false, expireOn401);
+    const retried = await authFetch(path, init, { retryOn401: false, expireOn401 });
     if (retried.status === 401 && expireOn401) {
       clearAccessToken();
       notifyAuthExpired();
@@ -80,6 +88,19 @@ export async function authFetch(
     return retried;
   }
   return response;
+}
+
+/**
+ * Unauthenticated JSON POST: no Bearer header and no 401 refresh. Public auth
+ * endpoints must treat 401 as a credential error, not an expired session.
+ */
+export function publicPost(path: string, body: unknown): Promise<Response> {
+  return fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Authenticated JSON call; non-2xx responses become {@link ApiError}. */
