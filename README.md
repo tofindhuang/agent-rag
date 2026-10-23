@@ -24,7 +24,7 @@
 └── docker-compose.yml MySQL 8 + Redis 7（向量库待 M0 选型）
 ```
 
-规范开发流程（在 pi 中自动发现，也可 `/skill:<name>` 显式调用）：讨论定型 → `/to-spec` → `/to-tickets` → `/implement`（配合 `/tdd`）→ `/code-review` → `/skill:pre-push-checks` → push。详见 `AGENTS.md`。
+规范开发流程（在 pi 中自动发现，也可 `/skill:<name>` 显式调用）：**`/skill:grilling`（Phase 1，强制）** → `/to-spec` → `/to-tickets` → `/implement`（配合 `/tdd`）→ `/code-review` → `/skill:pre-push-checks` → push。新功能/需求、架构组件、跨模块改动、schema/迁移、外部集成不得跳过 Phase 1，详见 `AGENTS.md`。
 
 ## 运行（开发）
 

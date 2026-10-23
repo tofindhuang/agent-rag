@@ -47,10 +47,52 @@ docker compose up -d                # mysql + redis
 | 决策地图 | `docs/tickets/<slug>/MAP.md` | `/wayfinder` |
 | ADRs | `docs/adrs/`（跨模块）、`<module>/docs/adrs/`（模块内） | `/domain-modeling` |
 | 领域词汇表 | `CONTEXT.md` | `/domain-modeling` |
+| 研究/选型记录 | `docs/research/YYYY-MM-DD-<slug>.md` | `/research` |
 
 同一套 skills 存放两份：`.pi/skills/`（pi 自动发现）与 `.agents/skills/`（其他 agent 工具的通用位置）。**改动任一份后必须同步另一份**（`cp -R .pi/skills/. .agents/skills/` 或反向），保持两处一致。
 
-规范流程：讨论定型 → `/to-spec` 写 spec → `/to-tickets` 切 tracer-bullet 票 → `/implement`（配合 `/tdd`）逐票实现 → `/code-review` 审查 → `/pre-push-checks` 后 push。斜杠名是跨工具通用写法；在 pi 中显式调用为 `/skill:<name>`（如 `/skill:pre-push-checks`）。
+## SDD Development Process（强制）
+
+所有新功能、新需求、架构组件、跨模块改动、schema/迁移变更、外部集成或契约变更，必须按以下顺序推进。**Phase 1 不可跳过。**
+
+1. **Phase 1：Inquiry & Decision**
+   - 用 `/grill-with-docs`（或 `/grilling`）逐问对抗式追问：边界、失败模式、数据归属、迁移、运维成本、验收方式。
+   - 先读 `docs/requirements.md`、`CONTEXT.md` 与相关 ADR/spec；事实自己查，决策问用户。
+   - 决策落到 ADR 或 spec；词表变化更新 `CONTEXT.md`。
+2. **Phase 2：Solution Design** — `/to-spec` 写 spec（跨模块放 `docs/specs/`，模块内放 `<module>/docs/specs/`）。
+3. **Phase 3：Implementation** — `/to-tickets` 切 tracer-bullet 票 → `/implement`（配合 `/tdd`）逐票实现。
+4. **Phase 4：Verification & Review** — `/code-review` 双轴审查 → `/pre-push-checks` → push/PR。
+
+硬规则：
+
+- Phase 1 完成前，**禁止**调用 `/to-spec`、`/to-tickets`、`/implement`，也不得直接写业务代码、迁移或配置。
+- 每个 spec 落地前自检：无 TBD、无自相矛盾、验收可测。
+- `/tdd` 在 Phase 3 强制；先确认测试缝，再按垂直切片红→绿推进。
+- Phase 4 的 lint/test/typecheck 必须真实跑过才能声称通过。
+
+### 自动进入 Phase 1（默认生效）
+
+检测到**实现级任务**时，第一动作是进入 `/grill-with-docs` / `/grilling`，而不是写代码或落 spec。判定（任一命中）：
+
+- 新功能或业务逻辑开发
+- 新架构组件/基础设施（新服务、新数据存储、消息队列等）
+- 非平凡的多文件或跨模块改动
+- 数据库 schema / 迁移变更
+- 新外部集成或契约变更
+
+豁免（可直接做）：
+
+- 纯问答、解释、只读调查，不写代码
+- 编辑 `AGENTS.md` / docs / specs / 注释 / typo
+- 用户已给出具体复现与范围的 bug fix
+- 用户明确说「跳过 grill」「直接做」
+- 纯机械配置（重命名、格式化、lint 修复）
+
+默认：不确定时按实现级任务处理，先进入 Phase 1，并向用户说明分类（例如「我判定这是实现级任务 → 进入 Phase 1」），让用户可纠正。
+
+禁止：对实现级任务直接跳到 `/to-spec`、`/to-tickets`、`/implement` 或任何代码/迁移输出。用户要求跳过时，先确认一次豁免，再继续。
+
+斜杠名是跨工具通用写法；在 pi 中显式调用为 `/skill:<name>`（如 `/skill:grilling`、`/skill:pre-push-checks`）。
 
 ## Git
 
