@@ -5,9 +5,11 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.sse.SseFrame;
 import com.agentcore.server.common.sse.SseFrameParser;
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Message;
+import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
@@ -27,6 +29,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +60,7 @@ public class ChatServiceImpl implements ChatService {
     private final ObjectMapper objectMapper;
     private final SessionDao sessionDao;
     private final MessageDao messageDao;
+    private final MessageCache messageCache;
     private final ChatProjectionService projection;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -66,11 +71,13 @@ public class ChatServiceImpl implements ChatService {
             ObjectMapper objectMapper,
             SessionDao sessionDao,
             MessageDao messageDao,
+            MessageCache messageCache,
             ChatProjectionService projection) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
         this.messageDao = messageDao;
+        this.messageCache = messageCache;
         this.projection = projection;
     }
 
@@ -143,11 +150,33 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public List<Message> history(long userId, String sessionId) {
+    public MessagePage history(long userId, String sessionId, Long beforeId, int limit) {
         if (sessionDao.findActiveOwned(sessionId, userId) == null) {
             throw sessionNotFound();
         }
-        return messageDao.listBySession(sessionId);
+
+        if (beforeId == null) {
+            List<Message> cached = messageCache.recent(sessionId, limit + 1);
+            if (cached.size() >= limit) {
+                List<Message> newest = cached.subList(0, limit);
+                boolean hasMore = cached.size() > limit
+                        || messageDao.existsBefore(sessionId, newest.get(newest.size() - 1).getId());
+                return new MessagePage(ascending(newest), hasMore);
+            }
+            // Fewer cached rows than a full page: fall through to MySQL so the
+            // cache can never truncate the visible window.
+        }
+
+        List<Message> rows = messageDao.listPage(sessionId, beforeId, limit + 1);
+        boolean hasMore = rows.size() > limit;
+        List<Message> newest = hasMore ? rows.subList(0, limit) : rows;
+        return new MessagePage(ascending(newest), hasMore);
+    }
+
+    private static List<Message> ascending(List<Message> newestFirst) {
+        List<Message> items = new ArrayList<>(newestFirst);
+        Collections.reverse(items);
+        return items;
     }
 
     @Override

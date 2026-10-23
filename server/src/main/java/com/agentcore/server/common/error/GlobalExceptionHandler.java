@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -36,6 +37,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex) {
         log.warn("malformed request body: {}", ex.getMessage());
         return respond(ErrorCode.INVALID_REQUEST, "malformed request body");
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("invalid request parameter {}: {}", ex.getName(), ex.getMessage());
+        return respond(ErrorCode.INVALID_REQUEST, "invalid parameter: " + ex.getName());
     }
 
     @ExceptionHandler(ResponseStatusException.class)

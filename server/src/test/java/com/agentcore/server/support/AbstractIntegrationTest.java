@@ -51,6 +51,8 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        registry.add("spring.data.redis.timeout", () -> "2s");
+        registry.add("spring.data.redis.connect-timeout", () -> "2s");
         registry.add("app.auth.jwt-secret", () -> JWT_SECRET);
         registry.add("app.gateway.api-token", () -> GATEWAY_API_TOKEN);
         registry.add("app.gateway.base-url", GATEWAY::baseUrl);

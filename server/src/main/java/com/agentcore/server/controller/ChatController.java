@@ -4,6 +4,7 @@ import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.domain.Message;
+import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
 import com.agentcore.server.dto.chat.MessageListResponse;
@@ -84,11 +85,17 @@ public class ChatController {
     @GetMapping("/sessions/{sessionId}/messages")
     public MessageListResponse history(
             @AuthenticationPrincipal AuthenticatedUser user,
-            @PathVariable String sessionId) {
+            @PathVariable String sessionId,
+            @RequestParam(required = false) Long beforeId,
+            @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) int limit) {
+        if (limit < 1 || limit > MAX_PAGE_SIZE) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "limit must be between 1 and 100");
+        }
+        MessagePage page = chatService.history(user.userId(), sessionId, beforeId, limit);
         return new MessageListResponse(
-                chatService.history(user.userId(), sessionId).stream()
-                        .map(ChatController::toView)
-                        .toList());
+                page.items().stream().map(ChatController::toView).toList(),
+                page.hasMore(),
+                page.nextBeforeId());
     }
 
     @PatchMapping("/sessions/{sessionId}")

@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.config.GatewayProperties;
@@ -49,6 +50,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MessageDao messageDao;
+
+    @Autowired
+    private MessageCache messageCacheDao;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -255,9 +259,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
         send(token, sessionId, "hi");
 
         ChatServiceImpl fresh = new ChatServiceImpl(
-                gatewayProperties, objectMapper, sessionDao, messageDao, projection);
+                gatewayProperties, objectMapper, sessionDao, messageDao, messageCacheDao, projection);
 
-        assertThat(fresh.history(userId, sessionId)).hasSize(2);
+        assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }
 
     private String send(String token, String sessionId, String text) throws Exception {

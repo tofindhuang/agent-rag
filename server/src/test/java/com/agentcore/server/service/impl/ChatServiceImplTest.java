@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
@@ -57,7 +58,8 @@ class ChatServiceImplTest {
         when(sessionDao.findActiveOwned(anyString(), anyLong())).thenReturn(new Session());
         when(sessionDao.archive(anyString(), anyLong(), any())).thenReturn(1);
         projection = mock(ChatProjectionService.class);
-        service = new ChatServiceImpl(properties, mapper, sessionDao, mock(MessageDao.class), projection);
+        service = new ChatServiceImpl(
+                properties, mapper, sessionDao, mock(MessageDao.class), mock(MessageCache.class), projection);
     }
 
     @AfterEach

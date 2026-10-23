@@ -3,6 +3,12 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.agentcore.server.dao.MessageDao">
 
+    <sql id="messageColumns">
+        id, session_id, turn_id, ordinal, role, content, thinking, tool_calls,
+        status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
+        created_at
+    </sql>
+
     <!-- Idempotent projection write (ADR-0006); MySQL 8 alias form. -->
     <insert id="upsert">
         INSERT INTO messages (
@@ -25,13 +31,31 @@
             tokens_out = new.tokens_out
     </insert>
 
-    <select id="listBySession" resultType="com.agentcore.server.domain.Message">
-        SELECT id, session_id, turn_id, ordinal, role, content, thinking, tool_calls,
-               status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
-               created_at
+    <select id="listPage" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
         FROM messages
         WHERE session_id = #{sessionId}
-        ORDER BY id ASC
+        <if test="beforeId != null">
+          AND id &lt; #{beforeId}
+        </if>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findByOrdinal" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND ordinal = #{ordinal}
+    </select>
+
+    <select id="existsBefore" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM messages
+            WHERE session_id = #{sessionId}
+              AND id &lt; #{id}
+        )
     </select>
 
     <update id="markUserDelivery">

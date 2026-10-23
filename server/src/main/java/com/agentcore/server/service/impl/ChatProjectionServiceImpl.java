@@ -1,5 +1,6 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionDao;
@@ -13,6 +14,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class ChatProjectionServiceImpl implements ChatProjectionService {
@@ -24,11 +27,17 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     private final MessageDao messageDao;
     private final RunDao runDao;
     private final SessionDao sessionDao;
+    private final MessageCache messageCache;
 
-    public ChatProjectionServiceImpl(MessageDao messageDao, RunDao runDao, SessionDao sessionDao) {
+    public ChatProjectionServiceImpl(
+            MessageDao messageDao,
+            RunDao runDao,
+            SessionDao sessionDao,
+            MessageCache messageCache) {
         this.messageDao = messageDao;
         this.runDao = runDao;
         this.sessionDao = sessionDao;
+        this.messageCache = messageCache;
     }
 
     @Override
@@ -83,6 +92,9 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
         message.setTokensOut(tokensOut);
         message.setStatus(status);
         messageDao.upsert(message);
+        if ("complete".equals(status) || "partial".equals(status)) {
+            cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
+        }
     }
 
     @Override
@@ -90,6 +102,7 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
         Message message = baseMessage(turn, ordinal, "tool");
         message.setContent(truncateUtf8(content, TOOL_CONTENT_LIMIT_BYTES));
         messageDao.upsert(message);
+        cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
     }
 
     @Override
@@ -110,6 +123,7 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
                 tokensOut,
                 nowUtc());
         messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "sent");
+        cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), 0));
     }
 
     @Override
@@ -124,6 +138,23 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
                 0L,
                 nowUtc());
         messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "failed");
+    }
+
+    /** The cache is auxiliary and must only see committed rows. */
+    private void cacheAfterCommit(Message message) {
+        if (message == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    messageCache.add(message);
+                }
+            });
+        } else {
+            messageCache.add(message);
+        }
     }
 
     private static Message baseMessage(TurnKey turn, int ordinal, String role) {

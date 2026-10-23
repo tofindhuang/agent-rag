@@ -2,6 +2,9 @@ server:
   port: 8080
 
 app:
+  message-cache:
+    ttl: 24h
+    max-entries: 100
   auth:
     # HS256 key; startup fails when unset or shorter than 32 bytes (ADR-0007).
     jwt-secret: ${JWT_SECRET:}
