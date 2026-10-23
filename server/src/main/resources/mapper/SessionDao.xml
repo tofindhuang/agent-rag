@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.SessionDao">
+
+    <select id="findActiveOwned" resultType="com.agentcore.server.domain.Session">
+        SELECT id, user_id, title, status, last_active_at, deleted_at, created_at, updated_at
+        FROM sessions
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </select>
+
+    <!-- Composite cursor: (last_active_at DESC, id DESC). -->
+    <select id="listActivePage" resultType="com.agentcore.server.domain.Session">
+        SELECT id, user_id, title, status, last_active_at, deleted_at, created_at, updated_at
+        FROM sessions
+        WHERE user_id = #{userId}
+          AND status = 'active'
+        <if test="beforeActiveAt != null">
+          AND (last_active_at &lt; #{beforeActiveAt}
+               OR (last_active_at = #{beforeActiveAt} AND id &lt; #{beforeId}))
+        </if>
+        ORDER BY last_active_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- Ownership is part of the predicate: zero rows means "not yours / gone". -->
+    <update id="rename">
+        UPDATE sessions
+        SET title = #{title}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </update>
+
+    <update id="archive">
+        UPDATE sessions
+        SET status = 'archived',
+            deleted_at = #{deletedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </update>
+
+</mapper>

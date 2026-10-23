@@ -1,7 +1,10 @@
 package com.agentcore.server.service;
 
+import com.agentcore.server.domain.Session;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Chat use cases. Controllers depend on this interface; the implementation
@@ -9,17 +12,24 @@ import java.io.OutputStream;
  */
 public interface ChatService {
 
-    /** Creates a gateway session and returns its ID (also the business session ID). */
-    String createSession(String userId);
+    /** Creates the AgentSession and stores the business session row. */
+    String createSession(long userId);
 
-    /** Opens the gateway prompt stream after validating the session owner. */
-    PromptStream openPrompt(String sessionId, String text);
+    /** Active sessions of the user, newest activity first (composite cursor). */
+    List<Session> listSessions(
+            long userId, LocalDateTime beforeActiveAt, String beforeId, int limit);
+
+    void renameSession(long userId, String sessionId, String title);
+
+    /** Archives the session (soft delete); the gateway session is disposed best-effort. */
+    void archiveSession(long userId, String sessionId);
+
+    /** Opens the gateway prompt stream after validating ownership. */
+    PromptStream openPrompt(long userId, String sessionId, String text);
 
     /**
      * Relays contract v1 frames to the caller and synthesizes a terminal when
      * the upstream stream ends without {@code run_settled}.
      */
     void relayPrompt(PromptStream stream, OutputStream out) throws IOException;
-
-    void disposeSession(String sessionId);
 }

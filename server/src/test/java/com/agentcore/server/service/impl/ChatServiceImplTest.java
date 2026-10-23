@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +25,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ChatServiceImplTest {
 
@@ -33,6 +40,7 @@ class ChatServiceImplTest {
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
 
     private HttpServer server;
+    private SessionDao sessionDao;
     private ChatServiceImpl service;
 
     @BeforeEach
@@ -42,7 +50,10 @@ class ChatServiceImplTest {
         server.start();
         GatewayProperties properties = new GatewayProperties(
                 "http://127.0.0.1:" + server.getAddress().getPort(), null);
-        service = new ChatServiceImpl(properties, mapper);
+        sessionDao = mock(SessionDao.class);
+        when(sessionDao.findActiveOwned(anyString(), anyLong())).thenReturn(new Session());
+        when(sessionDao.archive(anyString(), anyLong(), any())).thenReturn(1);
+        service = new ChatServiceImpl(properties, mapper, sessionDao);
     }
 
     @AfterEach
@@ -52,10 +63,10 @@ class ChatServiceImplTest {
 
     @Test
     void createSessionUsesPutAndIdentityHeader() {
-        String sessionId = service.createSession("u1");
+        String sessionId = service.createSession(1L);
 
         assertNotNull(sessionId);
-        assertEquals("u1", lastUserId.get());
+        assertEquals("1", lastUserId.get());
     }
 
     @Test
@@ -96,19 +107,19 @@ class ChatServiceImplTest {
     }
 
     @Test
-    void disposeUsesDeleteWithOwnerHeader() {
-        String sessionId = service.createSession("u1");
+    void archiveUsesDeleteWithOwnerHeader() {
+        String sessionId = service.createSession(1L);
 
-        service.disposeSession(sessionId);
+        service.archiveSession(1L, sessionId);
 
         assertEquals("DELETE", lastMethod.get());
-        assertEquals("u1", lastUserId.get());
+        assertEquals("1", lastUserId.get());
     }
 
     private PromptStream openPrompt(String mode) {
         promptMode.set(mode);
-        String sessionId = service.createSession("u1");
-        return service.openPrompt(sessionId, "hi");
+        String sessionId = service.createSession(1L);
+        return service.openPrompt(1L, sessionId, "hi");
     }
 
     private String relay(PromptStream stream) throws IOException {

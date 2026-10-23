@@ -5,6 +5,8 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.sse.SseFrame;
 import com.agentcore.server.common.sse.SseFrameParser;
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,17 +21,19 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Default {@link ChatService}: contract v1 client and SSE relay.
+ * Default {@link ChatService}: contract v1 client, session persistence and SSE
+ * relay.
  *
  * <p>Java owns the business session ID and turn ID, sends the user identity as
  * a header, validates the turn echoed by {@code run_started}, and synthesizes
@@ -39,50 +43,102 @@ import org.springframework.stereotype.Service;
 public class ChatServiceImpl implements ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatServiceImpl.class);
+    private static final String DEFAULT_TITLE = "新会话";
+    private static final String STATUS_ACTIVE = "active";
 
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
+    private final SessionDao sessionDao;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
-    // M0 only: no persistence yet; M1 replaces this with the sessions table.
-    private final ConcurrentMap<String, String> sessionUsers = new ConcurrentHashMap<>();
 
-    public ChatServiceImpl(GatewayProperties gateway, ObjectMapper objectMapper) {
+    public ChatServiceImpl(GatewayProperties gateway, ObjectMapper objectMapper, SessionDao sessionDao) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
+        this.sessionDao = sessionDao;
     }
 
     @Override
-    public String createSession(String userId) {
+    public String createSession(long userId) {
         String sessionId = UUID.randomUUID().toString();
-        HttpRequest request = HttpRequest.newBuilder(
-                        URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId)))
-                .header("X-User-Id", userId)
-                .PUT(HttpRequest.BodyPublishers.noBody())
-                .build();
-        HttpResponse<String> response = sendForString(request);
-        if (response.statusCode() >= 400) {
-            throw upstreamError("create session", response);
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setUserId(userId);
+        session.setTitle(DEFAULT_TITLE);
+        session.setStatus(STATUS_ACTIVE);
+        session.setLastActiveAt(nowUtc());
+        sessionDao.insert(session);
+
+        // DB first: if the gateway rejects the session, compensate by removing
+        // the row instead of leaving an unreachable AgentSession behind.
+        try {
+            HttpRequest request = gatewaySession(sessionId, userId)
+                    .PUT(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = sendForString(request);
+            if (response.statusCode() >= 400) {
+                throw upstreamError("create session", response);
+            }
+            return sessionId;
+        } catch (RuntimeException ex) {
+            try {
+                sessionDao.deleteById(sessionId);
+            } catch (RuntimeException cleanupFailure) {
+                log.warn("failed to remove session {} after gateway error: {}",
+                        sessionId, cleanupFailure.getMessage());
+            }
+            throw ex;
         }
-        sessionUsers.put(sessionId, userId);
-        return sessionId;
     }
 
     @Override
-    public PromptStream openPrompt(String sessionId, String text) {
-        String userId = sessionUsers.get(sessionId);
-        if (userId == null) {
-            throw new ApiException(ErrorCode.SESSION_NOT_FOUND, "session not found");
+    public List<Session> listSessions(
+            long userId, LocalDateTime beforeActiveAt, String beforeId, int limit) {
+        return sessionDao.listActivePage(userId, beforeActiveAt, beforeId, limit);
+    }
+
+    @Override
+    public void renameSession(long userId, String sessionId, String title) {
+        if (sessionDao.rename(sessionId, userId, title) == 0) {
+            throw sessionNotFound();
+        }
+    }
+
+    @Override
+    public void archiveSession(long userId, String sessionId) {
+        if (sessionDao.archive(sessionId, userId, nowUtc()) == 0) {
+            throw sessionNotFound();
+        }
+
+        // The gateway is allowed to forget the AgentSession; a restart already
+        // means it has nothing to dispose, so this stays best-effort.
+        try {
+            HttpRequest request = gatewaySession(sessionId, userId)
+                    .DELETE()
+                    .build();
+            HttpResponse<String> response = sendForString(request);
+            if (response.statusCode() >= 400 && response.statusCode() != 404) {
+                log.warn("gateway dispose returned {} for archived session {}",
+                        response.statusCode(), sessionId);
+            }
+        } catch (RuntimeException ex) {
+            log.warn("gateway dispose failed for archived session {}: {}", sessionId, ex.getMessage());
+        }
+    }
+
+    @Override
+    public PromptStream openPrompt(long userId, String sessionId, String text) {
+        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
         }
 
         String turnId = UUID.randomUUID().toString();
         String requestId = UUID.randomUUID().toString();
-        HttpRequest.Builder builder = HttpRequest.newBuilder(
-                        URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId) + "/prompt"))
+        HttpRequest.Builder builder = gatewaySession(sessionId, userId)
+                .uri(URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId) + "/prompt"))
                 .header("content-type", "application/json")
                 .header("accept", "text/event-stream")
-                .header("X-User-Id", userId)
                 .header("X-Request-Id", requestId)
                 .POST(HttpRequest.BodyPublishers.ofString(
                         toJson(Map.of("text", text, "turnId", turnId))));
@@ -170,20 +226,18 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    @Override
-    public void disposeSession(String sessionId) {
-        String userId = sessionUsers.remove(sessionId);
-        if (userId == null) return;
-
-        HttpRequest request = HttpRequest.newBuilder(
+    private HttpRequest.Builder gatewaySession(String sessionId, long userId) {
+        return HttpRequest.newBuilder(
                         URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId)))
-                .header("X-User-Id", userId)
-                .DELETE()
-                .build();
-        HttpResponse<String> response = sendForString(request);
-        if (response.statusCode() >= 400 && response.statusCode() != 404) {
-            throw upstreamError("dispose session", response);
-        }
+                .header("X-User-Id", Long.toString(userId));
+    }
+
+    private static ApiException sessionNotFound() {
+        return new ApiException(ErrorCode.SESSION_NOT_FOUND, "session not found");
+    }
+
+    private static LocalDateTime nowUtc() {
+        return LocalDateTime.now(ZoneOffset.UTC);
     }
 
     private String readTurnId(String data) throws IOException {
