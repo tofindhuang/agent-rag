@@ -14,7 +14,7 @@ import java.util.List;
 public interface ChatService {
 
     /** Creates the AgentSession and stores the business session row. */
-    String createSession(long userId);
+    String createSession(long userId, String title, Long modelId);
 
     /** Active sessions of the user, newest activity first (composite cursor). */
     List<Session> listSessions(
@@ -27,6 +27,9 @@ public interface ChatService {
 
     /** Projected history page (ascending), Redis-first for the newest page. */
     MessagePage history(long userId, String sessionId, Long beforeId, int limit);
+
+    /** Switches the session model; effective from the next prompt. */
+    void switchModel(long userId, String sessionId, Long modelId);
 
     /** Opens the gateway prompt stream after validating ownership. */
     PromptStream openPrompt(long userId, String sessionId, String text, String turnId);

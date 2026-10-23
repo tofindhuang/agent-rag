@@ -29,6 +29,9 @@ public final class FakeGateway {
     private final AtomicReference<String> lastProbeApiKey = new AtomicReference<>();
     private final AtomicReference<String> lastProbeApi = new AtomicReference<>();
     private final AtomicReference<String> lastProbeBaseUrl = new AtomicReference<>();
+    private final AtomicReference<String> lastModelId = new AtomicReference<>();
+    private final AtomicReference<String> lastModelApiKey = new AtomicReference<>();
+    private final AtomicInteger deleteCount = new AtomicInteger();
 
     public FakeGateway() {
         try {
@@ -80,6 +83,24 @@ public final class FakeGateway {
         return lastProbeBaseUrl.get();
     }
 
+    public String lastModelId() {
+        return lastModelId.get();
+    }
+
+    public String lastModelApiKey() {
+        return lastModelApiKey.get();
+    }
+
+    public int deleteCount() {
+        return deleteCount.get();
+    }
+
+    public void resetModelCapture() {
+        lastModelId.set(null);
+        lastModelApiKey.set(null);
+        deleteCount.set(0);
+    }
+
     private void handle(HttpExchange exchange) throws IOException {
         try {
             String path = exchange.getRequestURI().getPath();
@@ -92,10 +113,26 @@ public final class FakeGateway {
             if (path.startsWith("/sessions/") && method.equals("PUT")) {
                 putCount.incrementAndGet();
                 lastCreateSessionUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
-                sendJson(exchange, 200, "{}");
+                String raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                JsonNode model = raw.isBlank() ? null : MAPPER.readTree(raw).path("model");
+                if (model != null && !model.isMissingNode()) {
+                    String modelId = model.path("modelId").asText("");
+                    lastModelId.set(modelId);
+                    lastModelApiKey.set(model.path("apiKey").asText(""));
+                    sendJson(exchange, 200,
+                            "{\"sessionId\":\"s\",\"created\":true,\"restored\":false,"
+                                    + "\"model\":{\"provider\":\"Prov\",\"id\":\"" + modelId
+                                    + "\",\"name\":\"" + model.path("displayName").asText(modelId) + "\"}}");
+                    return;
+                }
+                sendJson(exchange, 200,
+                        "{\"sessionId\":\"s\",\"created\":true,\"restored\":false,"
+                                + "\"model\":{\"provider\":\"system\",\"id\":\"system-model\","
+                                + "\"name\":\"System Model\"}}");
                 return;
             }
             if (path.startsWith("/sessions/") && method.equals("DELETE")) {
+                deleteCount.incrementAndGet();
                 sendJson(exchange, 200, "{}");
                 return;
             }

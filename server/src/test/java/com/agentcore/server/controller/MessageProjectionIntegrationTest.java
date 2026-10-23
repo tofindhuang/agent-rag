@@ -10,11 +10,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
+import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
@@ -53,6 +55,12 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MessageCache messageCacheDao;
+
+    @Autowired
+    private SessionModelDao sessionModelDao;
+
+    @Autowired
+    private SessionModelService sessionModelService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -259,7 +267,14 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
         send(token, sessionId, "hi");
 
         ChatServiceImpl fresh = new ChatServiceImpl(
-                gatewayProperties, objectMapper, sessionDao, messageDao, messageCacheDao, projection);
+                gatewayProperties,
+                objectMapper,
+                sessionDao,
+                sessionModelDao,
+                messageDao,
+                messageCacheDao,
+                projection,
+                sessionModelService);
 
         assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }

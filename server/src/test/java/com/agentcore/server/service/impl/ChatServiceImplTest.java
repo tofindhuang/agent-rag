@@ -8,9 +8,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.ChatProjectionService;
+import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +48,7 @@ class ChatServiceImplTest {
     private HttpServer server;
     private SessionDao sessionDao;
     private ChatProjectionService projection;
+    private SessionModelService sessionModelService;
     private ChatServiceImpl service;
 
     @BeforeEach
@@ -58,8 +62,20 @@ class ChatServiceImplTest {
         when(sessionDao.findActiveOwned(anyString(), anyLong())).thenReturn(new Session());
         when(sessionDao.archive(anyString(), anyLong(), any())).thenReturn(1);
         projection = mock(ChatProjectionService.class);
+        sessionModelService = mock(SessionModelService.class);
+        SessionModelChoice system =
+                new SessionModelChoice(null, "系统默认", "system", null, null, null, null, null, null, null, false, false);
+        when(sessionModelService.forNewSession(anyLong(), any())).thenReturn(system);
+        when(sessionModelService.forExistingSession(anyLong(), anyString())).thenReturn(system);
         service = new ChatServiceImpl(
-                properties, mapper, sessionDao, mock(MessageDao.class), mock(MessageCache.class), projection);
+                properties,
+                mapper,
+                sessionDao,
+                mock(SessionModelDao.class),
+                mock(MessageDao.class),
+                mock(MessageCache.class),
+                projection,
+                sessionModelService);
     }
 
     @AfterEach
@@ -69,7 +85,7 @@ class ChatServiceImplTest {
 
     @Test
     void createSessionUsesPutAndIdentityHeader() {
-        String sessionId = service.createSession(1L);
+        String sessionId = service.createSession(1L, null, null);
 
         assertNotNull(sessionId);
         assertEquals("1", lastUserId.get());
@@ -114,7 +130,7 @@ class ChatServiceImplTest {
 
     @Test
     void archiveUsesDeleteWithOwnerHeader() {
-        String sessionId = service.createSession(1L);
+        String sessionId = service.createSession(1L, null, null);
 
         service.archiveSession(1L, sessionId);
 
@@ -124,7 +140,7 @@ class ChatServiceImplTest {
 
     private PromptStream openPrompt(String mode) {
         promptMode.set(mode);
-        String sessionId = service.createSession(1L);
+        String sessionId = service.createSession(1L, null, null);
         return service.openPrompt(1L, sessionId, "hi", null);
     }
 

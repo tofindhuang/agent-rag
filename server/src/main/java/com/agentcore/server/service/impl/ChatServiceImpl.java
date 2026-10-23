@@ -8,12 +8,15 @@ import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.ChatService;
+import com.agentcore.server.service.SessionModelChoice;
+import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -59,9 +62,11 @@ public class ChatServiceImpl implements ChatService {
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
     private final SessionDao sessionDao;
+    private final SessionModelDao sessionModelDao;
     private final MessageDao messageDao;
     private final MessageCache messageCache;
     private final ChatProjectionService projection;
+    private final SessionModelService sessionModelService;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -70,32 +75,42 @@ public class ChatServiceImpl implements ChatService {
             GatewayProperties gateway,
             ObjectMapper objectMapper,
             SessionDao sessionDao,
+            SessionModelDao sessionModelDao,
             MessageDao messageDao,
             MessageCache messageCache,
-            ChatProjectionService projection) {
+            ChatProjectionService projection,
+            SessionModelService sessionModelService) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
+        this.sessionModelDao = sessionModelDao;
         this.messageDao = messageDao;
         this.messageCache = messageCache;
         this.projection = projection;
+        this.sessionModelService = sessionModelService;
     }
 
     @Override
-    public String createSession(long userId) {
+    public String createSession(long userId, String title, Long modelId) {
+        SessionModelChoice choice = sessionModelService.forNewSession(userId, modelId);
+
         String sessionId = UUID.randomUUID().toString();
         Session session = new Session();
         session.setId(sessionId);
         session.setUserId(userId);
-        session.setTitle(Session.DEFAULT_TITLE);
+        session.setTitle(title == null || title.isBlank() ? Session.DEFAULT_TITLE : title.trim());
         session.setStatus(STATUS_ACTIVE);
         session.setLastActiveAt(nowUtc());
         sessionDao.insert(session);
+        sessionModelDao.upsert(sessionId, choice.providerModelId(), choice.label(), choice.source());
 
         // DB first: if the gateway rejects the session, compensate by removing
         // the row instead of leaving an unreachable AgentSession behind.
         try {
-            ensureGatewaySession(sessionId, userId);
+            String actualName = ensureGatewaySession(sessionId, userId, choice);
+            if ("system".equals(choice.source()) && actualName != null && !actualName.isBlank()) {
+                sessionModelDao.upsert(sessionId, null, actualName, "system");
+            }
             return sessionId;
         } catch (RuntimeException ex) {
             try {
@@ -105,6 +120,41 @@ public class ChatServiceImpl implements ChatService {
                         sessionId, cleanupFailure.getMessage());
             }
             throw ex;
+        }
+    }
+
+    @Override
+    public void switchModel(long userId, String sessionId, Long modelId) {
+        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
+        }
+        SessionModelChoice choice = sessionModelService.forSwitch(userId, modelId);
+
+        // The gateway keeps the model of a resident AgentSession; dispose it so
+        // the next ensure rebuilds the runtime from the pi file with the new model.
+        disposeGatewaySession(sessionId, userId);
+        String actualName = ensureGatewaySession(sessionId, userId, choice);
+        sessionModelDao.upsert(
+                sessionId, choice.providerModelId(), labelFor(choice, actualName), choice.source());
+    }
+
+    private static String labelFor(SessionModelChoice choice, String actualName) {
+        if (!"system".equals(choice.source())) {
+            return choice.label();
+        }
+        return actualName == null || actualName.isBlank() ? choice.label() : actualName;
+    }
+
+    /** Fills a missing snapshot (pre-migration sessions) and refreshes a stale system label. */
+    private void syncSnapshot(Session session, SessionModelChoice choice, String actualName) {
+        boolean missing = session.getModelLabel() == null;
+        boolean staleSystemLabel = "system".equals(choice.source())
+                && actualName != null
+                && !actualName.isBlank()
+                && !actualName.equals(session.getModelLabel());
+        if (missing || staleSystemLabel) {
+            sessionModelDao.upsert(
+                    session.getId(), choice.providerModelId(), labelFor(choice, actualName), choice.source());
         }
     }
 
@@ -175,9 +225,11 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public PromptStream openPrompt(long userId, String sessionId, String text, String requestTurnId) {
-        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+        Session session = sessionDao.findActiveOwned(sessionId, userId);
+        if (session == null) {
             throw sessionNotFound();
         }
+        SessionModelChoice choice = sessionModelService.forExistingSession(userId, sessionId);
 
         String turnId = requestTurnId == null || requestTurnId.isBlank()
                 ? UUID.randomUUID().toString()
@@ -186,10 +238,11 @@ public class ChatServiceImpl implements ChatService {
         String requestId = UUID.randomUUID().toString();
         projection.startTurn(turn, text);
 
-        // Cold start (ADR-0008): restore the file-backed AgentSession before
-        // every prompt; PUT is idempotent and cheap.
+        // Cold start (ADR-0008): restore the file-backed AgentSession with its
+        // model before every prompt; PUT is idempotent and cheap.
         try {
-            ensureGatewaySession(sessionId, userId);
+            String actualName = ensureGatewaySession(sessionId, userId, choice);
+            syncSnapshot(session, choice, actualName);
         } catch (ApiException ex) {
             projection.failBeforeStream(turn, ex.code().name(), ex.getMessage());
             throw ex;
@@ -402,16 +455,67 @@ public class ChatServiceImpl implements ChatService {
         return new String[] {code, message};
     }
 
-    private void ensureGatewaySession(String sessionId, long userId) {
+    private String ensureGatewaySession(
+            String sessionId, long userId, SessionModelChoice choice) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (choice.usesUserProvider()) {
+            Map<String, Object> model = new LinkedHashMap<>();
+            model.put("providerId", choice.providerModelId());
+            model.put("name", choice.providerName());
+            model.put("api", choice.api());
+            model.put("baseUrl", choice.baseUrl());
+            model.put("apiKey", choice.apiKey());
+            model.put("modelId", choice.modelId());
+            model.put("displayName", choice.displayName());
+            if (choice.contextWindow() != null) model.put("contextWindow", choice.contextWindow());
+            model.put("reasoning", choice.reasoning());
+            model.put("vision", choice.vision());
+            body.put("model", model);
+        }
+
+        String payload;
+        try {
+            payload = objectMapper.writeValueAsString(body);
+        } catch (IOException ex) {
+            throw new ApiException(ErrorCode.INTERNAL, "failed to serialize session model", ex);
+        }
+
         HttpRequest request = gatewaySession(sessionId, userId)
-                .PUT(HttpRequest.BodyPublishers.noBody())
+                .header("content-type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(payload))
                 .build();
         HttpResponse<String> response = sendForString(request);
         if (response.statusCode() == 409) {
             throw new ApiException(ErrorCode.USER_MISMATCH, "session belongs to another user");
         }
         if (response.statusCode() >= 400) {
+            if (response.statusCode() == 400) {
+                String[] error = gatewayError(response.body(), 400);
+                throw new ApiException(ErrorCode.MODEL_UNAVAILABLE,
+                        error[1] == null || error[1].isBlank()
+                                ? "model configuration rejected" : error[1]);
+            }
             throw upstreamError("ensure session", response);
+        }
+        return readModelName(response.body());
+    }
+
+    private String readModelName(String body) {
+        try {
+            JsonNode name = objectMapper.readTree(body).path("model").path("name");
+            String value = name.asText("");
+            return value.isEmpty() ? null : value;
+        } catch (IOException ex) {
+            log.warn("gateway returned an unreadable model reference: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private void disposeGatewaySession(String sessionId, long userId) {
+        HttpRequest request = gatewaySession(sessionId, userId).DELETE().build();
+        HttpResponse<String> response = sendForString(request);
+        if (response.statusCode() >= 400 && response.statusCode() != 404) {
+            throw upstreamError("dispose session", response);
         }
     }
 

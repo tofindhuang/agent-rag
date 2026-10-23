@@ -6,6 +6,7 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.dto.chat.CreateSessionRequest;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
 import com.agentcore.server.dto.chat.MessageListResponse;
 import com.agentcore.server.dto.chat.MessageSummary;
@@ -13,6 +14,7 @@ import com.agentcore.server.dto.chat.RenameSessionRequest;
 import com.agentcore.server.dto.chat.SendMessageRequest;
 import com.agentcore.server.dto.chat.SessionListResponse;
 import com.agentcore.server.dto.chat.SessionSummary;
+import com.agentcore.server.dto.chat.SwitchModelRequest;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
 import java.nio.charset.StandardCharsets;
@@ -53,8 +55,24 @@ public class ChatController {
     }
 
     @PostMapping("/sessions")
-    public CreateSessionResponse createSession(@AuthenticationPrincipal AuthenticatedUser user) {
-        return new CreateSessionResponse(chatService.createSession(user.userId()));
+    public CreateSessionResponse createSession(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody(required = false) CreateSessionRequest request) {
+        String title = request == null ? null : request.title();
+        if (title != null && title.trim().length() > MAX_TITLE_LENGTH) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "title must be at most 255 characters");
+        }
+        Long modelId = request == null ? null : request.modelId();
+        return new CreateSessionResponse(
+                chatService.createSession(user.userId(), title, modelId));
+    }
+
+    @PostMapping("/sessions/{sessionId}/model")
+    public void switchModel(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId,
+            @RequestBody SwitchModelRequest request) {
+        chatService.switchModel(user.userId(), sessionId, request.modelId());
     }
 
     @GetMapping("/sessions")
@@ -147,6 +165,8 @@ public class ChatController {
         return new SessionSummary(
                 session.getId(),
                 session.getTitle(),
+                session.getModelLabel(),
+                session.getModelSource(),
                 toInstant(session.getLastActiveAt()),
                 toInstant(session.getCreatedAt()));
     }

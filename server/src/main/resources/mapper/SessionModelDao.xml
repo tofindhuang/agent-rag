@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.SessionModelDao">
+
+    <insert id="upsert">
+        INSERT INTO session_models (session_id, provider_model_id, model_label, model_source)
+        VALUES (#{sessionId}, #{providerModelId}, #{modelLabel}, #{modelSource}) AS new
+        ON DUPLICATE KEY UPDATE
+            provider_model_id = new.provider_model_id,
+            model_label = new.model_label,
+            model_source = new.model_source
+    </insert>
+
+</mapper>

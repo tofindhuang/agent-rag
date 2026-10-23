@@ -12,9 +12,11 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.ChatProjectionService;
+import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
@@ -56,6 +58,12 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MessageCache messageCacheDao;
+
+    @Autowired
+    private SessionModelDao sessionModelDao;
+
+    @Autowired
+    private SessionModelService sessionModelService;
 
     @Autowired
     private ChatProjectionService projection;
@@ -133,7 +141,14 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
         // A new service instance holds no state; everything comes from MySQL.
         ChatServiceImpl fresh = new ChatServiceImpl(
-                gatewayProperties, objectMapper, sessionDao, messageDao, messageCacheDao, projection);
+                gatewayProperties,
+                objectMapper,
+                sessionDao,
+                sessionModelDao,
+                messageDao,
+                messageCacheDao,
+                projection,
+                sessionModelService);
         List<Session> listed = fresh.listSessions(userId, null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);

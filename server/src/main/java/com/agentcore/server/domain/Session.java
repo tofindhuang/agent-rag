@@ -2,6 +2,7 @@ package com.agentcore.server.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 
@@ -21,6 +22,13 @@ public class Session {
     private LocalDateTime deletedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** Filled by the list query join; not a sessions column. */
+    @TableField(exist = false)
+    private String modelLabel;
+
+    @TableField(exist = false)
+    private String modelSource;
 
     public String getId() {
         return id;
@@ -76,6 +84,22 @@ public class Session {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getModelLabel() {
+        return modelLabel;
+    }
+
+    public void setModelLabel(String modelLabel) {
+        this.modelLabel = modelLabel;
+    }
+
+    public String getModelSource() {
+        return modelSource;
+    }
+
+    public void setModelSource(String modelSource) {
+        this.modelSource = modelSource;
     }
 
     public LocalDateTime getUpdatedAt() {
