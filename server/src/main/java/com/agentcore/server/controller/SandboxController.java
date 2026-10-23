@@ -2,10 +2,13 @@ package com.agentcore.server.controller;
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.dto.sandbox.SandboxExecRequest;
 import com.agentcore.server.service.SandboxService;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,10 +28,13 @@ public class SandboxController {
     }
 
     @PostMapping
-    public void exec(@RequestBody SandboxExecRequest request) {
+    public void exec(
+            @RequestHeader HttpHeaders headers,
+            @RequestBody SandboxExecRequest request) {
+        ToolIdentity identity = ToolIdentity.from(headers);
         if (request.code() == null || request.code().isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "code is required");
         }
-        sandboxService.exec(request);
+        sandboxService.exec(request, identity);
     }
 }

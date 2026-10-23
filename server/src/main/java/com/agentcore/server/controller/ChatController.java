@@ -6,9 +6,7 @@ import com.agentcore.server.dto.chat.CreateSessionRequest;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
 import com.agentcore.server.dto.chat.SendMessageRequest;
 import com.agentcore.server.service.ChatService;
-
-import java.io.IOException;
-import java.io.InputStream;
+import com.agentcore.server.service.PromptStream;
 
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -49,16 +47,8 @@ public class ChatController {
         if (request.text() == null || request.text().isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "text is required");
         }
-        InputStream upstream = chatService.openPrompt(sessionId, request.text());
-        return out -> {
-            // A mid-stream IOException here is a client disconnect; drop it.
-            try (InputStream in = upstream) {
-                in.transferTo(out);
-                out.flush();
-            } catch (IOException e) {
-                // no-op: client went away
-            }
-        };
+        PromptStream stream = chatService.openPrompt(sessionId, request.text());
+        return out -> chatService.relayPrompt(stream, out);
     }
 
     @DeleteMapping("/sessions/{sessionId}")

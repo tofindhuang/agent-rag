@@ -72,6 +72,7 @@ service / dao ──> domain
 ## 配置与调用
 
 - 配置走 `@ConfigurationProperties` record，默认值在访问器里兜底，不在业务代码里散落 `@Value`。
+- CORS 仅放行 `localhost` / `127.0.0.1` 任意端口用于本地开发；生产由同源反代或显式白名单替代。
 - 对 gateway 的 HTTP 调用集中在 service；controller 只做参数校验与编排。
 - 超时、重试、鉴权 header 在 service 内统一处理；上游不可用映射为 `UPSTREAM_UNAVAILABLE`，上游返回错误映射为 `UPSTREAM_ERROR`。
 - SSE 透传由 controller 包装 `StreamingResponseBody`，客户端断连的 `IOException` 静默丢弃。

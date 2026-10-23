@@ -1,5 +1,6 @@
 package com.agentcore.server.service;
 
+import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.dto.kb.KbSearchRequest;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 
@@ -9,5 +10,5 @@ import com.agentcore.server.dto.kb.KbSearchResponse;
  */
 public interface KbService {
 
-    KbSearchResponse search(KbSearchRequest request);
+    KbSearchResponse search(KbSearchRequest request, ToolIdentity identity);
 }

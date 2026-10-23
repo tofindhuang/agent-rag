@@ -2,11 +2,14 @@ package com.agentcore.server.controller;
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.dto.kb.KbSearchRequest;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.service.KbService;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,10 +28,13 @@ public class KbController {
     }
 
     @PostMapping("/search")
-    public KbSearchResponse search(@RequestBody KbSearchRequest request) {
+    public KbSearchResponse search(
+            @RequestHeader HttpHeaders headers,
+            @RequestBody KbSearchRequest request) {
+        ToolIdentity identity = ToolIdentity.from(headers);
         if (request.query() == null || request.query().isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "query is required");
         }
-        return kbService.search(request);
+        return kbService.search(request, identity);
     }
 }

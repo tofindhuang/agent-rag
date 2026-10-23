@@ -36,6 +36,100 @@
   max-width: 95%;
 }
 
+.thinking {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #cbd5e1;
+}
+
+.thinking summary {
+  cursor: pointer;
+  color: #9aa3b2;
+}
+
+.thinkingBody {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-left: 2px solid #2a3242;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tool {
+  border: 1px solid #2a3242;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.toolSummary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolName {
+  color: #93c5fd;
+}
+
+.toolStatus {
+  color: #9aa3b2;
+  font-size: 12px;
+}
+
+.calling {
+  color: #fbbf24;
+}
+
+.running {
+  color: #60a5fa;
+}
+
+.done {
+  color: #34d399;
+}
+
+.toolError {
+  color: #f87171;
+}
+
+.toolMeta {
+  margin-top: 6px;
+  color: #9aa3b2;
+}
+
+.toolBody {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.messageState {
+  margin-top: 6px;
+  color: #9aa3b2;
+  font-size: 12px;
+}
+
+.messageStateError {
+  margin-top: 6px;
+  color: #f87171;
+  font-size: 12px;
+}
+
 .status {
   color: #6b7280;
   font-size: 13px;

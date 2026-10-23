@@ -9,14 +9,15 @@ interface MessageListProps {
   messages: ChatMessage[];
   busy: boolean;
   error: string | null;
+  notice: string | null;
 }
 
-export function MessageList({ messages, busy, error }: MessageListProps) {
+export function MessageList({ messages, busy, error, notice }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, busy, error]);
+  }, [messages, busy, error, notice]);
 
   return (
     <div className={styles.messages}>
@@ -26,6 +27,11 @@ export function MessageList({ messages, busy, error }: MessageListProps) {
       {busy && (
         <div className={styles.status} role="status">
           回复中...
+        </div>
+      )}
+      {notice && (
+        <div className={styles.status} role="status">
+          {notice}
         </div>
       )}
       {error && (

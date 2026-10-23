@@ -1,5 +1,6 @@
 package com.agentcore.server.service;
 
+import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.dto.sandbox.SandboxExecRequest;
 
 /**
@@ -8,5 +9,5 @@ import com.agentcore.server.dto.sandbox.SandboxExecRequest;
  */
 public interface SandboxService {
 
-    void exec(SandboxExecRequest request);
+    void exec(SandboxExecRequest request, ToolIdentity identity);
 }

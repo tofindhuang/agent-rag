@@ -2,6 +2,7 @@ package com.agentcore.server.service.impl;
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.dto.sandbox.SandboxExecRequest;
 import com.agentcore.server.service.SandboxService;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Service;
 public class SandboxServiceImpl implements SandboxService {
 
     @Override
-    public void exec(SandboxExecRequest request) {
+    public void exec(SandboxExecRequest request, ToolIdentity identity) {
         throw new ApiException(ErrorCode.NOT_IMPLEMENTED,
                 "sandbox executor lands in M1 (requirements.md FR-3)");
     }

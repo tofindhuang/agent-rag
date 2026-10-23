@@ -4,14 +4,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createChatSession, openChatStream } from "@/lib/api/chat";
 import { userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
-import type { ChatMessage } from "@/types/chat";
-import type { GatewayPayload } from "@/types/gateway";
+import type { ChatMessage, ToolActivity } from "@/types/chat";
+import type { MessageEndData } from "@/types/gateway";
+import { parseGatewayEvent } from "@/types/gateway";
 
 const DEV_USER_ID = "dev-user";
 
+function newAssistant(): ChatMessage {
+  return { role: "assistant", content: "", thinking: "", tools: [], status: "streaming" };
+}
+
+function newUser(content: string): ChatMessage {
+  return { role: "user", content, thinking: "", tools: [] };
+}
+
 /**
- * Owns the ephemeral chat turn state and the SSE lifecycle. Components stay
- * presentational; HTTP lives in lib/api and frame parsing in lib/sse.
+ * Owns ephemeral chat state and the contract v1 SSE lifecycle. Tool progress
+ * is display-only; the model only sees the final tool result.
  */
 export function useChat() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -19,6 +28,7 @@ export function useChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -37,15 +47,74 @@ export function useChat() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const appendDelta = useCallback((delta: string) => {
+  const updateAssistant = useCallback((update: (message: ChatMessage) => ChatMessage) => {
     setMessages((previous) => {
       const last = previous[previous.length - 1];
       if (!last || last.role !== "assistant") {
-        return [...previous, { role: "assistant", content: delta }];
+        return [...previous, update(newAssistant())];
       }
-      return [...previous.slice(0, -1), { role: "assistant", content: last.content + delta }];
+      return [...previous.slice(0, -1), update(last)];
     });
   }, []);
+
+  const appendText = useCallback(
+    (delta: string) => updateAssistant((message) => ({ ...message, content: message.content + delta })),
+    [updateAssistant],
+  );
+
+  const appendThinking = useCallback(
+    (delta: string) =>
+      updateAssistant((message) => ({ ...message, thinking: message.thinking + delta })),
+    [updateAssistant],
+  );
+
+  const updateTool = useCallback(
+    (
+      toolCallId: string,
+      name: string,
+      update: (tool: ToolActivity) => ToolActivity,
+    ) => {
+      updateAssistant((message) => {
+        const tools = [...message.tools];
+        const index = tools.findIndex((tool) => tool.toolCallId === toolCallId);
+        const current: ToolActivity =
+          index >= 0
+            ? tools[index]
+            : { toolCallId, name, argsText: "", output: "", status: "calling" };
+        const next = update(current);
+        if (index >= 0) tools[index] = next;
+        else tools.push(next);
+        return { ...message, tools };
+      });
+    },
+    [updateAssistant],
+  );
+
+  const finalizeMessage = useCallback(
+    (data: MessageEndData) => {
+      updateAssistant((message) => {
+        const tools = [...message.tools];
+        for (const call of data.toolCalls) {
+          if (!tools.some((tool) => tool.toolCallId === call.toolCallId)) {
+            tools.push({
+              toolCallId: call.toolCallId,
+              name: call.name,
+              argsText: call.args === undefined ? "" : JSON.stringify(call.args),
+              output: "",
+              status: "running",
+            });
+          }
+        }
+        return {
+          ...message,
+          content: data.text.length > 0 ? data.text : message.content,
+          thinking: data.thinking.length > 0 ? data.thinking : message.thinking,
+          tools,
+        };
+      });
+    },
+    [updateAssistant],
+  );
 
   const send = useCallback(async (): Promise<void> => {
     const text = input.trim();
@@ -53,8 +122,9 @@ export function useChat() {
 
     setInput("");
     setError(null);
+    setNotice(null);
     setBusy(true);
-    setMessages((previous) => [...previous, { role: "user", content: text }]);
+    setMessages((previous) => [...previous, newUser(text)]);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -63,38 +133,97 @@ export function useChat() {
     try {
       const stream = await openChatStream(sessionId, text, controller.signal);
       for await (const frame of parseSse(stream)) {
-        const payload = parsePayload(frame.data);
-        if (frame.event === "message_update" && payload?.assistantMessageEvent?.type === "text_delta") {
-          appendDelta(payload.assistantMessageEvent.delta ?? "");
-        } else if (frame.event === "prompt_settled") {
-          settled = true;
-          break;
-        } else if (frame.event === "prompt_error") {
-          setError(typeof payload?.message === "string" ? payload.message : "模型调用失败");
-          settled = true;
-          break;
+        const event = parseGatewayEvent(frame.event, frame.data);
+        if (!event) continue;
+
+        switch (event.type) {
+          case "run_started":
+            setNotice(null);
+            break;
+          case "thinking_delta":
+            appendThinking(event.data.delta);
+            break;
+          case "text_delta":
+            appendText(event.data.delta);
+            break;
+          case "tool_call_delta":
+            updateTool(event.data.toolCallId, event.data.name, (tool) => ({
+              ...tool,
+              name: event.data.name,
+              argsText: tool.argsText + event.data.delta,
+              status: "calling",
+            }));
+            break;
+          case "tool_call":
+            updateTool(event.data.toolCallId, event.data.name, (tool) => ({
+              ...tool,
+              name: event.data.name,
+              argsText:
+                event.data.args === undefined ? tool.argsText : JSON.stringify(event.data.args),
+              status: "running",
+            }));
+            break;
+          case "tool_progress":
+            updateTool(event.data.toolCallId, event.data.name, (tool) => ({
+              ...tool,
+              phase: event.data.kind === "phase" ? event.data.phase ?? tool.phase : tool.phase,
+              output:
+                event.data.kind === "stdout" || event.data.kind === "stderr"
+                  ? tool.output + (event.data.chunk ?? "")
+                  : tool.output,
+              status: "running",
+            }));
+            break;
+          case "tool_result":
+            updateTool(event.data.toolCallId, event.data.name, (tool) => ({
+              ...tool,
+              output: event.data.content.length > 0 ? event.data.content : tool.output,
+              status: event.data.isError ? "error" : "done",
+            }));
+            break;
+          case "message_end":
+            finalizeMessage(event.data);
+            break;
+          case "compaction":
+            setNotice("上下文已压缩");
+            break;
+          case "retry":
+            setNotice(`模型限流，正在重试（${event.data.attempt}/${event.data.maxAttempts}）`);
+            break;
+          case "run_settled":
+            settled = true;
+            updateAssistant((message) => ({
+              ...message,
+              status: event.data.status === "completed" ? "complete" : event.data.status,
+            }));
+            if (event.data.status === "error") {
+              setError(event.data.error?.message ?? "模型调用失败");
+            } else if (event.data.status === "aborted") {
+              setNotice("已停止生成");
+            } else {
+              setNotice(null);
+            }
+            break;
         }
+
+        if (settled) break;
       }
-      if (!settled) setError("连接中断，回复可能不完整。");
+
+      if (!settled) {
+        setError("连接中断，回复可能不完整。");
+        updateAssistant((message) => ({ ...message, status: "error" }));
+      }
     } catch (cause: unknown) {
       if (!controller.signal.aborted) {
         console.error(cause);
         setError(userMessage(cause));
+        updateAssistant((message) => ({ ...message, status: "error" }));
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
     }
-  }, [appendDelta, busy, input, sessionId]);
+  }, [appendText, appendThinking, busy, finalizeMessage, input, sessionId, updateAssistant, updateTool]);
 
-  return { sessionId, messages, input, setInput, busy, error, send };
-}
-
-function parsePayload(data: string | undefined): GatewayPayload | null {
-  if (!data) return null;
-  try {
-    return JSON.parse(data) as GatewayPayload;
-  } catch {
-    return null;
-  }
+  return { sessionId, messages, input, setInput, busy, error, notice, send };
 }
