@@ -10,8 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
@@ -47,6 +49,12 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private GatewayProperties gatewayProperties;
+
+    @Autowired
+    private MessageDao messageDao;
+
+    @Autowired
+    private ChatProjectionService projection;
 
     @Test
     void createsSessionWithDefaultTitleAndListsIt() throws Exception {
@@ -120,7 +128,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
         String sessionId = createSession(token);
 
         // A new service instance holds no state; everything comes from MySQL.
-        ChatServiceImpl fresh = new ChatServiceImpl(gatewayProperties, objectMapper, sessionDao);
+        ChatServiceImpl fresh = new ChatServiceImpl(
+                gatewayProperties, objectMapper, sessionDao, messageDao, projection);
         List<Session> listed = fresh.listSessions(userId, null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);

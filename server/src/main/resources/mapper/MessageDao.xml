@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.MessageDao">
+
+    <!-- Idempotent projection write (ADR-0006); MySQL 8 alias form. -->
+    <insert id="upsert">
+        INSERT INTO messages (
+            session_id, turn_id, ordinal, role, content, thinking, tool_calls,
+            status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out
+        ) VALUES (
+            #{sessionId}, #{turnId}, #{ordinal}, #{role}, #{content}, #{thinking}, #{toolCalls},
+            #{status}, #{deliveryStatus}, #{runId}, #{assistantSeqInTurn}, #{tokensIn}, #{tokensOut}
+        ) AS new
+        ON DUPLICATE KEY UPDATE
+            role = new.role,
+            content = new.content,
+            thinking = new.thinking,
+            tool_calls = new.tool_calls,
+            status = new.status,
+            delivery_status = new.delivery_status,
+            run_id = new.run_id,
+            assistant_seq_in_turn = new.assistant_seq_in_turn,
+            tokens_in = new.tokens_in,
+            tokens_out = new.tokens_out
+    </insert>
+
+    <select id="listBySession" resultType="com.agentcore.server.domain.Message">
+        SELECT id, session_id, turn_id, ordinal, role, content, thinking, tool_calls,
+               status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
+               created_at
+        FROM messages
+        WHERE session_id = #{sessionId}
+        ORDER BY id ASC
+    </select>
+
+    <update id="markUserDelivery">
+        UPDATE messages
+        SET delivery_status = #{deliveryStatus}
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND role = 'user'
+    </update>
+
+</mapper>

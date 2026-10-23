@@ -22,6 +22,14 @@ public interface SessionDao extends BaseMapper<Session> {
 
     int rename(@Param("id") String id, @Param("userId") long userId, @Param("title") String title);
 
+    /** Sets the title only while the session still carries the default title. */
+    int autoTitle(
+            @Param("id") String id,
+            @Param("title") String title,
+            @Param("defaultTitle") String defaultTitle);
+
+    int touch(@Param("id") String id, @Param("lastActiveAt") LocalDateTime lastActiveAt);
+
     int archive(
             @Param("id") String id,
             @Param("userId") long userId,

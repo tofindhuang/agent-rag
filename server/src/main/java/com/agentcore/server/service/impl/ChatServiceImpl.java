@@ -5,8 +5,12 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.sse.SseFrame;
 import com.agentcore.server.common.sse.SseFrameParser;
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.domain.TurnKey;
+import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,31 +36,42 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
- * Default {@link ChatService}: contract v1 client, session persistence and SSE
- * relay.
+ * Default {@link ChatService}: contract v1 client, session persistence, event
+ * projection and SSE relay.
  *
- * <p>Java owns the business session ID and turn ID, sends the user identity as
- * a header, validates the turn echoed by {@code run_started}, and synthesizes
- * {@code STREAM_INTERRUPTED} when the gateway stream ends without a terminal.
+ * <p>Java owns the business session ID, turn ID and run-row ID, sends the user
+ * identity as a header, validates the turn echoed by {@code run_started}, and
+ * synthesizes {@code STREAM_INTERRUPTED} when the gateway stream ends without
+ * a terminal.
  */
 @Service
 public class ChatServiceImpl implements ChatService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatServiceImpl.class);
-    private static final String DEFAULT_TITLE = "新会话";
     private static final String STATUS_ACTIVE = "active";
+    private static final String STREAM_INTERRUPTED = "STREAM_INTERRUPTED";
+    private static final String INTERRUPTED_MESSAGE = "连接中断，未收到终态";
 
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
     private final SessionDao sessionDao;
+    private final MessageDao messageDao;
+    private final ChatProjectionService projection;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    public ChatServiceImpl(GatewayProperties gateway, ObjectMapper objectMapper, SessionDao sessionDao) {
+    public ChatServiceImpl(
+            GatewayProperties gateway,
+            ObjectMapper objectMapper,
+            SessionDao sessionDao,
+            MessageDao messageDao,
+            ChatProjectionService projection) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
+        this.messageDao = messageDao;
+        this.projection = projection;
     }
 
     @Override
@@ -65,7 +80,7 @@ public class ChatServiceImpl implements ChatService {
         Session session = new Session();
         session.setId(sessionId);
         session.setUserId(userId);
-        session.setTitle(DEFAULT_TITLE);
+        session.setTitle(Session.DEFAULT_TITLE);
         session.setStatus(STATUS_ACTIVE);
         session.setLastActiveAt(nowUtc());
         sessionDao.insert(session);
@@ -128,13 +143,26 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public PromptStream openPrompt(long userId, String sessionId, String text) {
+    public List<Message> history(long userId, String sessionId) {
+        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
+        }
+        return messageDao.listBySession(sessionId);
+    }
+
+    @Override
+    public PromptStream openPrompt(long userId, String sessionId, String text, String requestTurnId) {
         if (sessionDao.findActiveOwned(sessionId, userId) == null) {
             throw sessionNotFound();
         }
 
-        String turnId = UUID.randomUUID().toString();
+        String turnId = requestTurnId == null || requestTurnId.isBlank()
+                ? UUID.randomUUID().toString()
+                : requestTurnId;
+        TurnKey turn = new TurnKey(sessionId, turnId, UUID.randomUUID().toString());
         String requestId = UUID.randomUUID().toString();
+        projection.startTurn(turn, text);
+
         HttpRequest.Builder builder = gatewaySession(sessionId, userId)
                 .uri(URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId) + "/prompt"))
                 .header("content-type", "application/json")
@@ -150,22 +178,29 @@ public class ChatServiceImpl implements ChatService {
         try {
             response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
+            projection.failBeforeStream(turn, ErrorCode.UPSTREAM_UNAVAILABLE.name(), e.getMessage());
             throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "gateway unreachable: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            projection.failBeforeStream(
+                    turn, ErrorCode.UPSTREAM_UNAVAILABLE.name(), "interrupted while calling gateway");
             throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "interrupted while calling gateway", e);
         }
         if (response.statusCode() != 200) {
             String detail = readFully(response.body());
+            String[] error = gatewayError(detail, response.statusCode());
+            projection.failBeforeStream(turn, error[0], error[1]);
             throw new ApiException(ErrorCode.UPSTREAM_ERROR,
                     "gateway error " + response.statusCode() + ": " + detail);
         }
-        return new PromptStream(response.body(), turnId, requestId);
+        return new PromptStream(response.body(), turn, requestId);
     }
 
     @Override
     public void relayPrompt(PromptStream prompt, OutputStream out) throws IOException {
+        ProjectionState state = new ProjectionState();
         boolean terminal = false;
+        boolean settled = false;
         String runId = "unknown";
         long seq = 0;
 
@@ -189,14 +224,64 @@ public class ChatServiceImpl implements ChatService {
                     }
                 }
 
-                if ("run_started".equals(frame.event())) {
-                    String echoedTurnId = readTurnId(frame.data());
-                    if (!prompt.turnId().equals(echoedTurnId)) {
-                        log.warn("gateway run_started turnId mismatch: expected {}, got {}",
-                                prompt.turnId(), echoedTurnId);
-                        writeTerminal(out, runId, seq + 1, prompt.turnId(),
-                                "STREAM_INTERRUPTED", "run_started turnId mismatch");
-                        return;
+                JsonNode data = parseData(frame);
+                switch (frame.event()) {
+                    case "run_started" -> {
+                        String echoedTurnId = data.path("turnId").asText("");
+                        if (!prompt.turn().turnId().equals(echoedTurnId)) {
+                            log.warn("gateway run_started turnId mismatch: expected {}, got {}",
+                                    prompt.turn().turnId(), echoedTurnId);
+                            persistInterrupted(prompt, state, "run_started turnId mismatch");
+                            writeTerminal(out, runId, seq + 1, prompt.turn().turnId(),
+                                    STREAM_INTERRUPTED, "run_started turnId mismatch");
+                            return;
+                        }
+                        String gatewayRunId = data.path("runId").asText("");
+                        if (!gatewayRunId.isEmpty()) {
+                            projection.gatewayAccepted(prompt.turn().runRowId(), gatewayRunId);
+                        }
+                    }
+                    case "thinking_delta" -> state.thinking.append(data.path("delta").asText(""));
+                    case "text_delta" -> state.text.append(data.path("delta").asText(""));
+                    case "message_end" -> {
+                        long tokensIn = data.path("usage").path("input").asLong(0);
+                        long tokensOut = data.path("usage").path("output").asLong(0);
+                        state.tokensIn += tokensIn;
+                        state.tokensOut += tokensOut;
+                        String status = "error".equals(data.path("stopReason").asText())
+                                ? "error" : "complete";
+                        projection.appendAssistant(
+                                prompt.turn(),
+                                state.nextOrdinal++,
+                                data.path("text").asText(""),
+                                data.path("thinking").asText(""),
+                                toolCallsJson(data.path("toolCalls")),
+                                data.path("seqInTurn").isNumber() ? data.path("seqInTurn").asInt() : null,
+                                tokensIn,
+                                tokensOut,
+                                status);
+                        // The persisted message is authoritative; keep the
+                        // remaining deltas scoped to this message only.
+                        state.text.setLength(0);
+                        state.thinking.setLength(0);
+                    }
+                    case "tool_result" -> projection.appendTool(
+                            prompt.turn(),
+                            state.nextOrdinal++,
+                            data.path("content").asText(""));
+                    case "run_settled" -> {
+                        JsonNode error = data.path("error");
+                        projection.settleRun(
+                                prompt.turn(),
+                                data.path("status").asText("error"),
+                                error.path("code").asText(null),
+                                error.path("message").asText(null),
+                                state.tokensIn,
+                                state.tokensOut);
+                        settled = true;
+                    }
+                    default -> {
+                        // Deltas/progress/compaction/retry are display-only here.
                     }
                 }
 
@@ -209,10 +294,13 @@ public class ChatServiceImpl implements ChatService {
                 }
             }
         } catch (IOException e) {
+            if (!settled) {
+                persistInterrupted(prompt, state, INTERRUPTED_MESSAGE);
+            }
             if (!terminal) {
                 try {
-                    writeTerminal(out, runId, seq + 1, prompt.turnId(),
-                            "STREAM_INTERRUPTED", "连接中断，未收到终态");
+                    writeTerminal(out, runId, seq + 1, prompt.turn().turnId(),
+                            STREAM_INTERRUPTED, INTERRUPTED_MESSAGE);
                 } catch (IOException ignored) {
                     // client is gone as well; nothing else to do
                 }
@@ -221,9 +309,65 @@ public class ChatServiceImpl implements ChatService {
         }
 
         if (!terminal) {
-            writeTerminal(out, runId, seq + 1, prompt.turnId(),
-                    "STREAM_INTERRUPTED", "连接中断，未收到终态");
+            persistInterrupted(prompt, state, INTERRUPTED_MESSAGE);
+            writeTerminal(out, runId, seq + 1, prompt.turn().turnId(),
+                    STREAM_INTERRUPTED, INTERRUPTED_MESSAGE);
         }
+    }
+
+    private void persistInterrupted(PromptStream prompt, ProjectionState state, String message) {
+        try {
+            if (!state.text.isEmpty() || !state.thinking.isEmpty()) {
+                projection.appendAssistant(
+                        prompt.turn(),
+                        state.nextOrdinal++,
+                        state.text.toString(),
+                        state.thinking.toString(),
+                        null,
+                        null,
+                        0,
+                        0,
+                        "partial");
+            }
+            projection.settleRun(
+                    prompt.turn(),
+                    "aborted",
+                    STREAM_INTERRUPTED,
+                    message,
+                    state.tokensIn,
+                    state.tokensOut);
+        } catch (RuntimeException ex) {
+            log.error("failed to persist interrupted run {}", prompt.turn().runRowId(), ex);
+        }
+    }
+
+    private JsonNode parseData(SseFrame frame) throws IOException {
+        return frame.data() == null ? objectMapper.createObjectNode() : objectMapper.readTree(frame.data());
+    }
+
+    private String toolCallsJson(JsonNode toolCalls) throws IOException {
+        if (toolCalls == null || !toolCalls.isArray() || toolCalls.isEmpty()) {
+            return null;
+        }
+        return objectMapper.writeValueAsString(toolCalls);
+    }
+
+    /** Extracts the contract error envelope; falls back to the HTTP status. */
+    private String[] gatewayError(String detail, int status) {
+        String code = ErrorCode.UPSTREAM_ERROR.name();
+        String message = "gateway status " + status;
+        try {
+            JsonNode error = objectMapper.readTree(detail).path("error");
+            if (!error.path("code").asText("").isEmpty()) {
+                code = error.path("code").asText();
+            }
+            if (!error.path("message").asText("").isEmpty()) {
+                message = error.path("message").asText();
+            }
+        } catch (IOException ignored) {
+            // keep the generic code; the detail is still on the exception
+        }
+        return new String[] {code, message};
     }
 
     private HttpRequest.Builder gatewaySession(String sessionId, long userId) {
@@ -238,12 +382,6 @@ public class ChatServiceImpl implements ChatService {
 
     private static LocalDateTime nowUtc() {
         return LocalDateTime.now(ZoneOffset.UTC);
-    }
-
-    private String readTurnId(String data) throws IOException {
-        if (data == null) return "";
-        JsonNode node = objectMapper.readTree(data);
-        return node.path("turnId").asText("");
     }
 
     private void writeTerminal(
@@ -307,5 +445,14 @@ public class ChatServiceImpl implements ChatService {
         } catch (IOException e) {
             return "(unreadable: " + e.getMessage() + ")";
         }
+    }
+
+    /** Mutable per-run projection counter; a run may emit several messages. */
+    private static final class ProjectionState {
+        private int nextOrdinal = 1;
+        private long tokensIn;
+        private long tokensOut;
+        private final StringBuilder text = new StringBuilder();
+        private final StringBuilder thinking = new StringBuilder();
     }
 }

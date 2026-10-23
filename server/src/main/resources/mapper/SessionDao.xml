@@ -34,6 +34,20 @@
           AND status = 'active'
     </update>
 
+    <update id="autoTitle">
+        UPDATE sessions
+        SET title = #{title}
+        WHERE id = #{id}
+          AND title = #{defaultTitle}
+    </update>
+
+    <update id="touch">
+        UPDATE sessions
+        SET last_active_at = #{lastActiveAt}
+        WHERE id = #{id}
+          AND status = 'active'
+    </update>
+
     <update id="archive">
         UPDATE sessions
         SET status = 'archived',

@@ -20,9 +20,10 @@ Accepted
 - **只有 Java 写业务 MySQL**；gateway 不碰业务库。
 - **pi 的 session 存储是引擎上下文的唯一来源**；MySQL 消息投影只服务展示、历史与统计，不用来重建 pi 上下文。
 - 三个持久化单元：prompt 前的用户消息（`delivery_status = pending`）、每个 `message_end` 对应的 assistant 消息（`status = complete`）、每个 `tool_result`（role=tool，内容按 64KB 截断）。delta 与进度事件不落库。
-- `turnId` 由 Java 生成并随 prompt 发送，是消息幂等键；唯一键包含 `(session_id, turn_id, seq_in_turn)`，网络重试与 Java 重启不会产生重复行。
+- `turnId` 由 Java 生成并随 prompt 发送，是消息幂等键；唯一键为 `(session_id, turn_id, ordinal)`：ordinal 是 Java 分配的投影序号（用户消息 0，其后每个持久化事件递增），契约的 `seqInTurn` 另存 assistant 行。网络重试与 Java 重启不会产生重复行。
+- 每轮另有一行 `runs` 账本（id 由 Java 在发送前预生成，gateway 的 runId 在 `run_started` 回填），承载零消息失败、终态错误与用量。
 - 用户消息投递状态：`pending` → `sent`（收到 `run_started`）→ `failed`（gateway 不可达，允许同 `turnId` 重试）。assistant 消息状态：`complete` / `partial` / `error`。
-- Java 的 SSE 读取循环结束但未收到 `run_settled` 时，合成 `STREAM_INTERRUPTED`，把已累积增量落成 `partial`。
+- Java 的 SSE 读取循环结束但未收到 `run_settled` 时，合成 `STREAM_INTERRUPTED`，把已累积增量落成 `partial`，run 记为 `aborted`。
 - 客户端断连按 abort 处理：Java 断开 upstream，gateway 杀本轮；已产生内容落成 `partial`，重连从消息投影读历史，不续流。
 
 ## Considered Options(被否的备选)

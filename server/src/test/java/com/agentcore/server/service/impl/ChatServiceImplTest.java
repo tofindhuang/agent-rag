@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,6 +43,7 @@ class ChatServiceImplTest {
 
     private HttpServer server;
     private SessionDao sessionDao;
+    private ChatProjectionService projection;
     private ChatServiceImpl service;
 
     @BeforeEach
@@ -53,7 +56,8 @@ class ChatServiceImplTest {
         sessionDao = mock(SessionDao.class);
         when(sessionDao.findActiveOwned(anyString(), anyLong())).thenReturn(new Session());
         when(sessionDao.archive(anyString(), anyLong(), any())).thenReturn(1);
-        service = new ChatServiceImpl(properties, mapper, sessionDao);
+        projection = mock(ChatProjectionService.class);
+        service = new ChatServiceImpl(properties, mapper, sessionDao, mock(MessageDao.class), projection);
     }
 
     @AfterEach
@@ -81,7 +85,7 @@ class ChatServiceImplTest {
         assertTrue(sse.contains("event: message_end"));
         assertTrue(sse.contains("event: run_settled"));
         assertFalse(sse.contains("STREAM_INTERRUPTED"));
-        assertEquals(stream.turnId(), lastTurnId.get());
+        assertEquals(stream.turn().turnId(), lastTurnId.get());
     }
 
     @Test
@@ -119,7 +123,7 @@ class ChatServiceImplTest {
     private PromptStream openPrompt(String mode) {
         promptMode.set(mode);
         String sessionId = service.createSession(1L);
-        return service.openPrompt(1L, sessionId, "hi");
+        return service.openPrompt(1L, sessionId, "hi", null);
     }
 
     private String relay(PromptStream stream) throws IOException {

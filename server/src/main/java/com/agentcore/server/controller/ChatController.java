@@ -3,8 +3,11 @@ package com.agentcore.server.controller;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
+import com.agentcore.server.dto.chat.MessageListResponse;
+import com.agentcore.server.dto.chat.MessageSummary;
 import com.agentcore.server.dto.chat.RenameSessionRequest;
 import com.agentcore.server.dto.chat.SendMessageRequest;
 import com.agentcore.server.dto.chat.SessionListResponse;
@@ -78,6 +81,16 @@ public class ChatController {
                 sessions.stream().map(ChatController::toSummary).toList(), nextCursor);
     }
 
+    @GetMapping("/sessions/{sessionId}/messages")
+    public MessageListResponse history(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId) {
+        return new MessageListResponse(
+                chatService.history(user.userId(), sessionId).stream()
+                        .map(ChatController::toView)
+                        .toList());
+    }
+
     @PatchMapping("/sessions/{sessionId}")
     public void renameSession(
             @AuthenticationPrincipal AuthenticatedUser user,
@@ -105,8 +118,22 @@ public class ChatController {
         if (request.text() == null || request.text().isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "text is required");
         }
-        PromptStream stream = chatService.openPrompt(user.userId(), sessionId, request.text());
+        PromptStream stream = chatService.openPrompt(
+                user.userId(), sessionId, request.text(), request.turnId());
         return out -> chatService.relayPrompt(stream, out);
+    }
+
+    private static MessageSummary toView(Message message) {
+        return new MessageSummary(
+                message.getId(),
+                message.getTurnId(),
+                message.getOrdinal(),
+                message.getRole(),
+                message.getContent(),
+                message.getThinking(),
+                message.getStatus(),
+                message.getDeliveryStatus(),
+                toInstant(message.getCreatedAt()));
     }
 
     private static SessionSummary toSummary(Session session) {

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.RunDao">
+
+    <update id="markGatewayRunId">
+        UPDATE runs
+        SET gateway_run_id = #{gatewayRunId}
+        WHERE id = #{id}
+    </update>
+
+    <update id="settle">
+        UPDATE runs
+        SET status = #{status},
+            error_code = #{errorCode},
+            error_message = #{errorMessage},
+            tokens_in = #{tokensIn},
+            tokens_out = #{tokensOut},
+            settled_at = #{settledAt}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

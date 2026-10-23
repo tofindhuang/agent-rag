@@ -83,16 +83,16 @@ M0 骨架能用，但没有身份也没有记忆：
 - `refresh_tokens`：id BIGINT 自增；user_id FK；token_hash CHAR(64) 唯一（SHA-256 hex）；family_id CHAR(36)；expires_at；revoked_at 可空；created_at；索引 (user_id)。
 - `sessions`：id CHAR(36) PK（= AgentSession id = pi session id，Java 生成）；user_id FK；title；status ENUM(active/archived)；last_active_at；deleted_at 可空；created_at/updated_at；索引 (user_id, last_active_at)。删除 = 置 archived + deleted_at，列表只出 active；彻底清除留后续切片。
 - `messages`：id BIGINT 自增；session_id FK；turn_id CHAR(36)；ordinal INT（轮内 Java 分配投影序号：用户消息 0，其后每个持久化事件 +1）；role ENUM(user/assistant/tool)；content；thinking 可空；tool_calls JSON 可空；assistant 行 status ENUM(complete/partial/error)、user 行 delivery_status ENUM(pending/sent/failed)；run_id 可空 FK；assistant 行另存契约 `seqInTurn`；tokens_in/tokens_out 可空；created_at；**UNIQUE(session_id, turn_id, ordinal)** 为幂等键（ADR-0006）；索引 (session_id, id) 支撑游标。
-- `runs`：id CHAR(36) PK（= 契约 runId）；session_id FK；turn_id；status ENUM(running/completed/aborted/failed)；error_code/error_message 可空；tokens_in/tokens_out（本轮累计）；started_at；settled_at 可空。
+- `runs`：id CHAR(36) PK 为 Java 在发送前预生成的执行记录 id；session_id FK；turn_id；gateway_run_id CHAR(36) 可空（`run_started` 回填）；status ENUM(running/completed/aborted/failed)；error_code/error_message 可空；tokens_in/tokens_out（本轮累计）；started_at；settled_at 可空。messages.run_id 引用 runs.id。
 
 ### 消息投影流程（逐事件短事务，ADR-0006 语义）
 
 - 发送前：一个事务插入用户消息（ordinal 0、pending）+ runs 行（running），turnId 由 Java 生成。
-- `message_end`：插入 assistant 行（complete、tokens 取自事件）。
+- `message_end`：插入 assistant 行（`stopReason=error` 时为 error，否则 complete；tokens 取自事件）。
 - `tool_result`：插入 tool 行（内容按 64KB 截断）。
 - `run_settled`：更新 run 终态、用户消息 delivery_status=sent。
-- 断流（合成 STREAM_INTERRUPTED）：把内存中累积的 delta flush 成 assistant `partial` 行。
-- gateway 不可达：用户消息置 failed，允许同 turnId 重试。
+- 断流/客户端断开（合成 STREAM_INTERRUPTED）：把自上一条 `message_end` 以来累积的 delta flush 成 assistant `partial` 行；run 记 `aborted`。
+- gateway 不可达或拒绝：用户消息置 failed、run 记 failed，错误码优先取网关 envelope；请求可带同一 `turnId` 重试（复用用户消息行，新开 run）。
 - runs 行保证「零消息失败轮次」（如模型 429 直接终止）在历史里有落点。
 - 历史排序按 messages.id 升序；会话 last_active_at 随轮更新。
 

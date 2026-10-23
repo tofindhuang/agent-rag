@@ -9,6 +9,9 @@ import java.time.LocalDateTime;
 @TableName("sessions")
 public class Session {
 
+    /** Initial title; also the marker used by title auto-generation. */
+    public static final String DEFAULT_TITLE = "新会话";
+
     @TableId(type = IdType.INPUT)
     private String id;
     private Long userId;
