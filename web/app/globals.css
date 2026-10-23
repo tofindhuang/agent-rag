@@ -1,5 +1,126 @@
+/*
+ * Design tokens (ADR-0012). Two tiers:
+ *   primitive – raw palette values, prefixed --palette- (never used directly);
+ *   semantic  – what components may use (surfaces, text, borders, accent…).
+ *
+ * Themes: dark is the :root baseline; [data-theme="light"] overrides it, and
+ * `prefers-color-scheme: light` covers users who never picked a theme (the
+ * inline script in app/layout.tsx only sets data-theme for explicit choices).
+ */
+
 :root {
   color-scheme: dark;
+
+  /* primitives – dark palette */
+  --palette-gray-950: #0f1115;
+  --palette-gray-900: #161a23;
+  --palette-gray-850: #1a2233;
+  --palette-gray-800: #1c2230;
+  --palette-gray-700: #2a3242;
+  --palette-gray-600: #3f4a5f;
+  --palette-slate-100: #e6e8ee;
+  --palette-slate-300: #a7b0c0;
+  --palette-slate-500: #8b95a7;
+  --palette-blue-400: #5b8cff;
+  --palette-blue-600: #3b6fe0;
+  --palette-blue-700: #2f5fd0;
+  --palette-navy-700: #243a63;
+  --palette-red-400: #f87171;
+  --palette-green-400: #34d399;
+  --palette-amber-400: #fbbf24;
+  --palette-white: #ffffff;
+
+  /* semantic – surfaces */
+  --surface-0: var(--palette-gray-950);
+  --surface-1: var(--palette-gray-900);
+  --surface-2: var(--palette-gray-800);
+  --surface-hover: var(--palette-gray-850);
+
+  /* semantic – text */
+  --text-primary: var(--palette-slate-100);
+  --text-secondary: var(--palette-slate-300);
+  --text-muted: var(--palette-slate-500);
+  --text-on-accent: var(--palette-white);
+
+  /* semantic – lines */
+  --border: var(--palette-gray-700);
+  --border-strong: var(--palette-gray-600);
+
+  /* semantic – accent and status */
+  --accent: var(--palette-blue-400);
+  --accent-fill: var(--palette-blue-600);
+  --accent-hover: var(--palette-blue-700);
+  --accent-soft: var(--palette-gray-850);
+  --danger: var(--palette-red-400);
+  --success: var(--palette-green-400);
+  --warning: var(--palette-amber-400);
+
+  /* semantic – chat */
+  --bubble-user: var(--palette-navy-700);
+  --bubble-assistant: var(--palette-gray-800);
+
+  /* shape and rhythm */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --duration-fast: 140ms;
+  --ease-standard: ease;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --palette-gray-950: #f7f8fa;
+  --palette-gray-900: #ffffff;
+  --palette-gray-850: #eef1f5;
+  --palette-gray-800: #eef1f5;
+  --palette-gray-700: #d8dde6;
+  --palette-gray-600: #b8c1cf;
+  --palette-slate-100: #111827;
+  --palette-slate-300: #4b5563;
+  --palette-slate-500: #5f6b7b;
+  --palette-blue-400: #3566d6;
+  --palette-blue-600: #2f5fd0;
+  --palette-blue-700: #2749a6;
+  --palette-navy-700: #e8efff;
+  --palette-red-400: #dc2626;
+  --palette-green-400: #047857;
+  --palette-amber-400: #b45309;
+}
+
+/* No explicit choice: follow the OS. The attribute is absent in that case. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+
+    --palette-gray-950: #f7f8fa;
+    --palette-gray-900: #ffffff;
+    --palette-gray-850: #eef1f5;
+    --palette-gray-800: #eef1f5;
+    --palette-gray-700: #d8dde6;
+    --palette-gray-600: #b8c1cf;
+    --palette-slate-100: #111827;
+    --palette-slate-300: #4b5563;
+    --palette-slate-500: #5f6b7b;
+    --palette-blue-400: #3b6fe0;
+    --palette-blue-600: #2f5fd0;
+    --palette-blue-700: #2749a6;
+    --palette-navy-700: #e8efff;
+    --palette-red-400: #dc2626;
+    --palette-green-400: #047857;
+    --palette-amber-400: #b45309;
+  }
 }
 
 * {
@@ -9,11 +130,30 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: #0f1115;
-  color: #e6e8ee;
+  font-size: var(--text-base);
+  background: var(--surface-0);
+  color: var(--text-primary);
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
