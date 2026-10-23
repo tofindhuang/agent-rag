@@ -11,6 +11,8 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
+import type { RunIdentity } from "./identity.js";
+import { buildToolHeaders } from "./tool-headers.js";
 
 interface KbSearchResponse {
   passages?: Array<{ documentId: string; seq: number; content: string; score: number }>;
@@ -30,10 +32,15 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function postJson<T>(url: string, body: unknown, signal: AbortSignal | undefined): Promise<T> {
+async function postJson<T>(
+  url: string,
+  body: unknown,
+  signal: AbortSignal | undefined,
+  headers: Record<string, string>,
+): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
+    headers: { "content-type": "application/json", accept: "application/json", ...headers },
     body: JSON.stringify(body),
     signal,
   });
@@ -44,7 +51,10 @@ async function postJson<T>(url: string, body: unknown, signal: AbortSignal | und
   return (await res.json()) as T;
 }
 
-export function kbSearchExtension(config: GatewayConfig) {
+export function kbSearchExtension(
+  config: GatewayConfig,
+  getIdentity: () => RunIdentity | null,
+) {
   return (pi: ExtensionAPI): void => {
     pi.registerTool(
       defineTool({
@@ -58,11 +68,20 @@ export function kbSearchExtension(config: GatewayConfig) {
           topK: Type.Optional(Type.Number({ description: "Number of passages to return (default 5)" })),
         }),
         async execute(_toolCallId, params, signal) {
+          const identity = getIdentity();
+          if (!identity) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: "kb_search failed: no active run" }],
+              details: { count: 0 },
+            };
+          }
           try {
             const data = await postJson<KbSearchResponse>(
               `${config.javaApiUrl}/api/kb/search`,
               { query: params.query, topK: params.topK ?? 5 },
               signal,
+              buildToolHeaders(identity, _toolCallId, config.apiToken),
             );
             const text =
               data.passages && data.passages.length > 0
@@ -87,7 +106,10 @@ export function kbSearchExtension(config: GatewayConfig) {
   };
 }
 
-export function runCodeExtension(config: GatewayConfig) {
+export function runCodeExtension(
+  config: GatewayConfig,
+  getIdentity: () => RunIdentity | null,
+) {
   return (pi: ExtensionAPI): void => {
     pi.registerTool(
       defineTool({
@@ -104,6 +126,20 @@ export function runCodeExtension(config: GatewayConfig) {
           ),
         }),
         async execute(_toolCallId, params, signal) {
+          const identity = getIdentity();
+          if (!identity) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: "run_code failed: no active run" }],
+              details: {
+                stdout: "",
+                stderr: "no active run",
+                exitCode: -1,
+                durationMs: 0,
+                timedOut: false,
+              },
+            };
+          }
           try {
             const data = await postJson<SandboxExecResponse>(
               `${config.sandboxApiUrl}/api/exec`,
@@ -113,6 +149,7 @@ export function runCodeExtension(config: GatewayConfig) {
                 timeoutMs: Math.min(params.timeoutMs ?? 30_000, 60_000),
               },
               signal,
+              buildToolHeaders(identity, _toolCallId, config.apiToken),
             );
             const text = [
               data.timedOut ? "[execution timed out]" : `[exit code ${data.exitCode}] (${data.durationMs}ms)`,
