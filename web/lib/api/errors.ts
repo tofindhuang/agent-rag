@@ -55,6 +55,7 @@ const CODE_MESSAGES: Record<string, string> = {
   PROVIDER_AUTH_FAILED: "模型供应商拒绝了 API Key，请检查后重填。",
   PROVIDER_PROBE_FAILED: "模型供应商返回异常，请检查配置后重试。",
   SESSION_PURGE_FAILED: "删除会话文件失败，请稍后重试。",
+  SESSION_PURGE_BLOCKED: "无法确认会话文件的归属，暂时无法删除；请联系管理员。",
   NOT_IMPLEMENTED: "该功能尚未开放。",
   INTERNAL: "服务内部错误，请稍后重试。",
 };

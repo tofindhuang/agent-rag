@@ -109,3 +109,47 @@ test("ensure creates, dispose keeps the file, restart restores", async () => {
   await assert.rejects(() => restarted.ensure("s1", "u2"), SessionConflictError);
   await restarted.disposeAll();
 });
+
+test("ensure rebuilds the runtime when the model config changes", async () => {
+  const cfg = config();
+  const factoryCalls: Array<string | undefined> = [];
+  const factory: SessionFactory = async (manager, _runRef, _userId, modelConfig) => {
+    factoryCalls.push(modelConfig?.apiKey);
+    manager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+      timestamp: Date.now(),
+    } as unknown as Parameters<typeof manager.appendMessage>[0]);
+    return {
+      abort: async () => undefined,
+      dispose: () => undefined,
+      prompt: async () => undefined,
+      subscribe: () => () => undefined,
+    } as unknown as PiSession;
+  };
+  const pool = new SessionPool(cfg, factory);
+  const base = {
+    providerId: 1,
+    name: "SiliconFlow",
+    api: "openai-completions" as const,
+    baseUrl: "https://api.example.com/v1",
+    modelId: "deepseek-chat",
+    displayName: "DeepSeek Chat",
+  };
+
+  await pool.ensure("s-key", "u1", { ...base, apiKey: "sk-old" });
+  const same = await pool.ensure("s-key", "u1", { ...base, apiKey: "sk-old" });
+  assert.equal(factoryCalls.length, 1, "identical config must not rebuild");
+  assert.equal(same.created, false);
+
+  const rotated = await pool.ensure("s-key", "u1", { ...base, apiKey: "sk-new" });
+  assert.equal(factoryCalls.length, 2, "a rotated key must rebuild the runtime");
+  assert.equal(factoryCalls[1], "sk-new");
+  assert.equal(rotated.restored, true);
+
+  const bySnapshot = await pool.ensure("s-key", "u1");
+  assert.equal(factoryCalls.length, 2, "a missing config must not rebuild a user-model runtime");
+  assert.equal(bySnapshot.model?.id, "deepseek-chat");
+
+  await pool.disposeAll();
+});

@@ -64,7 +64,7 @@
 
 ### Java API（认证后）
 
-- `GET /api/models`：启用的模型列表 + 用户默认 + 系统默认可用性与 label。
+- `GET /api/models`：启用的模型列表 + 用户默认 + 系统默认可用性与 label。`systemDefault.label` 为 best-effort：gateway 尚未报告实际系统模型名时为 `null`（新建会话后由会话快照提供实际名称）。
 - `POST /api/models/probe`：`{api, baseUrl, apiKey, providerId?}`；providerId 存在且未传 key 时使用已存 key。
 - `GET /api/models/providers` / `POST` / `PATCH /{id}` / `DELETE /{id}`：供应商与启用模型 CRUD；编辑 key 为整体替换；删除供应商级联删除其模型并把引用它的 `users.default_model_id` 置空。
 - `PUT /api/models/default`：`{modelId|null}`，null 表示使用系统默认。
@@ -101,7 +101,7 @@
 
 ### 错误码（新增）
 
-`MODEL_NOT_CONFIGURED`（409）、`MODEL_UNAVAILABLE`（409/502）、`PROVIDER_UNREACHABLE`（502）、`PROVIDER_AUTH_FAILED`（502）、`PROVIDER_PROBE_FAILED`（502）、`MODEL_SWITCH_NOT_ALLOWED`（409，保留给后续策略）、`SESSION_PURGE_FAILED`（502，可重试；gateway 文件删除失败时业务行保留）。
+`MODEL_NOT_CONFIGURED`（409）、`MODEL_UNAVAILABLE`（409/502）、`PROVIDER_UNREACHABLE`（502）、`PROVIDER_AUTH_FAILED`（502）、`PROVIDER_PROBE_FAILED`（502）、`MODEL_SWITCH_NOT_ALLOWED`（409，保留给后续策略）、`SESSION_PURGE_FAILED`（502，可重试；gateway 文件删除失败时业务行保留）、`SESSION_PURGE_BLOCKED`（409，不可重试；gateway 无法确认文件归属时）。
 
 ## Testing Decisions
 

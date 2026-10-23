@@ -225,6 +225,12 @@ public class ChatServiceImpl implements ChatService {
             throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
                     "failed to delete session files; retry later", ex);
         }
+        if (response.statusCode() == 403) {
+            // Ownership cannot be proven (e.g. missing sidecar). Retrying will
+            // never succeed, so do not report it as a transient 502.
+            throw new ApiException(ErrorCode.SESSION_PURGE_BLOCKED,
+                    "session files cannot be attributed to this user");
+        }
         if (response.statusCode() >= 400) {
             throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
                     "failed to delete session files; retry later");

@@ -55,6 +55,8 @@ export interface PoolEntry {
   activeRun: RunIdentity | null;
   runRef: RunRef;
   model?: ModelRef;
+  /** Last model configuration applied to this runtime (credentials included). */
+  appliedModel?: SessionModelConfig;
 }
 
 interface EnsureOutcome {
@@ -98,7 +100,15 @@ export class SessionPool implements GatewayPool {
     const existing = this.entries.get(sessionId);
     if (existing) {
       if (existing.userId !== userId) throw new SessionConflictError(sessionId);
-      return ensureResult(false, false, existing.model);
+      // No incoming config means "keep the resident runtime's model": only an
+      // explicit, different config justifies a rebuild.
+      if (!modelConfig || sameModelConfig(existing.appliedModel, modelConfig)) {
+        return ensureResult(false, false, existing.model);
+      }
+      // Provider credentials/endpoint changed while the session is resident
+      // (e.g. an edited API key). Rebuild now so the next turn uses them
+      // instead of silently keeping the runtime built from the old config.
+      await this.dispose(sessionId);
     }
 
     const inflight = this.pendingCreates.get(sessionId);
@@ -140,6 +150,7 @@ export class SessionPool implements GatewayPool {
       model:
         modelRefFromSession(session.model) ??
         (modelConfig ? modelRefFromConfig(modelConfig) : undefined),
+      appliedModel: modelConfig,
     };
     this.entries.set(sessionId, entry);
     return { entry, created: lease.created, restored: lease.restored };
@@ -250,6 +261,28 @@ function ensureResult(
   model?: ModelRef,
 ): EnsureSessionResult {
   return model ? { created, restored, model } : { created, restored };
+}
+
+/** Compares every field that changes the built runtime (including secrets). */
+function sameModelConfig(
+  applied: SessionModelConfig | undefined,
+  incoming: SessionModelConfig | undefined,
+): boolean {
+  if (applied === undefined || incoming === undefined) {
+    return applied === incoming;
+  }
+  return (
+    applied.providerId === incoming.providerId &&
+    applied.name === incoming.name &&
+    applied.api === incoming.api &&
+    applied.baseUrl === incoming.baseUrl &&
+    applied.apiKey === incoming.apiKey &&
+    applied.modelId === incoming.modelId &&
+    applied.displayName === incoming.displayName &&
+    applied.contextWindow === incoming.contextWindow &&
+    applied.reasoning === incoming.reasoning &&
+    applied.vision === incoming.vision
+  );
 }
 
 export { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";

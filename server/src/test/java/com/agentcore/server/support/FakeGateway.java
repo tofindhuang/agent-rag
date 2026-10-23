@@ -106,7 +106,7 @@ public final class FakeGateway {
         return lastDeleteFilesUserId.get();
     }
 
-    /** "ok" (204) or "fail" (502) for DELETE /sessions/:id/files. */
+    /** "ok" (204), "fail" (502) or "forbidden" (403) for DELETE /sessions/:id/files. */
     public void setDeleteFilesMode(String mode) {
         deleteFilesMode.set(mode);
     }
@@ -159,6 +159,11 @@ public final class FakeGateway {
                 if ("fail".equals(deleteFilesMode.get())) {
                     sendJson(exchange, 502,
                             "{\"error\":{\"code\":\"INTERNAL\",\"message\":\"disk\",\"retryable\":true}}");
+                    return;
+                }
+                if ("forbidden".equals(deleteFilesMode.get())) {
+                    sendJson(exchange, 403,
+                            "{\"error\":{\"code\":\"USER_MISMATCH\",\"message\":\"owner\",\"retryable\":false}}");
                     return;
                 }
                 exchange.sendResponseHeaders(204, -1);

@@ -153,6 +153,22 @@ class ArchiveClosureIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void unattributableFilesAreBlockedWithoutRetrying() throws Exception {
+        String token = newUserToken();
+        String sessionId = createSession(token);
+        archive(token, sessionId);
+
+        GATEWAY.setDeleteFilesMode("forbidden");
+        mockMvc.perform(delete("/api/chat/sessions/" + sessionId + "/permanent")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SESSION_PURGE_BLOCKED"))
+                .andExpect(jsonPath("$.error.retryable").value(false));
+
+        assertThat(counts(sessionId)).containsExactly(0, 0, 1);
+    }
+
+    @Test
     void permanentDeleteRejectsActiveSessions() throws Exception {
         String token = newUserToken();
         String sessionId = createSession(token);
