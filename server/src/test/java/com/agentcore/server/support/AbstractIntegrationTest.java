@@ -3,31 +3,45 @@ package com.agentcore.server.support;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
  * Base class for integration tests that need the real persistence stack.
- * Static containers are shared across the whole test JVM; Flyway runs the
- * production migrations against the container before the context starts.
  *
- * <p>Without a local Docker daemon the tests are skipped instead of failing.
+ * <p>Containers start once per JVM (singleton pattern) so the cached Spring
+ * context never points at a container that was stopped between test classes.
+ * Flyway runs the production migrations against the container before the
+ * context starts. Without a local Docker daemon the tests are skipped.
  */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
 public abstract class AbstractIntegrationTest {
 
-    @Container
+    protected static final String JWT_SECRET =
+            "test-only-jwt-secret-that-is-long-enough-32+";
+    protected static final String GATEWAY_API_TOKEN = "test-gateway-token";
+
+    private static final boolean DOCKER_AVAILABLE = DockerClientFactory.instance().isDockerAvailable();
+
     static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
             .withDatabaseName("agent_core")
             .withUsername("agent_core")
             .withPassword("agent_core");
 
-    @Container
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7-alpine")
             .withExposedPorts(6379);
+
+    protected static final FakeGateway GATEWAY = new FakeGateway();
+
+    static {
+        if (DOCKER_AVAILABLE) {
+            MYSQL.start();
+            REDIS.start();
+        }
+    }
 
     @DynamicPropertySource
     static void datasourceProperties(DynamicPropertyRegistry registry) {
@@ -37,5 +51,8 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.password", MYSQL::getPassword);
         registry.add("spring.data.redis.host", REDIS::getHost);
         registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+        registry.add("app.auth.jwt-secret", () -> JWT_SECRET);
+        registry.add("app.gateway.api-token", () -> GATEWAY_API_TOKEN);
+        registry.add("app.gateway.base-url", GATEWAY::baseUrl);
     }
 }

@@ -2,6 +2,10 @@ server:
   port: 8080
 
 app:
+  auth:
+    # HS256 key; startup fails when unset or shorter than 32 bytes (ADR-0007).
+    jwt-secret: ${JWT_SECRET:}
+    access-ttl: 15m
   gateway:
     base-url: ${GATEWAY_URL:http://localhost:3001}
     # Shared token; must match the gateway's GATEWAY_API_TOKEN when set.

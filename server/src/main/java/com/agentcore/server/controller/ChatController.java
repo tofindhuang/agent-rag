@@ -1,14 +1,15 @@
 package com.agentcore.server.controller;
 
+import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
-import com.agentcore.server.dto.chat.CreateSessionRequest;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
 import com.agentcore.server.dto.chat.SendMessageRequest;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,11 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 /**
- * Chat API consumed by the Next.js frontend.
- *
- * <p>M0 skeleton: no auth yet (FR-6 lands in M1 with JWT), so userId is trusted
- * from the request body for development only. This controller only validates
- * parameters and maps HTTP; gateway traffic lives in {@link ChatService}.
+ * Chat API consumed by the Next.js frontend. The caller's identity comes from
+ * the access token; request bodies never carry a user id.
  */
 @RestController
 @RequestMapping("/api/chat")
@@ -35,11 +33,8 @@ public class ChatController {
     }
 
     @PostMapping("/sessions")
-    public CreateSessionResponse createSession(@RequestBody CreateSessionRequest request) {
-        if (request.userId() == null || request.userId().isBlank()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "userId is required");
-        }
-        return new CreateSessionResponse(chatService.createSession(request.userId()));
+    public CreateSessionResponse createSession(@AuthenticationPrincipal AuthenticatedUser user) {
+        return new CreateSessionResponse(chatService.createSession(Long.toString(user.userId())));
     }
 
     @PostMapping(value = "/sessions/{sessionId}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

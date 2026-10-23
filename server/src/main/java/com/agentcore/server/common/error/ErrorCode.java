@@ -12,6 +12,7 @@ public enum ErrorCode {
     INVALID_REQUEST(400, false),
     UNAUTHORIZED(401, false),
     USER_MISMATCH(403, false),
+    FORBIDDEN(403, false),
     NOT_FOUND(404, false),
     SESSION_NOT_FOUND(404, false),
     SESSION_CONFLICT(409, false),
@@ -44,7 +45,7 @@ public enum ErrorCode {
         return switch (status) {
             case 400 -> INVALID_REQUEST;
             case 401 -> UNAUTHORIZED;
-            case 403 -> USER_MISMATCH;
+            case 403 -> FORBIDDEN;
             case 404 -> NOT_FOUND;
             case 409 -> CONFLICT;
             case 501 -> NOT_IMPLEMENTED;
