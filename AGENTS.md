@@ -76,8 +76,10 @@ gateway（Node / TypeScript）：
 
 server（Java 21 / Spring Boot 3）：
 
-- DTO 用 record；依赖构造器注入；配置走 `@ConfigurationProperties` record。
+- 包结构按层：`controller` / `service`（接口）+ `service/impl`（实现）/ `dao` / `dto` / `config` / `common`；依赖方向 controller → service 接口 → dao，禁止反向与跨层直连。详见 `server/README.md`。
+- DTO 用 record 并放在 `dto/<功能>/`；依赖构造器注入；配置走 `@ConfigurationProperties` record。
 - 对 gateway 的 HTTP 调用集中在 service 层，controller 只做参数校验与编排。
+- 业务错误统一抛 `ApiException`（携带 `ErrorCode`），由 `GlobalExceptionHandler` 输出 `{error:{code,message,retryable}}`；新代码不用 `ResponseStatusException` 拼错误。
 - SSE 透传用 `StreamingResponseBody`，客户端断连的 IOException 静默丢弃。
 
 web（Next.js / React）：

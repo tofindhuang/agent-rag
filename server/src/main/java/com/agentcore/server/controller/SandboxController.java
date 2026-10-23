@@ -1,12 +1,13 @@
-package com.agentcore.server.sandbox;
+package com.agentcore.server.controller;
 
-import java.util.Map;
-import org.springframework.http.HttpStatus;
+import com.agentcore.server.common.error.ApiException;
+import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.dto.sandbox.SandboxExecRequest;
+import com.agentcore.server.service.SandboxService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Stub for the run_code tool callback (requirements.md FR-3).
@@ -17,14 +18,17 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/exec")
 public class SandboxController {
 
-    public record ExecRequest(String language, String code, Integer timeoutMs) {}
+    private final SandboxService sandboxService;
+
+    public SandboxController(SandboxService sandboxService) {
+        this.sandboxService = sandboxService;
+    }
 
     @PostMapping
-    public Map<String, Object> exec(@RequestBody ExecRequest request) {
+    public void exec(@RequestBody SandboxExecRequest request) {
         if (request.code() == null || request.code().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "code is required");
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "code is required");
         }
-        throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED,
-                "sandbox executor lands in M1 (requirements.md FR-3)");
+        sandboxService.exec(request);
     }
 }

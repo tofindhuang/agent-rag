@@ -1,33 +1,33 @@
-package com.agentcore.server.chat;
+package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.error.ApiException;
+import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.service.ChatService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
-
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
 
 /**
- * Thin client for the gateway's contract v0 (gateway/src/index.ts):
+ * Default {@link ChatService} implementation: chat orchestration and the only
+ * place that talks HTTP to the gateway.
  *
- *   POST   /sessions/:id/prompt  -> SSE stream of pi events
- *   POST   /sessions             -> create session
- *   DELETE /sessions/:id         -> dispose session
+ * <p>Controllers never build gateway requests themselves. Contract v0 is
+ * implemented today; v1 endpoints (idempotent session PUT, identity headers,
+ * turnId) land with the contract migration.
  */
 @Service
-public class ChatService {
+public class ChatServiceImpl implements ChatService {
 
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
@@ -35,12 +35,13 @@ public class ChatService {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    public ChatService(GatewayProperties gateway, ObjectMapper objectMapper) {
+    public ChatServiceImpl(GatewayProperties gateway, ObjectMapper objectMapper) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
     }
 
     /** Creates a gateway session and returns its ID (also the business session ID). */
+    @Override
     public String createSession(String userId) {
         String sessionId = UUID.randomUUID().toString();
         HttpRequest request = HttpRequest.newBuilder(URI.create(gateway.baseUrl() + "/sessions"))
@@ -54,8 +55,12 @@ public class ChatService {
         return sessionId;
     }
 
-    /** Streams the gateway's SSE response straight through to the caller. */
-    public StreamingResponseBody streamPrompt(String sessionId, String text) {
+    /**
+     * Opens the gateway prompt stream. The caller owns the returned stream and
+     * must close it when the client is done.
+     */
+    @Override
+    public InputStream openPrompt(String sessionId, String text) {
         URI uri = URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId) + "/prompt");
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .header("content-type", "application/json")
@@ -69,27 +74,20 @@ public class ChatService {
         try {
             response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "gateway unreachable: " + e.getMessage(), e);
+            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "gateway unreachable: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "interrupted", e);
+            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "interrupted while calling gateway", e);
         }
         if (response.statusCode() != 200) {
             String detail = readFully(response.body());
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ApiException(ErrorCode.UPSTREAM_ERROR,
                     "gateway error " + response.statusCode() + ": " + detail);
         }
-        return out -> {
-            // A mid-stream IOException here is a client disconnect; drop it.
-            try (InputStream in = response.body()) {
-                in.transferTo(out);
-                out.flush();
-            } catch (IOException e) {
-                // no-op: client went away
-            }
-        };
+        return response.body();
     }
 
+    @Override
     public void disposeSession(String sessionId) {
         HttpRequest request = HttpRequest.newBuilder(
                         URI.create(gateway.baseUrl() + "/sessions/" + urlEncode(sessionId)))
@@ -108,15 +106,15 @@ public class ChatService {
                     : request.newBuilder();
             return http.send(authorized.build(), HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "gateway unreachable: " + e.getMessage(), e);
+            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "gateway unreachable: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "interrupted", e);
+            throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE, "interrupted while calling gateway", e);
         }
     }
 
-    private ResponseStatusException upstreamError(String what, HttpResponse<String> response) {
-        return new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+    private ApiException upstreamError(String what, HttpResponse<String> response) {
+        return new ApiException(ErrorCode.UPSTREAM_ERROR,
                 "gateway " + what + " failed: " + response.statusCode() + " " + response.body());
     }
 
@@ -124,17 +122,17 @@ public class ChatService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (IOException e) {
-            throw new UncheckedIOException(e);
+            throw new ApiException(ErrorCode.INTERNAL, "failed to serialize gateway request", e);
         }
     }
 
     private static String urlEncode(String value) {
-        return URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     private static String readFully(InputStream in) {
         try (InputStream ignored = in) {
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             return "(unreadable: " + e.getMessage() + ")";
         }

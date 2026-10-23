@@ -1,7 +1,7 @@
-package com.agentcore.server.web;
+package com.agentcore.server.controller;
 
+import com.agentcore.server.dto.system.HealthResponse;
 import java.time.Instant;
-import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class HealthController {
 
     @GetMapping("/api/health")
-    public Map<String, Object> health() {
-        return Map.of("status", "ok", "time", Instant.now().toString());
+    public HealthResponse health() {
+        return new HealthResponse("ok", Instant.now().toString());
     }
 }
