@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.config.GatewayProperties;
@@ -33,6 +34,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.test.web.servlet.MvcResult;
 
 @AutoConfigureMockMvc
@@ -67,6 +69,12 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private GatewayProperties gatewayProperties;
+
+    @Autowired
+    private RunDao runDao;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void resetGatewayMode() {
@@ -272,9 +280,11 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 sessionDao,
                 sessionModelDao,
                 messageDao,
+                runDao,
                 messageCacheDao,
                 projection,
-                sessionModelService);
+                sessionModelService,
+                transactionManager);
 
         assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }

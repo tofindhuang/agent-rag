@@ -83,15 +83,20 @@ public class ChatController {
     @GetMapping("/sessions")
     public SessionListResponse listSessions(
             @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "active") String status,
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "" + DEFAULT_PAGE_SIZE) int limit) {
         if (limit < 1 || limit > MAX_PAGE_SIZE) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "limit must be between 1 and 100");
         }
+        if (!"active".equals(status) && !"archived".equals(status)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "status must be active or archived");
+        }
         SessionCursor after = cursor == null || cursor.isBlank() ? null : SessionCursor.decode(cursor);
 
         List<Session> fetched = chatService.listSessions(
                 user.userId(),
+                status,
                 after == null ? null : after.lastActiveAt(),
                 after == null ? null : after.sessionId(),
                 limit + 1);
@@ -138,6 +143,21 @@ public class ChatController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String sessionId) {
         chatService.archiveSession(user.userId(), sessionId);
+    }
+
+    @PostMapping("/sessions/{sessionId}/restore")
+    public void restoreSession(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId) {
+        chatService.restoreSession(user.userId(), sessionId);
+    }
+
+    /** Files first, then rows; only archived sessions (ADR-0011). */
+    @DeleteMapping("/sessions/{sessionId}/permanent")
+    public void permanentDelete(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId) {
+        chatService.permanentDelete(user.userId(), sessionId);
     }
 
     @PostMapping(value = "/sessions/{sessionId}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

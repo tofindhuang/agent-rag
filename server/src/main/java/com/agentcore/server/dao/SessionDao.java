@@ -14,8 +14,12 @@ public interface SessionDao extends BaseMapper<Session> {
     /** Returns an active session only when it belongs to the given user. */
     Session findActiveOwned(@Param("id") String id, @Param("userId") long userId);
 
-    List<Session> listActivePage(
+    /** Returns an archived session only when it belongs to the given user. */
+    Session findArchivedOwned(@Param("id") String id, @Param("userId") long userId);
+
+    List<Session> listPage(
             @Param("userId") long userId,
+            @Param("status") String status,
             @Param("beforeActiveAt") LocalDateTime beforeActiveAt,
             @Param("beforeId") String beforeId,
             @Param("limit") int limit);
@@ -34,4 +38,12 @@ public interface SessionDao extends BaseMapper<Session> {
             @Param("id") String id,
             @Param("userId") long userId,
             @Param("deletedAt") LocalDateTime deletedAt);
+
+    /** Archived → active; bumps activity so the session returns to the top. */
+    int restore(
+            @Param("id") String id,
+            @Param("userId") long userId,
+            @Param("lastActiveAt") LocalDateTime lastActiveAt);
+
+    int deleteOwned(@Param("id") String id, @Param("userId") long userId);
 }

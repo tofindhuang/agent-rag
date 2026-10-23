@@ -32,6 +32,9 @@ public final class FakeGateway {
     private final AtomicReference<String> lastModelId = new AtomicReference<>();
     private final AtomicReference<String> lastModelApiKey = new AtomicReference<>();
     private final AtomicInteger deleteCount = new AtomicInteger();
+    private final AtomicInteger deleteFilesCount = new AtomicInteger();
+    private final AtomicReference<String> lastDeleteFilesUserId = new AtomicReference<>();
+    private final AtomicReference<String> deleteFilesMode = new AtomicReference<>("ok");
 
     public FakeGateway() {
         try {
@@ -95,6 +98,25 @@ public final class FakeGateway {
         return deleteCount.get();
     }
 
+    public int deleteFilesCount() {
+        return deleteFilesCount.get();
+    }
+
+    public String lastDeleteFilesUserId() {
+        return lastDeleteFilesUserId.get();
+    }
+
+    /** "ok" (204) or "fail" (502) for DELETE /sessions/:id/files. */
+    public void setDeleteFilesMode(String mode) {
+        deleteFilesMode.set(mode);
+    }
+
+    public void resetDeleteFiles() {
+        deleteFilesCount.set(0);
+        lastDeleteFilesUserId.set(null);
+        deleteFilesMode.set("ok");
+    }
+
     public void resetModelCapture() {
         lastModelId.set(null);
         lastModelApiKey.set(null);
@@ -129,6 +151,17 @@ public final class FakeGateway {
                         "{\"sessionId\":\"s\",\"created\":true,\"restored\":false,"
                                 + "\"model\":{\"provider\":\"system\",\"id\":\"system-model\","
                                 + "\"name\":\"System Model\"}}");
+                return;
+            }
+            if (path.startsWith("/sessions/") && path.endsWith("/files") && method.equals("DELETE")) {
+                deleteFilesCount.incrementAndGet();
+                lastDeleteFilesUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
+                if ("fail".equals(deleteFilesMode.get())) {
+                    sendJson(exchange, 502,
+                            "{\"error\":{\"code\":\"INTERNAL\",\"message\":\"disk\",\"retryable\":true}}");
+                    return;
+                }
+                exchange.sendResponseHeaders(204, -1);
                 return;
             }
             if (path.startsWith("/sessions/") && method.equals("DELETE")) {

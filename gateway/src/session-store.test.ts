@@ -89,3 +89,33 @@ test("rebinds ownership when the sidecar is missing", () => {
   const meta = JSON.parse(readFileSync(join(dir, "s4.meta.json"), "utf8"));
   assert.equal(meta.userId, "u2");
 });
+
+test("removes the pi file and sidecar for the owning user, idempotently", () => {
+  const { store, dir } = tempStore();
+  const lease = store.acquire("s6", "u1");
+  flushConversation(lease.manager);
+  const file = lease.manager.getSessionFile();
+  assert.ok(file && existsSync(file));
+
+  store.remove("s6", "u1");
+
+  assert.equal(existsSync(file), false);
+  assert.equal(existsSync(join(dir, "s6.meta.json")), false);
+  store.remove("s6", "u1"); // second call is a no-op
+});
+
+test("refuses to remove another user's session files", () => {
+  const { store } = tempStore();
+  store.acquire("s7", "u1");
+
+  assert.throws(() => store.remove("s7", "u2"), SessionConflictError);
+});
+
+test("refuses to remove a file whose sidecar is missing", () => {
+  const { store, dir } = tempStore();
+  const lease = store.acquire("s8", "u1");
+  flushConversation(lease.manager);
+  unlinkSync(join(dir, "s8.meta.json"));
+
+  assert.throws(() => store.remove("s8", "u1"), SessionConflictError);
+});

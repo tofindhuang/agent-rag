@@ -47,6 +47,7 @@ interface FakeEntry extends GatewaySessionEntry {
 
 class FakePool implements GatewayPool {
   readonly entries = new Map<string, FakeEntry>();
+  readonly removedFiles: Array<{ sessionId: string; userId: string }> = [];
   deferRuns = false;
 
   get size(): number {
@@ -100,6 +101,10 @@ class FakePool implements GatewayPool {
 
   async dispose(sessionId: string): Promise<boolean> {
     return this.entries.delete(sessionId);
+  }
+
+  removeFiles(sessionId: string, userId: string): void {
+    this.removedFiles.push({ sessionId, userId });
   }
 
   async run(sessionId: string, _text: string): Promise<void> {
@@ -457,5 +462,48 @@ test("client disconnect aborts the run", async () => {
     controller.abort();
     await waitFor(() => pool.entries.get("s1")?.session.aborted === true);
     await waitFor(() => pool.entries.get("s1")?.activeRun === null);
+  });
+});
+
+test("DELETE /sessions/:id/files purges files, idempotently and ownership-checked", async () => {
+  await withServer(async ({ base, pool }) => {
+    const absent = await fetch(`${base}/sessions/missing/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(absent.status, 204);
+    assert.deepEqual(pool.removedFiles.at(-1), { sessionId: "missing", userId: "u1" });
+
+    await pool.ensure("s1", "u1");
+    const mismatch = await fetch(`${base}/sessions/s1/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u2" },
+    });
+    assert.equal(mismatch.status, 403);
+    assert.equal(((await mismatch.json()) as ErrorBody).error.code, "USER_MISMATCH");
+    assert.equal(pool.entries.has("s1"), true, "mismatch must not release the session");
+    const before = pool.removedFiles.length;
+
+    const purged = await fetch(`${base}/sessions/s1/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(purged.status, 204);
+    assert.equal(pool.entries.has("s1"), false);
+    assert.equal(pool.removedFiles.length, before + 1);
+
+    const again = await fetch(`${base}/sessions/s1/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(again.status, 204);
+  });
+});
+
+test("DELETE /sessions/:id/files requires X-User-Id", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1/files`, { method: "DELETE" });
+    assert.equal(response.status, 400);
+    assert.equal(((await response.json()) as ErrorBody).error.code, "INVALID_REQUEST");
   });
 });

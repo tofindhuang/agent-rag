@@ -7,6 +7,7 @@ import com.agentcore.server.common.sse.SseFrameParser;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.domain.Message;
@@ -41,6 +42,8 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Default {@link ChatService}: contract v1 client, session persistence, event
@@ -64,9 +67,11 @@ public class ChatServiceImpl implements ChatService {
     private final SessionDao sessionDao;
     private final SessionModelDao sessionModelDao;
     private final MessageDao messageDao;
+    private final RunDao runDao;
     private final MessageCache messageCache;
     private final ChatProjectionService projection;
     private final SessionModelService sessionModelService;
+    private final TransactionTemplate transactionTemplate;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -77,17 +82,21 @@ public class ChatServiceImpl implements ChatService {
             SessionDao sessionDao,
             SessionModelDao sessionModelDao,
             MessageDao messageDao,
+            RunDao runDao,
             MessageCache messageCache,
             ChatProjectionService projection,
-            SessionModelService sessionModelService) {
+            SessionModelService sessionModelService,
+            PlatformTransactionManager transactionManager) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
         this.sessionModelDao = sessionModelDao;
         this.messageDao = messageDao;
+        this.runDao = runDao;
         this.messageCache = messageCache;
         this.projection = projection;
         this.sessionModelService = sessionModelService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     @Override
@@ -160,14 +169,65 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public List<Session> listSessions(
-            long userId, LocalDateTime beforeActiveAt, String beforeId, int limit) {
-        return sessionDao.listActivePage(userId, beforeActiveAt, beforeId, limit);
+            long userId,
+            String status,
+            LocalDateTime beforeActiveAt,
+            String beforeId,
+            int limit) {
+        return sessionDao.listPage(userId, status, beforeActiveAt, beforeId, limit);
     }
 
     @Override
     public void renameSession(long userId, String sessionId, String title) {
         if (sessionDao.rename(sessionId, userId, title) == 0) {
             throw sessionNotFound();
+        }
+    }
+
+    @Override
+    public void restoreSession(long userId, String sessionId) {
+        if (sessionDao.restore(sessionId, userId, nowUtc()) == 0) {
+            throw sessionNotFound();
+        }
+    }
+
+    @Override
+    public void permanentDelete(long userId, String sessionId) {
+        // Only archived sessions can be purged (ADR-0011): no active run may
+        // still hold the engine context while its files disappear.
+        if (sessionDao.findArchivedOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
+        }
+
+        // Files first. On failure the rows stay, so the caller can retry.
+        deleteGatewayFiles(sessionId, userId);
+
+        transactionTemplate.executeWithoutResult(status -> {
+            messageDao.deleteBySession(sessionId);
+            runDao.deleteBySession(sessionId);
+            sessionDao.deleteOwned(sessionId, userId);
+        });
+        // Redis may still hold the recent window of the deleted session.
+        messageCache.clear(sessionId);
+    }
+
+    private void deleteGatewayFiles(String sessionId, long userId) {
+        HttpRequest request = gatewaySession(sessionId, userId)
+                .uri(URI.create(gateway.baseUrl()
+                        + "/sessions/" + urlEncode(sessionId) + "/files"))
+                .DELETE()
+                .build();
+        HttpResponse<String> response;
+        try {
+            response = sendForString(request);
+        } catch (ApiException ex) {
+            // Transport failure: rows stay, the user retries.
+            throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
+                    "failed to delete session files; retry later", ex);
+        }
+        if (response.statusCode() >= 400) {
+            throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
+                    "failed to delete session files; retry later");
         }
     }
 

@@ -20,4 +20,9 @@
         WHERE id = #{id}
     </update>
 
+    <delete id="deleteBySession">
+        DELETE FROM runs
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

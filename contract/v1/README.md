@@ -35,6 +35,7 @@
 | `POST` | `/sessions/:id/prompt` | `X-User-Id`，`{ text, turnId }` | `200` SSE |
 | `POST` | `/sessions/:id/abort` | `X-User-Id`，空 body | `202` |
 | `DELETE` | `/sessions/:id` | `X-User-Id` | `204` |
+| `DELETE` | `/sessions/:id/files` | `X-User-Id` | `204` |
 
 规则：
 
@@ -47,6 +48,7 @@
 - 显式 `abort` 返回 `202`；当前 Run 以 `run_settled { status: "aborted" }` 收尾；空闲时返回 `409 NO_ACTIVE_RUN`。
 - 客户端断连仍触发 abort（ADR-0002），作为显式中断的兜底。
 - `DELETE` 幂等：不存在也返回 `204`；存在但归属不符返回 `403 USER_MISMATCH`。
+- `DELETE /sessions/:id/files` 用于用户主动彻底删除（ADR-0011）：释放内存 AgentSession（如有），删除 pi JSONL 与 sidecar；幂等（文件不存在也返回 `204`）；归属以侧车 `X-User-Id` 为准，不符返回 `403 USER_MISMATCH`；文件存在但侧车缺失时归属不可证明，同样拒绝（`403`）。普通归档只用 `DELETE /sessions/:id`，不删文件。
 - 所有会话操作的 `X-User-Id` 与会话归属不一致时返回 `403 USER_MISMATCH`；会话不存在返回 `404 SESSION_NOT_FOUND`（`DELETE` 除外）。
 
 ## 4. SSE 帧与连接语义

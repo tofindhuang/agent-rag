@@ -66,4 +66,9 @@
           AND role = 'user'
     </update>
 
+    <delete id="deleteBySession">
+        DELETE FROM messages
+        WHERE session_id = #{sessionId}
+    </delete>
+
 </mapper>

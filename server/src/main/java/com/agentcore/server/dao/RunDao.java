@@ -20,4 +20,7 @@ public interface RunDao extends BaseMapper<Run> {
             @Param("tokensIn") Long tokensIn,
             @Param("tokensOut") Long tokensOut,
             @Param("settledAt") LocalDateTime settledAt);
+
+    /** Purge support: runs go after messages and before the session row. */
+    int deleteBySession(@Param("sessionId") String sessionId);
 }

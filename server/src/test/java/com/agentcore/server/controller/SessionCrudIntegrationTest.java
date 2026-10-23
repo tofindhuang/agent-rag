@@ -12,6 +12,7 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
@@ -32,6 +33,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -58,6 +60,12 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MessageCache messageCacheDao;
+
+    @Autowired
+    private RunDao runDao;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Autowired
     private SessionModelDao sessionModelDao;
@@ -146,10 +154,12 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 sessionDao,
                 sessionModelDao,
                 messageDao,
+                runDao,
                 messageCacheDao,
                 projection,
-                sessionModelService);
-        List<Session> listed = fresh.listSessions(userId, null, null, 50);
+                sessionModelService,
+                transactionManager);
+        List<Session> listed = fresh.listSessions(userId, "active", null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);
         fresh.renameSession(userId, sessionId, "恢复后重命名");

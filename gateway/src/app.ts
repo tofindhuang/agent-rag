@@ -263,6 +263,35 @@ export function createApp({ config, pool }: AppDependencies): Express {
     res.status(204).end();
   });
 
+  // User-initiated purge (ADR-0011): release the resident AgentSession, then
+  // delete the pi JSONL and its sidecar. Idempotent; ownership comes from the
+  // sidecar when the session is not resident.
+  app.delete("/sessions/:id/files", async (req, res) => {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const entry = pool.get(req.params.id);
+    if (entry && entry.userId !== userId) {
+      sendError(res, 403, "USER_MISMATCH", "session belongs to another user");
+      return;
+    }
+    await pool.dispose(req.params.id);
+    try {
+      pool.removeFiles(req.params.id, userId);
+    } catch (err) {
+      if (err instanceof SessionConflictError) {
+        sendError(res, 403, "USER_MISMATCH", "session belongs to another user");
+        return;
+      }
+      if (err instanceof InvalidSessionIdError) {
+        sendError(res, 400, "INVALID_REQUEST", "invalid session id");
+        return;
+      }
+      throw err;
+    }
+    res.status(204).end();
+  });
+
   // Malformed JSON from express.json() should still use the contract envelope.
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
     if (err instanceof SyntaxError) {

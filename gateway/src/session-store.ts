@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { logWarn } from "./log.js";
@@ -68,6 +68,32 @@ export class SessionFileStore {
 
   private sidecarPath(sessionId: string): string {
     return join(this.sessionDir, `${sessionId}.meta.json`);
+  }
+
+  /**
+   * Deletes the pi JSONL and its ownership sidecar (ADR-0011). Idempotent.
+   *
+   * Ownership is proven by the sidecar; a file without one is refused, because
+   * a delete cannot be undone and the owner is no longer knowable.
+   */
+  remove(sessionId: string, userId: string): void {
+    if (!SESSION_ID_PATTERN.test(sessionId)) {
+      throw new InvalidSessionIdError(sessionId);
+    }
+
+    const meta = this.readSidecar(sessionId);
+    if (meta && meta.userId !== userId) {
+      throw new SessionConflictError(sessionId);
+    }
+    const cwd = meta?.cwd ?? this.cwd;
+    const file = SessionManager.findById(cwd, sessionId, this.sessionDir);
+    if (!meta && file) {
+      throw new SessionConflictError(sessionId);
+    }
+
+    if (file) unlinkSync(file);
+    const sidecar = this.sidecarPath(sessionId);
+    if (existsSync(sidecar)) unlinkSync(sidecar);
   }
 
   private readSidecar(sessionId: string): Partial<SidecarMeta> | undefined {

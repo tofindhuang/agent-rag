@@ -30,4 +30,7 @@ public interface MessageDao extends BaseMapper<Message> {
             @Param("sessionId") String sessionId,
             @Param("turnId") String turnId,
             @Param("deliveryStatus") String deliveryStatus);
+
+    /** Purge support: messages must disappear before their runs (FK order). */
+    int deleteBySession(@Param("sessionId") String sessionId);
 }

@@ -235,6 +235,10 @@ export class SessionPool implements GatewayPool {
     return true;
   }
 
+  removeFiles(sessionId: string, userId: string): void {
+    this.store.remove(sessionId, userId);
+  }
+
   async disposeAll(): Promise<void> {
     await Promise.allSettled([...this.entries.keys()].map((id) => this.dispose(id)));
   }

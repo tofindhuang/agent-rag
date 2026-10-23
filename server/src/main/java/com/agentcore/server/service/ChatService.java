@@ -16,14 +16,28 @@ public interface ChatService {
     /** Creates the AgentSession and stores the business session row. */
     String createSession(long userId, String title, Long modelId, boolean useSystemDefault);
 
-    /** Active sessions of the user, newest activity first (composite cursor). */
+    /** Sessions of the user in the given status, newest activity first. */
     List<Session> listSessions(
-            long userId, LocalDateTime beforeActiveAt, String beforeId, int limit);
+            long userId,
+            String status,
+            LocalDateTime beforeActiveAt,
+            String beforeId,
+            int limit);
 
     void renameSession(long userId, String sessionId, String title);
 
     /** Archives the session (soft delete); the gateway session is disposed best-effort. */
     void archiveSession(long userId, String sessionId);
+
+    /** Archived → active; bumps activity so the session returns to the top. */
+    void restoreSession(long userId, String sessionId);
+
+    /**
+     * Purges an archived session: files first (gateway), then messages, runs
+     * and the session row in one transaction (ADR-0011). File deletion failure
+     * leaves every row intact so the user can retry.
+     */
+    void permanentDelete(long userId, String sessionId);
 
     /** Projected history page (ascending), Redis-first for the newest page. */
     MessagePage history(long userId, String sessionId, Long beforeId, int limit);

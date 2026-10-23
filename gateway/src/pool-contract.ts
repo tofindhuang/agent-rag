@@ -57,6 +57,8 @@ export interface GatewayPool {
   endRun(sessionId: string, runId: string): void;
   abort(sessionId: string): boolean;
   dispose(sessionId: string): Promise<boolean>;
+  /** Deletes the pi file and sidecar; ownership-checked and idempotent. */
+  removeFiles(sessionId: string, userId: string): void;
   run(sessionId: string, text: string): Promise<void>;
 }
 

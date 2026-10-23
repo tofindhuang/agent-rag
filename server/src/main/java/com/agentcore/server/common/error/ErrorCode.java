@@ -16,6 +16,7 @@ public enum ErrorCode {
     NOT_FOUND(404, false),
     SESSION_NOT_FOUND(404, false),
     SESSION_CONFLICT(409, false),
+    SESSION_PURGE_FAILED(502, true),
     EMAIL_ALREADY_EXISTS(409, false),
     MODEL_NOT_CONFIGURED(409, false),
     MODEL_UNAVAILABLE(409, false),
