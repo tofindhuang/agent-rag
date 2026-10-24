@@ -165,7 +165,7 @@ AC：
 |---|---|
 | 并发 | 单 gateway 进程 ≥50 活跃会话（PoC 实测校准）；gateway 可横向扩展，会话按 hash 亲和路由 |
 | 延迟 | 首 token P95 < 3s（扣除模型自身 TTFB）；`kb_search`/`run_code` 回传 P95 < 500ms（不含代码执行本身） |
-| 可用性 | Java 与 gateway 任一重启不丢已持久化消息；部署滚动更新不断流 |
+| 可用性 | Java 与 gateway 任一重启不丢已持久化消息；部署滚动更新不断流（M1 只验单实例重启；滚动更新不断流依赖多实例与亲和路由，随 M2 验收） |
 | 数据安全 | MySQL 加密存储凭证类字段；传输全程 TLS；沙箱执行产物保留 7 天后清理 |
 | 版本策略 | pi 锁定精确版本；升级前跑契约测试（RPC 事件 schema、extension API）；不依赖 experimental 包（pi-server/pi-protocol） |
 
@@ -227,6 +227,6 @@ Redis key 草案：
 | R4 | gateway 单进程内存上限未知 | M0 实测单进程可托管会话数，校准 §4 并发目标 |
 | R5 | 向量库/embedding 选型未定 | 已定：Qdrant + 可配置 embedding/rerank 端点；spike 结果见 `docs/research/2026-10-23-rag-selection-spike.md`（ADR-0005） |
 | O1 | Java↔gateway 契约（事件流 schema、会话生命周期指令）需 M0 冻结 v1 | — |
-| O2 | 用户画像注入的 token 预算（事实条数上限与筛选策略） | M1 实测定 |
+| O2 | 用户画像注入的 token 预算（事实条数上限与筛选策略） | 已定：20 条 / 4000 字符（真实 DeepSeek 实测，见 ADR-0020「M1 实测与结论」） |
 | O3 | 多语言沙箱扩展顺序（Python 之后） | M2 定 |
 | O4 | 浏览器渲染 / agent 工作区能力是否引入 AIO Sandbox（agent-infra/sandbox，Apache-2.0）作为独立 workspace 层 | M2 后评估；不作为 run_code 底座（ADR-0003） |
