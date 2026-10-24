@@ -84,6 +84,11 @@ _Avoid_: history store、message store、session store
 从会话中提取的、跨会话持久的用户稳定事实或偏好，经筛选后注入后续会话的 system prompt。
 _Avoid_: memory、user habit（口语概念，落库与注入的实体是 Profile Fact）
 
+### 记忆开关（Memory Toggle）
+
+用户级设置；关闭后停止画像事实的提取与注入，但保留既有事实，可随时重新开启。
+_Avoid_: memory off、disable profile
+
 ### 切片（Passage）
 
 文档切分后的最小检索单元，带来源文档与序号定位，是引用溯源的粒度。
