@@ -1,0 +1,68 @@
+# Ephemeral stack for the M1 closeout load test. Containers keep their data in
+# the container filesystem (no named volumes): `stack:down` removes everything,
+# so a run never touches any existing local database.
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: agent_core
+      MYSQL_USER: agent_core
+      MYSQL_PASSWORD: agent_core
+      MYSQL_ROOT_PASSWORD: root-dev-only
+    ports:
+      - "${LOADTEST_MYSQL_PORT:-23306}:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${LOADTEST_REDIS_PORT:-23379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.1
+    ports:
+      - "${LOADTEST_QDRANT_PORT:-23333}:6333"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4.3.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: agent_core
+      RABBITMQ_DEFAULT_PASS: agent_core_dev_only
+      RABBITMQ_DEFAULT_VHOST: /
+    ports:
+      - "${LOADTEST_RABBITMQ_PORT:-23673}:5672"
+      - "${LOADTEST_RABBITMQ_MANAGEMENT_PORT:-23674}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  silo:
+    image: pgsty/silo:RELEASE.2026-10-18T00-00-00Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: agent_core
+      MINIO_ROOT_PASSWORD: agent_core_dev_only
+    ports:
+      - "${LOADTEST_SILO_PORT:-29000}:9000"
+      - "${LOADTEST_SILO_CONSOLE_PORT:-29001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 30

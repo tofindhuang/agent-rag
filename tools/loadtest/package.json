@@ -1,0 +1,23 @@
+{
+  "name": "agent-core-loadtest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "M1 closeout load-test harness (50 concurrent active sessions)",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "smoke": "tsx src/smoke.ts",
+    "fake-embedding": "tsx src/fake-embedding.ts",
+    "stack:up": "bash scripts/up.sh",
+    "stack:down": "bash scripts/down.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  }
+}

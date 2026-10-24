@@ -18,3 +18,6 @@ next-env.d.ts
 # gateway cold-start session files
 gateway/data/
 /data/
+
+# loadtest harness scratch (metrics, logs, pids)
+tools/loadtest/.run/
