@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 import { Button } from "@/components/ui/Button";
 import type { ContextUsageData } from "@/types/gateway";
 import { ContextUsageMeter } from "./ContextUsageMeter";
@@ -14,6 +16,8 @@ interface ComposerProps {
   contextCompacted: boolean;
 }
 
+const MAX_INPUT_HEIGHT = 200;
+
 export function Composer({
   value,
   onChange,
@@ -24,17 +28,31 @@ export function Composer({
   contextUsage,
   contextCompacted,
 }: ComposerProps) {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, MAX_INPUT_HEIGHT)}px`;
+  }, [value]);
+
   return (
     <div className={styles.composer}>
       <div className={styles.composerInner}>
-        <input
+        <textarea
+          ref={inputRef}
           className={styles.input}
           value={value}
-          placeholder="输入消息，Enter 发送"
+          rows={1}
+          placeholder="输入消息，Enter 发送，Shift+Enter 换行"
           aria-label="消息输入"
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) onSend();
+            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              onSend();
+            }
           }}
           disabled={disabled}
         />

@@ -1,6 +1,7 @@
 import type { ChatMessage, ToolStatus } from "@/types/chat";
 import type { CitationPassage } from "@/types/gateway";
 import styles from "./chat.module.css";
+import { MarkdownContent } from "./MarkdownContent";
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -28,9 +29,12 @@ function citationsOf(message: ChatMessage): CitationPassage[] {
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
-  const roleClass = message.role === "user" ? styles.user : styles.assistant;
-  const hasBody = message.content.length > 0 || message.thinking.length > 0 || message.tools.length > 0;
-  const citations = message.role === "assistant" ? citationsOf(message) : [];
+  const isUser = message.role === "user";
+  const roleClass = isUser ? styles.user : styles.assistant;
+  const hasBody =
+    message.content.length > 0 || message.thinking.length > 0 || message.tools.length > 0;
+  const citations = isUser ? [] : citationsOf(message);
+  const streaming = message.status === "streaming";
 
   return (
     <div className={`${styles.message} ${roleClass}`}>
@@ -63,11 +67,19 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </div>
       )}
 
-      {message.content.length > 0 && <div>{message.content}</div>}
+      {message.content.length > 0 &&
+        (isUser ? (
+          <div className={styles.userText}>{message.content}</div>
+        ) : (
+          <MarkdownContent text={message.content} />
+        ))}
+      {streaming && message.content.length > 0 && (
+        <span className={styles.cursor} aria-hidden="true" />
+      )}
 
       {citations.length > 0 && (
         <section className={styles.citations} aria-label="引用">
-          <h3 className={styles.citationsTitle}>引用</h3>
+          <h3 className={styles.citationsTitle}>引用 · {citations.length}</h3>
           <ol className={styles.citationList}>
             {citations.map((passage) => (
               <li key={passage.passageId || `${passage.documentId}:${passage.seq}`}>
@@ -85,7 +97,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         </section>
       )}
 
-      {!hasBody && message.status === "streaming" && <div>...</div>}
+      {!hasBody && streaming && (
+        <div className={styles.typing} role="status" aria-label="正在生成">
+          <span />
+          <span />
+          <span />
+        </div>
+      )}
 
       {message.status === "partial" && <div className={styles.messageState}>回复不完整</div>}
       {message.status === "aborted" && <div className={styles.messageState}>已中断</div>}

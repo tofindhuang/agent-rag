@@ -23,6 +23,7 @@ export function MessageList({
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMessage = messages[messages.length - 1];
+  const streaming = messages.some((message) => message.status === "streaming");
 
   useEffect(() => {
     // Prepending an older page keeps the same last message; don't jump down.
@@ -37,14 +38,19 @@ export function MessageList({
         </div>
       ) : null}
       {!historyLoading && messages.length === 0 ? (
-        <p className={styles.empty}>还没有消息，发一条开始吧。</p>
+        <div className={styles.empty}>
+          <p className={styles.emptyTitle}>开始一段对话</p>
+          <p className={styles.emptyHint}>
+            可以提问、检索知识库，或让它调用 <code>run_code</code> 执行代码。
+          </p>
+        </div>
       ) : null}
       {messages.map((message, index) => (
         <MessageBubble key={message.historyId ?? `live-${index}`} message={message} />
       ))}
-      {busy && (
+      {busy && !streaming && (
         <div className={styles.status} role="status">
-          回复中...
+          正在准备回复…
         </div>
       )}
       {notice && (
