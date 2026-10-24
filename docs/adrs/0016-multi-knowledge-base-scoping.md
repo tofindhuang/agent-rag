@@ -20,13 +20,15 @@ Accepted
 ## Decision
 
 - 新增 `knowledge_bases`（id/user_id/name/created_at/updated_at），每用户可有多个，名称在用户内唯一。
-- `kb_documents.kb_id` 必填，文档只属于一个 KB；`sessions.kb_id` 可空。
-- 迁移时为每个已有文档/会话的用户创建「默认知识库」，把现有文档和会话归入；新用户首次使用时懒创建默认 KB。
-- 会话绑定单个 KB：新建会话可传 `kbId`，缺省用默认 KB；可在会话内切换。
-- 检索：`kb_search` 从 `ToolIdentity.sessionId` 找到会话的 `kb_id`；无绑定返回空结果。Qdrant 仍按用户一个 collection，payload 增加 `kb_id` 并加索引，搜索同时过滤 `user_id` 与 `kb_id`。
-- 现有 Qdrant 点没有 `kb_id`：迁移把所有文档标记 `stale`，要求 `reingest-all` 重建；不做隐式“缺省即默认”的过滤，避免跨 KB 泄漏。
-- 删除 KB 仅允许空 KB；有文档时返回 409，要求先删除或迁移文档。
-- 配额仍按用户总量（200 文档 / 1 GB），不按 KB 拆分。
+- `kb_documents.kb_id` 必填，文档只属于一个 KB；会话与 KB 用 `session_knowledge_bases` 关联表（首版每会话一行，复合主键为将来的多选预留空间）。
+- 迁移时为每个已有文档/会话的用户创建「默认知识库」，把现有文档和会话归入；新用户首次访问时懒创建默认 KB。默认库可重命名（`is_default` 标记），但不可删除。
+- 新建会话不传 `kbId` → 默认 KB；可在创建时选择其他库或创建后解绑。会话中途切换只影响后续检索，历史消息/引用不重跑。无 KB 的会话检索返回空。
+- 检索：`kb_search` 从 `ToolIdentity.sessionId` 找关联表；无绑定返回空结果。Qdrant 仍按用户一个 collection，payload 增加 `kb_id` 并加索引，搜索同时过滤 `user_id` 与 `kb_id`。
+- 现有 Qdrant 点没有 `kb_id`：迁移把所有文档标记 `stale`，要求按 KB 手动 `reingest-all` 重建；不做隐式“缺省即默认”的过滤，避免跨 KB 泄漏。
+- 删除 KB 仅允许空 KB（无文档、无会话绑定）；有任一项返回 409；默认库永远不可删。
+- 配额仍按用户总量（200 文档 / 1 GB），不按 KB 拆分；每用户最多 20 个 KB，名称 1–100 字符、用户内唯一。
+- 引用增加 `kbId/kbName` 快照，历史引用不受后续改名/删除影响。
+- 文档移动/复制、共享 KB、按 KB 配额/模型均不在首版。
 
 ## Considered Options（被否的备选）
 

@@ -12,12 +12,14 @@
 
 ## Decisions
 
-1. **单归属**：文档属于一个 KB；会话绑定一个 KB（可空）。
-2. **默认 KB**：迁移为每个已有用户创建「默认知识库」；新用户懒创建。新建会话未指定时绑定默认 KB；旧 web/API 不带 kbId 时后端回落到默认 KB。
-3. **检索隔离**：Qdrant 每用户一个 collection，payload 增加 `kb_id` 并建索引；搜索过滤 `user_id + kb_id`；无绑定会话返回空结果。
-4. **旧向量**：迁移把现有文档标记 `stale`，要求全量重建；不做缺省 kb_id 兼容，避免跨库泄漏。
-5. **删除**：只能删除空 KB；非空返回 409。
-6. **配额**：按用户总量，不按 KB 拆分。
+1. **单归属**：文档属于一个 KB；会话通过 `session_knowledge_bases` 绑定一个 KB（首版每会话一行，可解绑；复合主键为将来多选预留）。
+2. **默认 KB**：迁移为每个已有用户创建「默认知识库」；新用户懒创建。默认库可重命名但不可删除。新建会话未指定时绑定默认 KB；可在创建时选择其他库，或创建后解绑/切换。旧 web/API 不带 kbId 时后端回落到默认 KB。
+3. **检索隔离**：Qdrant 每用户一个 collection，payload 增加 `kb_id` 并建索引；搜索过滤 `user_id + kb_id`；无绑定会话返回空结果。切换 KB 只影响后续检索，历史消息/引用不重跑。
+4. **旧向量**：迁移把现有文档标记 `stale`，要求按 KB 手动重建；不做缺省 kb_id 兼容，避免跨库泄漏。
+5. **删除**：只能删除空 KB（无文档、无会话绑定）；非空返回 409；默认库不可删。
+6. **配额**：按用户总量（200 文档 / 1 GB），不按 KB 拆分；每用户最多 20 个 KB，名称 1–100 字符、用户内唯一。
+7. **引用**：Passage 增加 `kbId/kbName` 快照，引用展示库名；历史 details 保存快照。
+8. **不做**：文档移动/复制、多选会话、共享 KB、按 KB 配额/模型。
 
 ## 数据模型（MySQL，Flyway up-only）
 
@@ -37,8 +39,8 @@ CREATE TABLE knowledge_bases (
 ```
 
 - `kb_documents` 增加 `kb_id CHAR(36) NOT NULL`，FK `knowledge_bases(id)`，索引 `(user_id, kb_id, created_at)`。
-- `sessions` 增加 `kb_id CHAR(36) NULL`，FK `knowledge_bases(id)`。
-- 迁移：为 `kb_documents`/`sessions` 中出现的每个 user 创建「默认知识库」（UUID），回填两表；回填后把 `kb_documents.status` 统一置 `stale`（版本 +1）。
+- `session_knowledge_bases`：`session_id CHAR(36)` + `kb_id CHAR(36)` 复合主键，FK 两表，索引 `kb_id`；首版每会话一行。
+- 迁移：为 `kb_documents`/`sessions` 中出现的每个 user 创建「默认知识库」（UUID），回填文档与关联表；回填后把 `kb_documents.status` 统一置 `stale`（版本 +1）。
 - 迁移必须幂等（`information_schema` 守卫 + `INSERT ... WHERE NOT EXISTS`），符合仓库 up-only 约定。
 
 ## API
@@ -64,13 +66,13 @@ CREATE TABLE knowledge_bases (
 
 ### 会话
 
-- `POST /api/chat/sessions` 请求增加可选 `kbId`；省略时绑定默认 KB。
-- `PUT /api/chat/sessions/{id}/kb` `{kbId}`：切换当前会话的 KB；`kbId=null` 表示解绑（检索返回空）。
+- `POST /api/chat/sessions` 请求增加可选 `kbId`；省略时绑定默认 KB；创建时可选「不使用知识库」（前端创建后解绑或显式 noKb 标志）。
+- `PUT /api/chat/sessions/{id}/kb` `{kbId}`：切换当前会话的 KB；`kbId=null` 表示解绑（检索返回空）；只影响后续检索。
 - 会话列表/详情返回 `kbId` 与 `kbName`，供聊天页展示。
 
 ### 检索
 
-- `ToolIdentity.sessionId` → 查 `sessions.kb_id`；无 KB 返回 `passages: []`。
+- `ToolIdentity.sessionId` → 查 `session_knowledge_bases`；无绑定时返回 `passages: []`。
 - Qdrant filter：`user_id` + `kb_id`；命中 payload 的 `kb_id` 与预期不一致时告警并丢弃。
 - `KbSettingsService.testRetrieval` 使用默认 KB（无默认则第一个 KB），结果标注 KB 名称。
 
@@ -82,9 +84,10 @@ CREATE TABLE knowledge_bases (
 
 ## UI
 
-- `/knowledge` 顶部 KB 选择器/管理：列表、创建、重命名、删除（空库）；文档列表与上传按当前 KB 过滤。
-- 聊天页 header 显示当前会话 KB，可切换；新会话默认 KB。
+- `/knowledge` 顶部 KB 选择器/管理：列表、创建、重命名、删除（空库）；当前 KB 的文档列表与上传。
+- 新建会话弹窗提供 KB 下拉（默认预选默认库，可选「不使用知识库」）；聊天页 header 显示当前会话 KB，可切换/解绑。
 - 文档行显示所属 KB（当前页可省略）；「全部重建」只作用于当前 KB。
+- 引用展示「《标题》· 库名 · 第 N 段（第 P 页）」。
 
 ## 验收
 
