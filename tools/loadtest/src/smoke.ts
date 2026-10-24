@@ -73,7 +73,9 @@ async function main(): Promise<void> {
 
   // Control-flow analysis cannot see assignments made inside trackFrame, so
   // read the settled value through an explicit local after the stream closes.
-  const finalSettled: RunSettled | null = settled;
+  // The assignment lives inside trackFrame, which control-flow analysis cannot
+  // see; assert the union back so the settled fields stay accessible.
+  const finalSettled = settled as RunSettled | null;
   if (!finalSettled) throw new Error("stream ended without run_settled");
 
   const record = {

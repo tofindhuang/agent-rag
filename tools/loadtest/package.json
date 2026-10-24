@@ -13,7 +13,8 @@
     "smoke": "tsx src/smoke.ts",
     "fake-embedding": "tsx src/fake-embedding.ts",
     "stack:up": "bash scripts/up.sh",
-    "stack:down": "bash scripts/down.sh"
+    "stack:down": "bash scripts/down.sh",
+    "run": "tsx src/run.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
