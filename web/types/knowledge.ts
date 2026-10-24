@@ -39,6 +39,18 @@ export interface KbDocumentPage {
   usage: KbUsage;
 }
 
+export interface KbPassage {
+  seq: number;
+  page: number | null;
+  charCount: number;
+  content: string;
+}
+
+export interface KbPassagePage {
+  items: KbPassage[];
+  nextSeq: number | null;
+}
+
 export type KbEmbeddingSource = "user" | "system" | "none";
 export type KbRerankSource = "user" | "system" | "none" | "disabled";
 
@@ -105,6 +117,18 @@ export interface KbRerankProbe {
 export interface KbProbeResult {
   embedding: KbEmbeddingProbe | null;
   rerank: KbRerankProbe | null;
+}
+
+export interface KbRetrievalTestResult {
+  query: string;
+  embeddingModel: string;
+  dimension: number;
+  embeddingLatencyMs: number;
+  candidates: number;
+  hits: number;
+  reranked: boolean;
+  rerankModel: string | null;
+  rerankLatencyMs: number | null;
 }
 
 export type KbModelType = "embedding" | "rerank";

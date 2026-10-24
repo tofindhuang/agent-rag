@@ -13,6 +13,7 @@ import com.agentcore.server.common.kb.KbAvailability;
 import com.agentcore.server.common.kb.KbEmbeddingClient;
 import com.agentcore.server.common.kb.KbModelsClient;
 import com.agentcore.server.common.kb.KbRerankClient;
+import com.agentcore.server.common.kb.KbRerankSettings;
 import com.agentcore.server.common.kb.KbUrlGuard;
 import com.agentcore.server.common.vector.VectorStore;
 import com.agentcore.server.config.KbProperties;
@@ -98,6 +99,8 @@ class KbSettingsServiceImplTest {
                 new KbEmbeddingClient(objectMapper, guard),
                 new KbRerankClient(objectMapper, guard),
                 new KbModelsClient(objectMapper),
+                new KbRerankSettings(properties, settingsDao, new ApiKeyCipher(new ModelProperties(
+                        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", false))),
                 guard,
                 new ApiKeyCipher(new ModelProperties(
                         "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", false)),

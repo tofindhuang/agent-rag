@@ -13,7 +13,9 @@ import com.agentcore.server.common.messaging.KbTaskPublisher;
 import com.agentcore.server.common.storage.ObjectStore;
 import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbDocumentDao;
+import com.agentcore.server.dao.KbPassageDao;
 import com.agentcore.server.domain.KbDocument;
+import com.agentcore.server.domain.KbPassage;
 import com.agentcore.server.domain.KbUsage;
 import com.agentcore.server.service.KbDocumentService;
 import java.io.IOException;
@@ -36,6 +38,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     private static final int MAX_TITLE_LENGTH = 255;
 
     private final KbDocumentDao documentDao;
+    private final KbPassageDao passageDao;
     private final ObjectStore objectStore;
     private final KbTaskPublisher publisher;
     private final KbProperties properties;
@@ -46,6 +49,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
     public KbDocumentServiceImpl(
             KbDocumentDao documentDao,
+            KbPassageDao passageDao,
             ObjectStore objectStore,
             KbTaskPublisher publisher,
             KbProperties properties,
@@ -54,6 +58,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             KbUrlFetcher urlFetcher,
             PlatformTransactionManager transactionManager) {
         this.documentDao = documentDao;
+        this.passageDao = passageDao;
         this.objectStore = objectStore;
         this.publisher = publisher;
         this.properties = properties;
@@ -124,6 +129,13 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     public List<KbDocument> list(long userId) {
         availability.requireEnabled();
         return documentDao.listByUser(userId);
+    }
+
+    @Override
+    public List<KbPassage> passages(long userId, String documentId, int afterSeq, int limit) {
+        availability.requireEnabled();
+        requireOwned(userId, documentId);
+        return passageDao.listPage(documentId, userId, afterSeq, limit);
     }
 
     @Override

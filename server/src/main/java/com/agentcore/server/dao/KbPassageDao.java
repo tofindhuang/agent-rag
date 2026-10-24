@@ -17,4 +17,11 @@ public interface KbPassageDao extends BaseMapper<KbPassage> {
 
     List<KbPassage> listByDocument(
             @Param("documentId") String documentId, @Param("userId") long userId);
+
+    /** Cursor page ordered by seq; limit is the page size, not a global cap. */
+    List<KbPassage> listPage(
+            @Param("documentId") String documentId,
+            @Param("userId") long userId,
+            @Param("afterSeq") int afterSeq,
+            @Param("limit") int limit);
 }

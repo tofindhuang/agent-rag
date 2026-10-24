@@ -5,6 +5,7 @@ import com.agentcore.server.dto.kb.KbModelListResponse;
 import com.agentcore.server.dto.kb.KbProbeResponse;
 import com.agentcore.server.dto.kb.KbRerankProbeRequest;
 import com.agentcore.server.dto.kb.KbRerankUpdateRequest;
+import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
 
@@ -33,4 +34,7 @@ public interface KbSettingsService {
 
     /** Clears the user's rerank override and falls back to the deployment default. */
     KbSettingsView clearRerank(long userId);
+
+    /** Runs a real embedding + retrieval (and rerank when enabled) with saved settings. */
+    KbRetrievalTestResponse testRetrieval(long userId);
 }

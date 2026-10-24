@@ -1,6 +1,7 @@
 package com.agentcore.server.service;
 
 import com.agentcore.server.domain.KbDocument;
+import com.agentcore.server.domain.KbPassage;
 import com.agentcore.server.domain.KbUsage;
 import java.nio.file.Path;
 import java.util.List;
@@ -18,6 +19,9 @@ public interface KbDocumentService {
 
     /** Current document count/bytes and the configured per-user limits. */
     KbUsage usage(long userId);
+
+    /** Cursor page of stored passages for the management UI. */
+    List<KbPassage> passages(long userId, String documentId, int afterSeq, int limit);
 
     KbDocument detail(long userId, String documentId);
 

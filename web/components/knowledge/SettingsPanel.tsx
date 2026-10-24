@@ -10,8 +10,13 @@ import {
   resetKbEmbedding,
   resetKbRerank,
   setKbRerankEnabled,
+  testKbRetrieval,
 } from "@/lib/api/knowledge";
-import type { KbModelType, KbSettings } from "@/types/knowledge";
+import type {
+  KbModelType,
+  KbRetrievalTestResult,
+  KbSettings,
+} from "@/types/knowledge";
 import { ServiceDialog } from "./ServiceDialog";
 import styles from "./knowledge.module.css";
 
@@ -42,6 +47,8 @@ export function SettingsPanel() {
   const [notice, setNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<KbModelType | null>(null);
   const [resetTarget, setResetTarget] = useState<KbModelType | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<KbRetrievalTestResult | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,12 +73,27 @@ export function SettingsPanel() {
     setNotice(null);
     try {
       setSettings(await action());
+      setTestResult(null);
       setNotice(success);
     } catch (cause: unknown) {
       console.error(cause);
       setError(knowledgeError(cause));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runTest = async () => {
+    setTesting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      setTestResult(await testKbRetrieval());
+    } catch (cause: unknown) {
+      console.error(cause);
+      setError(knowledgeError(cause));
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -136,10 +158,39 @@ export function SettingsPanel() {
     <section className={styles.section} aria-labelledby="kb-settings-title">
       <div className={styles.sectionHeader}>
         <h2 id="kb-settings-title">Embedding 与重排</h2>
+        <Button
+          variant="secondary"
+          size="sm"
+          type="button"
+          disabled={testing || busy}
+          onClick={() => void runTest()}
+        >
+          {testing ? "测试中…" : "测试检索"}
+        </Button>
       </div>
       <p className={styles.hint}>
         先添加服务并选择模型；维度由探测自动得到。修改 embedding 模型或维度后需在文档列表「全部重建」。
       </p>
+
+      {testResult ? (
+        <div className={styles.testResult} role="status">
+          <div>
+            Embedding：{testResult.embeddingModel} · 维度 {testResult.dimension} ·{" "}
+            {testResult.embeddingLatencyMs} ms
+          </div>
+          <div>
+            Rerank：
+            {testResult.reranked
+              ? `${testResult.rerankModel ?? "已启用"} · ${testResult.rerankLatencyMs ?? "—"} ms`
+              : testResult.rerankModel
+                ? "已配置，但本次没有候选"
+                : "未启用"}
+          </div>
+          <div>
+            命中：{testResult.hits} 段（候选 {testResult.candidates}）
+          </div>
+        </div>
+      ) : null}
 
       {error ? <Banner tone="error">{error}</Banner> : null}
       {notice ? <Banner tone="notice">{notice}</Banner> : null}

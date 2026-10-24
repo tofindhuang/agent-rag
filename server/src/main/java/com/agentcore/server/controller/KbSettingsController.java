@@ -6,6 +6,7 @@ import com.agentcore.server.dto.kb.KbModelListResponse;
 import com.agentcore.server.dto.kb.KbProbeResponse;
 import com.agentcore.server.dto.kb.KbRerankProbeRequest;
 import com.agentcore.server.dto.kb.KbRerankUpdateRequest;
+import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
 import com.agentcore.server.service.KbSettingsService;
@@ -78,5 +79,11 @@ public class KbSettingsController {
     @DeleteMapping("/rerank")
     public KbSettingsView clearRerank(@AuthenticationPrincipal AuthenticatedUser user) {
         return settingsService.clearRerank(user.userId());
+    }
+
+    /** Diagnostic: proves which embedding/rerank configuration retrieval uses. */
+    @PostMapping("/test")
+    public KbRetrievalTestResponse test(@AuthenticationPrincipal AuthenticatedUser user) {
+        return settingsService.testRetrieval(user.userId());
     }
 }

@@ -6,10 +6,13 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.kb.KbAvailability;
 import com.agentcore.server.common.kb.KbFileTypes;
 import com.agentcore.server.domain.KbDocument;
+import com.agentcore.server.domain.KbPassage;
 import com.agentcore.server.domain.KbUsage;
 import com.agentcore.server.dto.kb.KbDocumentCreatedResponse;
 import com.agentcore.server.dto.kb.KbDocumentListResponse;
 import com.agentcore.server.dto.kb.KbDocumentView;
+import com.agentcore.server.dto.kb.KbPassagePageResponse;
+import com.agentcore.server.dto.kb.KbPassageView;
 import com.agentcore.server.service.KbDocumentService;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -108,6 +111,33 @@ public class KbDocumentController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable String documentId) {
         return toView(documentService.detail(user.userId(), documentId));
+    }
+
+    @GetMapping("/{documentId}/passages")
+    public KbPassagePageResponse passages(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String documentId,
+            @RequestParam(defaultValue = "0") int afterSeq,
+            @RequestParam(defaultValue = "20") int limit) {
+        if (afterSeq < 0) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "afterSeq must be non-negative");
+        }
+        if (limit < 1 || limit > 50) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "limit must be between 1 and 50");
+        }
+        List<KbPassage> rows = documentService.passages(
+                user.userId(), documentId, afterSeq, limit + 1);
+        boolean hasMore = rows.size() > limit;
+        List<KbPassage> page = hasMore ? rows.subList(0, limit) : rows;
+        return new KbPassagePageResponse(
+                page.stream()
+                        .map((passage) -> new KbPassageView(
+                                passage.getSeq(),
+                                passage.getPage(),
+                                passage.getCharCount() == null ? 0 : passage.getCharCount(),
+                                passage.getContent()))
+                        .toList(),
+                hasMore ? page.get(page.size() - 1).getSeq() : null);
     }
 
     @PostMapping("/{documentId}/reingest")

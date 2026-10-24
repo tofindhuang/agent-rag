@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { PassageDialog } from "./PassageDialog";
 import { formatBytes, formatDateTime } from "@/lib/format";
 import type {
   KbDocument,
@@ -54,6 +55,7 @@ export function DocumentList({
   onDelete,
 }: DocumentListProps) {
   const [pendingDelete, setPendingDelete] = useState<KbDocument | null>(null);
+  const [passagesFor, setPassagesFor] = useState<KbDocument | null>(null);
   const hasStale = documents.some((document) => document.status === "stale");
   const quotaFull =
     usage !== null &&
@@ -136,6 +138,16 @@ export function DocumentList({
                 ) : null}
               </div>
               <div className={styles.docActions}>
+                {document.chunkCount > 0 ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    onClick={() => setPassagesFor(document)}
+                  >
+                    查看切片
+                  </Button>
+                ) : null}
                 {document.status === "failed" ||
                 document.status === "ready" ||
                 document.status === "stale" ? (
@@ -165,6 +177,10 @@ export function DocumentList({
           ))}
         </ul>
       )}
+
+      {passagesFor ? (
+        <PassageDialog document={passagesFor} onClose={() => setPassagesFor(null)} />
+      ) : null}
 
       {pendingDelete ? (
         <Dialog

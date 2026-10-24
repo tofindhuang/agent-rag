@@ -7,9 +7,11 @@ import type {
   KbEmbeddingSettings,
   KbModelListRequest,
   KbModelListResult,
+  KbPassagePage,
   KbProbeResult,
   KbRerankProbeInput,
   KbRerankSettings,
+  KbRetrievalTestResult,
   KbSettings,
   KbSettingsInput,
   KbSourceType,
@@ -94,6 +96,39 @@ export async function fetchKnowledgeDocuments(): Promise<KbDocumentPage> {
   const body = asRecord(await readJson(await authFetch("/api/kb/documents")));
   const items = Array.isArray(body.items) ? body.items.map(parseDocument) : [];
   return { items, usage: parseUsage(body.usage) };
+}
+
+export async function fetchKbPassages(
+  documentId: string,
+  afterSeq = 0,
+  limit = 20,
+): Promise<KbPassagePage> {
+  const params = new URLSearchParams({
+    afterSeq: String(afterSeq),
+    limit: String(limit),
+  });
+  const body = asRecord(
+    await readJson(
+      await authFetch(
+        `/api/kb/documents/${encodeURIComponent(documentId)}/passages?${params.toString()}`,
+      ),
+    ),
+  );
+  const items = Array.isArray(body.items)
+    ? body.items.map((raw) => {
+        const passage = asRecord(raw);
+        return {
+          seq: asNumber(passage.seq),
+          page: asNullableNumber(passage.page),
+          charCount: asNumber(passage.charCount),
+          content: asString(passage.content),
+        };
+      })
+    : [];
+  return {
+    items,
+    nextSeq: asNullableNumber(body.nextSeq),
+  };
 }
 
 export async function uploadKnowledgeFile(file: File): Promise<void> {
@@ -203,6 +238,25 @@ export async function probeKbRerank(
 }
 
 /** Saves rerank only; embedding settings are preserved server-side. */
+export async function testKbRetrieval(): Promise<KbRetrievalTestResult> {
+  const response = await authFetch("/api/kb/settings/test", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+  });
+  const body = asRecord(await readJson(response));
+  return {
+    query: asString(body.query),
+    embeddingModel: asString(body.embeddingModel),
+    dimension: asNumber(body.dimension),
+    embeddingLatencyMs: asNumber(body.embeddingLatencyMs),
+    candidates: asNumber(body.candidates),
+    hits: asNumber(body.hits),
+    reranked: body.reranked === true,
+    rerankModel: asNullableString(body.rerankModel),
+    rerankLatencyMs: asNullableNumber(body.rerankLatencyMs),
+  };
+}
+
 export async function saveKbRerank(input: {
   enabled: boolean;
   baseUrl?: string;

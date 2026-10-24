@@ -1,6 +1,7 @@
 package com.agentcore.server.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -130,6 +131,52 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
         assertThat(response.passages()).isNotEmpty()
                 .allSatisfy((passage) -> assertThat(passage.reranked()).isTrue());
         assertThat(response.passages().get(0).score()).isCloseTo(0.9, Offset.offset(0.001));
+    }
+
+    @Test
+    void pagesThroughStoredPassagesAndEnforcesOwnership() throws Exception {
+        User user = newUser();
+        String documentId = seedDocument(user.id(), "many.txt", 12, null);
+
+        mockMvc.perform(get("/api/kb/documents/" + documentId + "/passages")
+                        .param("limit", "5")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(5))
+                .andExpect(jsonPath("$.items[0].seq").value(1))
+                .andExpect(jsonPath("$.nextSeq").value(5));
+
+        mockMvc.perform(get("/api/kb/documents/" + documentId + "/passages")
+                        .param("afterSeq", "10")
+                        .param("limit", "5")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[1].seq").value(12))
+                .andExpect(jsonPath("$.nextSeq").doesNotExist());
+
+        User other = newUser();
+        mockMvc.perform(get("/api/kb/documents/" + documentId + "/passages")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + other.token()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void settingsTestProvesWhichModelsRetrievalUses() throws Exception {
+        User user = newUser();
+        enableRerank(user.token());
+        seedDocument(user.id(), "probe.txt", 3, null);
+
+        mockMvc.perform(post("/api/kb/settings/test")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embeddingModel").value("test-embedding-model"))
+                .andExpect(jsonPath("$.dimension").value(1024))
+                .andExpect(jsonPath("$.candidates").value(3))
+                .andExpect(jsonPath("$.hits").value(3))
+                .andExpect(jsonPath("$.reranked").value(true))
+                .andExpect(jsonPath("$.rerankModel").value("bge-reranker"))
+                .andExpect(jsonPath("$.passages.length()").value(3));
     }
 
     @Test

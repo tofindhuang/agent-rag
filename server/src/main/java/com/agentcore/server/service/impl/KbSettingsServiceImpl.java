@@ -13,9 +13,12 @@ import com.agentcore.server.common.kb.KbModelsException;
 import com.agentcore.server.common.kb.KbRerankClient;
 import com.agentcore.server.common.kb.KbRerankConfig;
 import com.agentcore.server.common.kb.KbRerankException;
+import com.agentcore.server.common.kb.KbRerankHit;
 import com.agentcore.server.common.kb.KbRerankResult;
+import com.agentcore.server.common.kb.KbRerankSettings;
 import com.agentcore.server.common.kb.KbStoreException;
 import com.agentcore.server.common.kb.KbUrlGuard;
+import com.agentcore.server.common.vector.VectorHit;
 import com.agentcore.server.common.vector.VectorStore;
 import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbDocumentDao;
@@ -26,9 +29,12 @@ import com.agentcore.server.dto.kb.KbModelListResponse;
 import com.agentcore.server.dto.kb.KbProbeResponse;
 import com.agentcore.server.dto.kb.KbRerankProbeRequest;
 import com.agentcore.server.dto.kb.KbRerankUpdateRequest;
+import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
+import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
 import com.agentcore.server.service.KbSettingsService;
+import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,6 +70,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     private final KbEmbeddingClient embeddingClient;
     private final KbRerankClient rerankClient;
     private final KbModelsClient modelsClient;
+    private final KbRerankSettings rerankSettings;
     private final KbUrlGuard guard;
     private final ApiKeyCipher cipher;
     private final KbProperties properties;
@@ -77,6 +84,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             KbEmbeddingClient embeddingClient,
             KbRerankClient rerankClient,
             KbModelsClient modelsClient,
+            KbRerankSettings rerankSettings,
             KbUrlGuard guard,
             ApiKeyCipher cipher,
             KbProperties properties,
@@ -88,6 +96,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         this.embeddingClient = embeddingClient;
         this.rerankClient = rerankClient;
         this.modelsClient = modelsClient;
+        this.rerankSettings = rerankSettings;
         this.guard = guard;
         this.cipher = cipher;
         this.properties = properties;
@@ -327,6 +336,95 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         availability.requireEnabled();
         settingsDao.clearRerank(userId);
         return toView(userId, settingsDao.selectById(userId));
+    }
+
+    @Override
+    public KbRetrievalTestResponse testRetrieval(long userId) {
+        availability.requireEnabled();
+        String query = "知识库配置自检";
+        KbEmbeddingConfig embedding = effectiveEmbedding(userId, settingsDao.selectById(userId));
+        long embeddingStarted = System.nanoTime();
+        List<float[]> vectors;
+        try {
+            vectors = embeddingClient.embed(
+                    embedding, List.of(query), Duration.ofSeconds(15));
+        } catch (KbIngestException e) {
+            throw mapEmbeddingFailure(e);
+        }
+        long embeddingLatencyMs = (System.nanoTime() - embeddingStarted) / 1_000_000L;
+        if (vectors.isEmpty() || vectors.get(0).length == 0) {
+            throw new ApiException(ErrorCode.KB_UNAVAILABLE,
+                    "embedding endpoint returned an empty query vector");
+        }
+
+        List<VectorHit> hits;
+        try {
+            hits = vectorStore.search(
+                    userId, vectors.get(0), 5, Duration.ofSeconds(15));
+        } catch (KbStoreException e) {
+            throw new ApiException(ErrorCode.KB_UNAVAILABLE, e.getMessage(), e);
+        }
+        List<VectorHit> own = hits.stream()
+                .filter((hit) -> hit.payload() != null && hit.payload().userId() == userId)
+                .toList();
+
+        java.util.Optional<KbRerankConfig> rerank;
+        try {
+            rerank = rerankSettings.resolve(userId);
+        } catch (KbRerankException e) {
+            throw mapRerankFailure(e);
+        }
+        boolean reranked = false;
+        String rerankModel = rerank.map(KbRerankConfig::model).orElse(null);
+        Long rerankLatencyMs = null;
+        List<KbSearchResponse.Passage> passages;
+        if (rerank.isPresent() && !own.isEmpty()) {
+            KbRerankResult result;
+            try {
+                result = rerankClient.rerank(
+                        rerank.get(),
+                        query,
+                        own.stream().map((hit) -> hit.payload().text()).toList(),
+                        Math.min(5, own.size()),
+                        Duration.ofSeconds(15));
+            } catch (KbRerankException e) {
+                throw mapRerankFailure(e);
+            }
+            reranked = true;
+            rerankLatencyMs = result.latencyMs();
+            passages = result.hits().stream()
+                    .map((hit) -> toPassage(own.get(hit.index()), hit.score(), true))
+                    .toList();
+        } else {
+            passages = own.stream()
+                    .limit(5)
+                    .map((hit) -> toPassage(hit, hit.score(), false))
+                    .toList();
+        }
+        return new KbRetrievalTestResponse(
+                query,
+                embedding.model(),
+                embedding.dimension(),
+                embeddingLatencyMs,
+                own.size(),
+                passages.size(),
+                reranked,
+                rerankModel,
+                rerankLatencyMs,
+                passages);
+    }
+
+    private static KbSearchResponse.Passage toPassage(
+            VectorHit hit, double score, boolean reranked) {
+        return new KbSearchResponse.Passage(
+                hit.id(),
+                hit.payload().documentId(),
+                hit.payload().seq(),
+                hit.payload().page(),
+                hit.payload().title(),
+                hit.payload().text(),
+                score,
+                reranked);
     }
 
     private KbProbeResponse.EmbeddingProbe runEmbeddingProbe(
