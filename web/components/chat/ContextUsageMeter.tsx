@@ -12,10 +12,11 @@ export function ContextUsageMeter({
   const percent = usage.percent == null ? null : Math.round(usage.percent);
   const warning =
     usage.compactionEnabled && percent != null && percent >= usage.compactionThresholdPercent;
+  const source = usage.source === "provider" ? "provider 统计" : "pi 估算";
   const title =
     percent == null
-      ? "压缩后等待下一条回复重新统计"
-      : `${usage.tokens ?? "?"} / ${usage.contextWindow} tokens`;
+      ? `压缩后等待下一条回复重新统计（${source}）`
+      : `${usage.tokens ?? "?"} / ${usage.contextWindow} tokens（${source}）`;
 
   let label: string;
   if (!usage.compactionEnabled) {

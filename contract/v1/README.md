@@ -80,7 +80,7 @@ data: <单行紧凑 JSON>
 | `tool_progress` | `{ toolCallId, name, kind, phase?, chunk? }` |
 | `tool_result` | `{ toolCallId, name, isError, durationMs, content, truncated, details? }` |
 | `message_end` | `{ seqInTurn, role: "assistant", text, thinking, toolCalls, usage, stopReason }` |
-| `context_usage` | `{ tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled }` |
+| `context_usage` | `{ tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled, source }` |
 | `compaction` | `{ reason, tokensBefore, tokensAfter }` |
 | `retry` | `{ attempt, maxAttempts, delayMs, message }` |
 | `run_settled` | `{ status, turnId, error? }` |
@@ -97,7 +97,7 @@ data: <单行紧凑 JSON>
   - `usage` 字段：`input`、`output`、`cacheRead`、`cacheWrite`、`reasoning`（可选）、`totalTokens`、`cost { input, output, cacheRead, cacheWrite, total }`。
   - `stopReason`：`pending`、`stop`、`length`、`toolUse`、`error`、`aborted`、`deferred`。
 - `compaction.tokensAfter` 可为 `null`（provider 未给估算值时）。
-- `context_usage.tokens`/`percent` 可为 `null`（压缩后、下一条 assistant 回复前 pi 无法估算）。gateway 在 `run_started` 后、每条 assistant `message_end` 后、`compaction_end` 后发送；它是展示信息，不进入模型上下文，也不落库。
+- `context_usage.tokens`/`percent` 可为 `null`（压缩后、下一条 assistant 回复前无法估算）。`source` 为 `provider` 时取最近一条 assistant `usage.totalTokens`（缺失回退 input+output+cacheRead+cacheWrite）；为 `estimated` 时是 pi 的上下文估算。gateway 在 `run_started` 后、每条 assistant `message_end` 后、`compaction_end` 后发送；它是展示信息，不进入模型上下文，也不落库。
 - `run_settled.status`：`completed`、`aborted`、`error`。`error` 时必须有 `{ code, message, retryable }`。
 - `tool_progress` 只用于展示，不进入模型上下文；模型只认 `tool_result`。
 - `kb_search` 不产生阶段假进度；`run_code` 在流式执行落地后产生进度。

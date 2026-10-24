@@ -175,7 +175,32 @@ export function createApp({ config, pool }: AppDependencies): Express {
       turnId,
       sessionId: req.params.id,
       contractVersion: CONTRACT_VERSION,
-      contextUsage: () => running.session.getContextUsage?.(),
+      contextUsage: () => {
+        const window =
+          running.compaction?.contextWindow ??
+          running.session.getContextUsage?.()?.contextWindow ??
+          0;
+        if (window <= 0) return undefined;
+        if (running.lastContextTokens != null) {
+          return {
+            tokens: running.lastContextTokens,
+            contextWindow: window,
+            percent: (running.lastContextTokens / window) * 100,
+            source: "provider" as const,
+          };
+        }
+        const estimate = running.session.getContextUsage?.();
+        if (!estimate) return undefined;
+        return {
+          tokens: estimate.tokens,
+          contextWindow: window,
+          percent: estimate.percent,
+          source: "estimated" as const,
+        };
+      },
+      onContextTokens: (tokens) => {
+        running.lastContextTokens = tokens;
+      },
       compactionThresholdPercent: running.compaction?.thresholdPercent ?? 80,
       compactionEnabled: running.compaction?.enabled ?? true,
     });

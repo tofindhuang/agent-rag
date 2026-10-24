@@ -43,6 +43,8 @@ export interface ContextUsageData {
   percent: number | null;
   compactionThresholdPercent: number;
   compactionEnabled: boolean;
+  /** provider = last assistant usage; estimated = pi context projection. */
+  source: "provider" | "estimated";
 }
 
 export type DomainEvent =

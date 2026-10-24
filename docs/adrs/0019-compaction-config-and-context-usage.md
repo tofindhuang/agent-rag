@@ -18,7 +18,7 @@ pi 内置 compaction 的旋钮是 `enabled`、`reserveTokens`、`keepRecentToken
 2. **按会话模型窗口换算**：`reserveTokens = max(1024, floor(contextWindow * ratio))`，`keepRecentTokens = min(configured, max(1, floor(contextWindow / 2)))`；窗口缺失回退 128k。
 3. **每会话独立 SettingsManager**：保留 `~/.pi/agent` 原有设置，模型确定后 `applyOverrides({compaction})`；不写回磁盘；模型切换重建时重新计算。
 4. **保留量按 token 近似轮数**：pi 没有按轮保留 API，不修改 cut point。
-5. **上下文占比用新契约事件**：`context_usage { tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled }`；在 run 开始、每条 assistant `message_end`、`compaction_end` 后发送；`tokens/percent` 允许 `null`。
+5. **上下文占比用新契约事件**：`context_usage { tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled, source }`；`source=provider` 取最近 assistant usage，`estimated` 回退 pi 估算；在 run 开始、每条 assistant `message_end`、`compaction_end` 后发送；`tokens/percent` 允许 `null`。
 6. **占比只做实时展示**：不落 MySQL、不提供刷新后的 REST 查询；下一次 run 补齐。摘要正文查看保持 P1。
 7. **compaction summary usage 不计入 FR-6 TPM**：TPM 只统计 assistant 对话 usage；精确计费留到后续。
 

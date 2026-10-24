@@ -78,10 +78,11 @@ thresholdPercent = round((1 - reserveTokens / contextWindow) * 100)
 
 ```
 event: context_usage
-data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled }
+data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled, source }
 ```
 
-- `tokens`/`percent` 可为 `null`：pi 在压缩后、下一条 assistant 回复前无法估算。
+- `tokens`/`percent` 可为 `null`：压缩后、下一条 assistant 回复前没有可靠的 provider usage。
+- `source`：`provider` 表示最近一条 assistant `usage.totalTokens`（缺失回退 input+output+cacheRead+cacheWrite）；`estimated` 表示 pi 的上下文估算（会话刚恢复、尚未收到 assistant usage 时使用）。
 - 发送时机：`run_started` 之后一次；每条 assistant `message_end` 之后；`compaction_end` 之后发一次 `null`（等待下一轮重算）。
 - 不逐 delta 发送；不进入模型上下文；不落 MySQL。
 - Java 只透传该帧，不做投影；web 用它更新头部占比。
@@ -90,7 +91,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 ### UI
 
 - 会话头部模型/知识库旁显示小胶囊 + 细进度条：`上下文 42% · 压缩阈值 80%`。
-- 悬停显示 `tokens / contextWindow`；占比达到阈值时变色（例如警示色），但不改变对话行为。
+- 悬停显示 `tokens / contextWindow` 与数据来源（provider 统计 / pi 估算）；占比达到阈值时变色，但不改变对话行为。
 - `tokens/percent` 为 null 时显示「上下文统计中」；`compactionEnabled=false` 时显示「压缩已关闭」。
 - `compaction` 事件仍显示「上下文已压缩」；若压缩发生在 `run_settled` 之后、没有事件，UI 在 `context_usage` 明显下降（≥15 个百分点）时推断并显示持久的「已压缩」标记；模型/会话切换时重置。摘要正文查看是 P1，不做。
 - 刷新后占位隐藏，直到下一次 run。
@@ -109,6 +110,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 ## Testing Decisions
 
 - 纯函数单测：`contextWindow` 回退、ratio 夹紧、`reserveTokens`/`keepRecentTokens` 计算、disabled、阈值百分比。
+- Translator 单测：assistant `message_end` 的 provider usage 覆盖 `context_usage`，`source=provider`；无 provider usage 时回退 pi 估算；compaction 后清空为 null。
 - SettingsManager 覆盖测试：会话创建后 `getCompactionSettings(model)` 返回注入值；不影响其他会话/磁盘设置。
 - Translator 单测：有 `contextUsage` provider 时在 run 开始/`message_end`/`compaction_end` 发出 `context_usage`；provider 缺失时既有 fixture 不变。
 - 契约测试：现有 `03-compaction.json` 继续覆盖 AC2（压缩后继续文本、正常终态）。

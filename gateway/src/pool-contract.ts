@@ -17,6 +17,8 @@ export interface GatewaySessionEntry {
   session: GatewaySession;
   /** Compaction policy computed for this session's model. */
   compaction?: CompactionPlan;
+  /** Last provider-reported context size; null until the next assistant turn. */
+  lastContextTokens?: number | null;
 }
 
 import type { ProviderApi } from "./providers.js";

@@ -6,6 +6,8 @@ import { after, test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
 import { AGENT_TOOL_WHITELIST, SessionPool, type PiSession, type SessionFactory } from "./pool.js";
+import type { SessionModelConfig } from "./pool-contract.js";
+import type { RunRef } from "./identity.js";
 import { SessionConflictError } from "./pool-contract.js";
 
 const dirs: string[] = [];
@@ -43,6 +45,42 @@ const fakeFactory: SessionFactory = async (manager) => {
 
 after(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+});
+
+test("the default session factory forwards the requested model config", async () => {
+  class CapturingPool extends SessionPool {
+    captured?: SessionModelConfig;
+
+    protected override async createPiSession(
+      _manager: SessionManager,
+      _runRef: RunRef,
+      _userId: string,
+      modelConfig?: SessionModelConfig,
+    ): Promise<PiSession> {
+      this.captured = modelConfig;
+      return {
+        abort: async () => undefined,
+        dispose: () => undefined,
+        prompt: async () => undefined,
+        subscribe: () => () => undefined,
+      } as unknown as PiSession;
+    }
+  }
+
+  const pool = new CapturingPool(config());
+  const requested: SessionModelConfig = {
+    providerId: 7,
+    name: "Test",
+    api: "openai-completions",
+    baseUrl: "https://example.com/v1",
+    apiKey: "sk-test",
+    modelId: "test-model",
+    contextWindow: 8_000,
+  };
+
+  await pool.ensure("capture-model", "u1", requested);
+  assert.deepEqual(pool.captured, requested);
+  await pool.disposeAll();
 });
 
 test("only the FR-6 tool whitelist is exposed to the model", () => {

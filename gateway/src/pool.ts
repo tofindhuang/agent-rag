@@ -68,6 +68,8 @@ export interface PoolEntry {
   appliedModel?: SessionModelConfig;
   /** Compaction policy computed for the session's model. */
   compaction: CompactionPlan;
+  /** Last provider-reported context size; null until the next assistant turn. */
+  lastContextTokens: number | null;
 }
 
 interface EnsureOutcome {
@@ -164,12 +166,13 @@ export class SessionPool implements GatewayPool {
         (modelConfig ? modelRefFromConfig(modelConfig) : undefined),
       appliedModel: modelConfig,
       compaction: buildCompactionPlan(session.model?.contextWindow, this.config.compaction),
+      lastContextTokens: null,
     };
     this.entries.set(sessionId, entry);
     return { entry, created: lease.created, restored: lease.restored };
   }
 
-  private async createPiSession(
+  protected async createPiSession(
     manager: SessionManager,
     runRef: RunRef,
     userId: string,

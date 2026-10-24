@@ -1,4 +1,4 @@
-import type { AgentSessionEvent, ContextUsage } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import {
   CONTRACT_VERSION,
   type ContractVersion,
@@ -9,12 +9,20 @@ import {
 } from "./events.js";
 import { truncateUtf8 } from "./text.js";
 
+export interface ContextUsageSnapshot {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  source: "provider" | "estimated";
+}
+
 export interface RunContext {
   runId: string;
   turnId: string;
   sessionId: string;
   contractVersion?: ContractVersion;
-  contextUsage?: () => ContextUsage | undefined;
+  contextUsage?: () => ContextUsageSnapshot | undefined;
+  onContextTokens?: (tokens: number | null) => void;
   compactionThresholdPercent?: number;
   compactionEnabled?: boolean;
 }
@@ -80,6 +88,19 @@ interface PiEventLike {
   delayMs?: number;
   errorMessage?: string;
   aborted?: boolean;
+}
+
+function providerContextTokens(usage: PiUsage | undefined): number | null {
+  if (!usage) return null;
+  if (typeof usage.totalTokens === "number" && usage.totalTokens > 0) {
+    return usage.totalTokens;
+  }
+  const total =
+    (usage.input ?? 0) +
+    (usage.output ?? 0) +
+    (usage.cacheRead ?? 0) +
+    (usage.cacheWrite ?? 0);
+  return total > 0 ? total : null;
 }
 
 const TOOL_RESULT_MAX_BYTES = 65_536;
@@ -149,14 +170,21 @@ export class RunTranslator {
     switch (raw.type) {
       case "message_update":
         return this.translateMessageUpdate(raw);
-      case "message_end":
-        return [...this.translateMessageEnd(raw), ...this.contextUsageEvents()];
+      case "message_end": {
+        const events = this.translateMessageEnd(raw);
+        const tokens = providerContextTokens(raw.message?.usage);
+        if (tokens != null) {
+          this.context.onContextTokens?.(tokens);
+        }
+        return [...events, ...this.contextUsageEvents(tokens, "provider")];
+      }
       case "tool_execution_update":
         return this.translateToolProgress(raw);
       case "tool_execution_end":
         return this.translateToolResult(raw);
       case "compaction_end":
-        return [...this.translateCompaction(raw), ...this.contextUsageEvents()];
+        this.context.onContextTokens?.(null);
+        return [...this.translateCompaction(raw), ...this.contextUsageEvents(null, "provider")];
       case "auto_retry_start":
         return this.translateRetry(raw);
       case "agent_settled":
@@ -176,18 +204,26 @@ export class RunTranslator {
     return this.settle("error", { code, message: concise(message, "internal error"), retryable });
   }
 
-  private contextUsageEvents(): DomainEvent[] {
-    const usage = this.context.contextUsage?.();
-    if (!usage) return [];
+  private contextUsageEvents(
+    tokensOverride?: number | null,
+    sourceOverride?: "provider" | "estimated",
+  ): DomainEvent[] {
+    if (!this.context.contextUsage) return [];
+    const snapshot = this.context.contextUsage();
+    const contextWindow = snapshot?.contextWindow ?? 0;
+    const tokens = tokensOverride !== undefined ? tokensOverride : snapshot?.tokens ?? null;
+    const percent =
+      tokens == null || contextWindow <= 0 ? null : (tokens / contextWindow) * 100;
     return [
       {
         type: "context_usage",
         data: {
-          tokens: usage.tokens,
-          contextWindow: usage.contextWindow,
-          percent: usage.percent,
+          tokens,
+          contextWindow,
+          percent,
           compactionThresholdPercent: this.context.compactionThresholdPercent ?? 80,
           compactionEnabled: this.context.compactionEnabled ?? true,
+          source: sourceOverride ?? snapshot?.source ?? "estimated",
         },
       },
     ];

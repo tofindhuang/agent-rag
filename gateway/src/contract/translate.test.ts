@@ -183,7 +183,7 @@ test("emits context usage after start, assistant messages and compaction", () =>
     turnId: "turn-1",
     sessionId: "session-1",
     contractVersion: "1",
-    contextUsage: () => usage,
+    contextUsage: () => ({ ...usage, source: "estimated" }),
     compactionThresholdPercent: 80,
     compactionEnabled: true,
   });
@@ -200,6 +200,7 @@ test("emits context usage after start, assistant messages and compaction", () =>
       percent: 10,
       compactionThresholdPercent: 80,
       compactionEnabled: true,
+      source: "estimated",
     });
   }
 
@@ -237,4 +238,55 @@ test("emits context usage after start, assistant messages and compaction", () =>
     assert.equal(compaction[1].data.tokens, null);
     assert.equal(compaction[1].data.percent, null);
   }
+});
+
+test("prefers provider usage for context_usage and clears it on compaction", () => {
+  const seen: Array<number | null> = [];
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+    contextUsage: () => ({
+      tokens: 100,
+      contextWindow: 8_000,
+      percent: 1.25,
+      source: "estimated",
+    }),
+    onContextTokens: (tokens) => seen.push(tokens),
+    compactionThresholdPercent: 80,
+    compactionEnabled: true,
+  });
+  translator.start();
+
+  const events = translator.translate({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      usage: {
+        input: 200,
+        output: 34,
+        cacheRead: 1_000,
+        cacheWrite: 0,
+        totalTokens: 1_234,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+    },
+  } as unknown as AgentSessionEvent);
+
+  const usage = events.find((event) => event.type === "context_usage");
+  assert.ok(usage && usage.type === "context_usage");
+  assert.equal(usage.data.tokens, 1_234);
+  assert.equal(usage.data.percent, 15.425);
+  assert.equal(usage.data.source, "provider");
+  assert.deepEqual(seen, [1_234]);
+
+  translator.translate({
+    type: "compaction_end",
+    reason: "threshold",
+    result: { tokensBefore: 7_000, estimatedTokensAfter: 1_000 },
+  } as unknown as AgentSessionEvent);
+  assert.deepEqual(seen, [1_234, null]);
 });

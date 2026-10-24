@@ -23,6 +23,7 @@ export interface ContextUsageData {
   percent: number | null;
   compactionThresholdPercent: number;
   compactionEnabled: boolean;
+  source: "provider" | "estimated";
 }
 
 export interface ToolProgressData {
