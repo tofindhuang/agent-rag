@@ -334,6 +334,7 @@ test("retries a disconnected turn with the same turnId", async () => {
   assert.equal(records.length, 1);
   assert.equal(records[0].status, "completed");
   assert.equal(records[0].attempts, 2);
+  assert.equal(records[0].retryReason, "disconnected");
   assert.equal(new Set(turnIds).size, 1, "retries must reuse the turnId");
   assert.equal(summary.statusCounts.completed, 1);
 });
@@ -395,6 +396,7 @@ test("retries a turn when the gateway hop is temporarily unavailable", async () 
   assert.equal(records.length, 1);
   assert.equal(records[0].attempts, 3);
   assert.equal(records[0].status, "completed");
+  assert.equal(records[0].retryReason, "upstream_unavailable");
 });
 
 test("retries a turn aborted by an infrastructure restart", async () => {
@@ -417,4 +419,5 @@ test("retries a turn aborted by an infrastructure restart", async () => {
   assert.equal(records[0].attempts, 2);
   assert.equal(records[0].status, "completed");
   assert.equal(summary.retries, 1);
+  assert.equal(records[0].retryReason, "aborted");
 });

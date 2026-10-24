@@ -69,6 +69,8 @@ export interface TurnRecord {
   status: TurnStatus;
   errorClass: ErrorClass;
   attempts: number;
+  /** First interruption that triggered a retry, for run-report attribution. */
+  retryReason: ErrorClass | "aborted" | null;
   error: { code: string; message: string; retryable: boolean } | null;
   textChars: number;
   toolCalls: ToolCallRecord[];
@@ -124,6 +126,7 @@ export interface RunSummary {
   statusCounts: Record<string, number>;
   errors: Record<ErrorClass, number>;
   retries: number;
+  retryReasons: Record<string, number>;
   firstTokenMs: Summary;
   turnMs: Summary;
   toolLatencyMs: Summary;
@@ -174,7 +177,11 @@ export function classifyFailure(error: unknown): ErrorClass {
 }
 
 export function isRetryableClass(errorClass: ErrorClass): boolean {
-  return errorClass === "disconnected" || errorClass === "upstream_unavailable";
+  return (
+    errorClass === "disconnected" ||
+    errorClass === "upstream_unavailable" ||
+    errorClass === "upstream_429"
+  );
 }
 
 const DEFAULT_PROMPTS: Record<Workload, (round: number) => string> = {
@@ -197,6 +204,7 @@ interface TurnContext {
   turnId: string;
   round: number;
   attempt: number;
+  retryReason: ErrorClass | "aborted" | null;
 }
 
 async function runTurn(context: TurnContext): Promise<TurnRecord> {
@@ -265,6 +273,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
       turnId: context.turnId,
       round: context.round,
       attempts: context.attempt,
+      retryReason: context.retryReason,
       firstTokenMs: firstTokenAt === null ? null : Math.round(firstTokenAt - started),
       turnMs: Math.round(context.clock.now() - started),
       status:
@@ -289,6 +298,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
       turnId: context.turnId,
       round: context.round,
       attempts: context.attempt,
+      retryReason: context.retryReason,
       firstTokenMs: firstTokenAt === null ? null : Math.round(firstTokenAt - started),
       turnMs: Math.round(context.clock.now() - started),
       status: errorClass === "disconnected" ? "disconnected" : "error",
@@ -373,6 +383,7 @@ async function runUser(
     for (let round = 1; round <= options.rounds; round += 1) {
       const turnId = `${runId}-u${index}-r${round}`;
       let record: TurnRecord;
+      let retryReason: ErrorClass | "aborted" | null = null;
       for (let attempt = 1; ; attempt += 1) {
         record = await runTurn({
           client,
@@ -386,10 +397,12 @@ async function runUser(
           turnId,
           round,
           attempt,
+          retryReason,
         });
         const retryable =
           isRetryableClass(record.errorClass) || record.status === "aborted";
         if (retryable && attempt < maxAttempts) {
+          retryReason ??= record.status === "aborted" ? "aborted" : record.errorClass;
           await sleep(options.retryDelayMs ?? 1_500);
           continue;
         }
@@ -413,6 +426,7 @@ async function runUser(
       turnId: `${runId}-u${index}-setup`,
       round: 0,
       attempts: 1,
+      retryReason: null,
       firstTokenMs: null,
       turnMs: 0,
       status: errorClass === "disconnected" ? "disconnected" : "error",
@@ -501,6 +515,12 @@ export async function runLoadTest(options: LoadTestOptions): Promise<RunSummary>
     statusCounts,
     errors,
     retries: records.filter((record) => record.attempts > 1).length,
+    retryReasons: records.reduce<Record<string, number>>((counts, record) => {
+      if (record.attempts > 1 && record.retryReason) {
+        counts[record.retryReason] = (counts[record.retryReason] ?? 0) + 1;
+      }
+      return counts;
+    }, {}),
     firstTokenMs: summarize(
       records.flatMap((record) => (record.firstTokenMs === null ? [] : [record.firstTokenMs])),
     ),
