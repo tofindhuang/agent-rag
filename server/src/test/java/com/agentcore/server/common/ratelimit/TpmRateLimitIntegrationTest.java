@@ -2,9 +2,11 @@ package com.agentcore.server.common.ratelimit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.matchesPattern;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.agentcore.server.service.ChatService;
@@ -19,6 +21,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
@@ -41,8 +44,10 @@ class TpmRateLimitIntegrationTest extends AbstractIntegrationTest {
         String token = AuthTestCalls.login(mockMvc, email, "correct-horse");
         String sessionId = createSession(token);
 
-        mockMvc.perform(prompt(token, sessionId, "hi"))
-                .andExpect(status().isOk());
+        MvcResult first = mockMvc.perform(prompt(token, sessionId, "hi"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(first)).andExpect(status().isOk());
 
         mockMvc.perform(prompt(token, sessionId, "again"))
                 .andExpect(status().isTooManyRequests())
@@ -53,8 +58,10 @@ class TpmRateLimitIntegrationTest extends AbstractIntegrationTest {
         assertThat(chatService.history(userId, sessionId, null, 50).items()).hasSize(2);
 
         Thread.sleep(1_100L);
-        mockMvc.perform(prompt(token, sessionId, "after window"))
-                .andExpect(status().isOk());
+        MvcResult afterWindow = mockMvc.perform(prompt(token, sessionId, "after window"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(afterWindow)).andExpect(status().isOk());
     }
 
     private String createSession(String token) throws Exception {
