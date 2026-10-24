@@ -60,6 +60,8 @@ export interface KbEmbeddingSettings {
   apiKeyHint: string | null;
   model: string | null;
   dimension: number | null;
+  /** 1 means the provider cannot be trusted with batched responses. */
+  batchSize: number;
   path: string | null;
 }
 

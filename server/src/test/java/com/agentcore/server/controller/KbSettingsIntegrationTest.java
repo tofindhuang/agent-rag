@@ -271,6 +271,21 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     @Test
+    void detectsAmbiguousBatchIndexesAndStoresBatchSizeOne() throws Exception {
+        User user = newUser();
+        EMBEDDING.mode(FakeEmbeddingServer.Mode.DUPLICATE_INDEX);
+
+        putSettings(user.token(), embeddingBody("sk-test", EMBEDDING_MODEL, 1024))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embedding.batchSize").value(1));
+        assertThat(jdbc.queryForObject(
+                        "SELECT embedding_batch_size FROM kb_user_settings WHERE user_id = ?",
+                        Integer.class,
+                        user.userId()))
+                .isEqualTo(1);
+    }
+
+    @Test
     void probeDiscoversDimensionWithoutAClaimedValue() throws Exception {
         User user = newUser();
 

@@ -83,6 +83,18 @@ class KbEmbeddingClientTest {
     }
 
     @Test
+    void honorsAnExplicitSingleInputBatchSize() {
+        KbEmbeddingConfig single = new KbEmbeddingConfig(
+                config(8).baseUrl(), config(8).apiKey(), config(8).model(),
+                config(8).path(), 8, 1);
+
+        List<float[]> vectors = client.embed(single, List.of("a", "b", "c"));
+
+        assertThat(vectors).hasSize(3);
+        assertThat(server.requests()).isEqualTo(3);
+    }
+
+    @Test
     void classifiesTimeoutsAsRetryable() {
         server.mode(FakeEmbeddingServer.Mode.SLOW);
 

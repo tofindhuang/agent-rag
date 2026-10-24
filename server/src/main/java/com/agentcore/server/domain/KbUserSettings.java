@@ -19,6 +19,7 @@ public class KbUserSettings {
     private String embeddingApiKeyCipher;
     private String embeddingModel;
     private Integer embeddingDim;
+    private Integer embeddingBatchSize;
     private String embeddingPath;
     private Boolean rerankEnabled;
     private String rerankBaseUrl;
@@ -65,6 +66,14 @@ public class KbUserSettings {
 
     public void setEmbeddingDim(Integer embeddingDim) {
         this.embeddingDim = embeddingDim;
+    }
+
+    public Integer getEmbeddingBatchSize() {
+        return embeddingBatchSize;
+    }
+
+    public void setEmbeddingBatchSize(Integer embeddingBatchSize) {
+        this.embeddingBatchSize = embeddingBatchSize;
     }
 
     public String getEmbeddingPath() {

@@ -131,6 +131,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         KbEmbeddingConfig candidate =
                 new KbEmbeddingConfig(baseUrl, embeddingKey.plaintext(), model, path, dimension);
         probeEmbeddingOrThrow(candidate);
+        int embeddingBatchSize = embeddingClient.probeBatch(candidate) ? 32 : 1;
 
         boolean rerankEnabled;
         String rerankBaseUrl = null;
@@ -171,6 +172,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         entity.setEmbeddingApiKeyCipher(embeddingKey.cipher());
         entity.setEmbeddingModel(model);
         entity.setEmbeddingDim(dimension);
+        entity.setEmbeddingBatchSize(embeddingBatchSize);
         entity.setEmbeddingPath(path);
         entity.setRerankEnabled(rerankEnabled);
         entity.setRerankBaseUrl(rerankBaseUrl);
@@ -490,6 +492,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                     hint(userId, row.getEmbeddingApiKeyCipher()),
                     notBlank(row.getEmbeddingModel()) ? row.getEmbeddingModel() : fallback.model(),
                     positive(row.getEmbeddingDim()) ? row.getEmbeddingDim() : fallback.dim(),
+                    positive(row.getEmbeddingBatchSize()) ? row.getEmbeddingBatchSize() : 32,
                     notBlank(row.getEmbeddingPath()) ? row.getEmbeddingPath() : fallback.path());
         }
         if (fallback.configured()) {
@@ -499,9 +502,10 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                     null,
                     fallback.model(),
                     fallback.dim(),
+                    32,
                     fallback.path());
         }
-        return new KbSettingsView.Embedding("none", null, null, null, null, null);
+        return new KbSettingsView.Embedding("none", null, null, null, null, 32, null);
     }
 
     private KbSettingsView.Rerank rerankView(long userId, KbUserSettings row) {
@@ -546,7 +550,8 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                     apiKey,
                     notBlank(row.getEmbeddingModel()) ? row.getEmbeddingModel() : fallback.model(),
                     notBlank(row.getEmbeddingPath()) ? row.getEmbeddingPath() : fallback.path(),
-                    positive(row.getEmbeddingDim()) ? row.getEmbeddingDim() : fallback.dim());
+                    positive(row.getEmbeddingDim()) ? row.getEmbeddingDim() : fallback.dim(),
+                    positive(row.getEmbeddingBatchSize()) ? row.getEmbeddingBatchSize() : 32);
         }
         if (fallback.configured()) {
             return new KbEmbeddingConfig(

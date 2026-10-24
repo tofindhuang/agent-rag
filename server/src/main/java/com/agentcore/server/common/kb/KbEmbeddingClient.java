@@ -48,12 +48,38 @@ public class KbEmbeddingClient {
         return embed(config, texts, REQUEST_TIMEOUT);
     }
 
+    /**
+     * Two-input capability check used when saving settings. A false result is
+     * stored as batch size 1 so ingestion never guesses an ambiguous mapping.
+     */
+    public boolean probeBatch(KbEmbeddingConfig config) {
+        List<String> probe = new ArrayList<>(MAX_BATCH_SIZE);
+        for (int i = 0; i < MAX_BATCH_SIZE; i++) {
+            probe.add("batch capability probe " + i);
+        }
+        try {
+            // Probe the full batch size: some providers only break beyond a
+            // small batch count.
+            request(config, probe, false, REQUEST_TIMEOUT);
+            return true;
+        } catch (BatchIndexFallbackException e) {
+            log.warn("embedding batch probe found no usable index mapping; using batch size 1");
+            return false;
+        } catch (KbIngestException e) {
+            log.warn("embedding batch probe failed ({}); using batch size 1", e.getMessage());
+            return false;
+        }
+    }
+
     /** Retrieval passes the remaining 20s budget so one call cannot overrun it. */
     public List<float[]> embed(
             KbEmbeddingConfig config, List<String> texts, Duration timeout) {
         List<float[]> result = new ArrayList<>(texts.size());
-        for (int start = 0; start < texts.size(); start += MAX_BATCH_SIZE) {
-            int end = Math.min(texts.size(), start + MAX_BATCH_SIZE);
+        int batchSize = config.batchSize() > 0
+                ? Math.min(config.batchSize(), MAX_BATCH_SIZE)
+                : MAX_BATCH_SIZE;
+        for (int start = 0; start < texts.size(); start += batchSize) {
+            int end = Math.min(texts.size(), start + batchSize);
             List<String> batch = texts.subList(start, end);
             try {
                 result.addAll(request(config, batch, true, timeout));

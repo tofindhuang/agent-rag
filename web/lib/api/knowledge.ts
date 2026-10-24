@@ -176,6 +176,7 @@ function parseEmbeddingSettings(value: unknown): KbEmbeddingSettings {
     apiKeyHint: asNullableString(embedding.apiKeyHint),
     model: asNullableString(embedding.model),
     dimension: asNullableNumber(embedding.dimension),
+    batchSize: asNumber(embedding.batchSize, 32),
     path: asNullableString(embedding.path),
   };
 }

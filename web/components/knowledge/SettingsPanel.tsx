@@ -265,6 +265,14 @@ export function SettingsPanel() {
                 <dd>{embedding.dimension ?? "—"}</dd>
               </div>
               <div>
+                <dt>批量</dt>
+                <dd>
+                  {embedding.batchSize === 1
+                    ? "逐条（服务不支持批量）"
+                    : `${embedding.batchSize} 条/批`}
+                </dd>
+              </div>
+              <div>
                 <dt>密钥</dt>
                 <dd>
                   {embedding.apiKeyHint ??

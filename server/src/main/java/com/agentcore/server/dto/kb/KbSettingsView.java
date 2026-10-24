@@ -10,6 +10,7 @@ public record KbSettingsView(Embedding embedding, Rerank rerank) {
             String apiKeyHint,
             String model,
             Integer dimension,
+            int batchSize,
             String path) {}
 
     /** {@code source} is {@code user}, {@code system}, {@code none} or {@code disabled}. */

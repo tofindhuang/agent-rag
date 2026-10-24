@@ -62,7 +62,10 @@ public class KbEmbeddingSettings {
                             : fallback.path(),
                     setting.getEmbeddingDim() != null && setting.getEmbeddingDim() > 0
                             ? setting.getEmbeddingDim()
-                            : fallback.dim()));
+                            : fallback.dim(),
+                    setting.getEmbeddingBatchSize() != null && setting.getEmbeddingBatchSize() > 0
+                            ? setting.getEmbeddingBatchSize()
+                            : 32));
         }
 
         if (!fallback.configured()) {
