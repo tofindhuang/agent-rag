@@ -11,6 +11,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
+import { SseFrameParser, type SseFrame } from "./sse.js";
 import type { RunIdentity } from "./identity.js";
 import { buildToolHeaders } from "./tool-headers.js";
 
@@ -30,13 +31,31 @@ interface KbSearchResponse {
   error?: string;
 }
 
-interface SandboxExecResponse {
-  stdout: string;
-  stderr: string;
+interface SandboxExecDetails {
+  execId?: string;
+  exitCode?: number;
+  durationMs?: number;
+  timedOut?: boolean;
+  truncated?: boolean;
+  code?: string;
+  progress?: {
+    kind: "phase" | "stdout" | "stderr";
+    phase?: string;
+    chunk?: string;
+  };
+}
+
+interface ExecResultFrame {
   exitCode: number;
   durationMs: number;
   timedOut: boolean;
-  error?: string;
+  truncated: boolean;
+}
+
+interface RunCodeParams {
+  language?: string;
+  code: string;
+  timeoutMs?: number;
 }
 
 function errorMessage(err: unknown): string {
@@ -141,50 +160,37 @@ export function runCodeExtension(
             Type.Number({ description: "Execution timeout in milliseconds (default 30000, max 60000)" }),
           ),
         }),
-        async execute(_toolCallId, params, signal) {
+        async execute(_toolCallId, params, signal, onUpdate) {
           const identity = getIdentity();
           if (!identity) {
-            return {
-              isError: true,
-              content: [{ type: "text", text: "run_code failed: no active run" }],
-              details: {
-                stdout: "",
-                stderr: "no active run",
-                exitCode: -1,
-                durationMs: 0,
-                timedOut: false,
-              },
-            };
+            return errorResult("no active run");
           }
           try {
-            const data = await postJson<SandboxExecResponse>(
-              `${config.sandboxApiUrl}/api/exec`,
-              {
-                language: params.language ?? "python",
-                code: params.code,
-                timeoutMs: Math.min(params.timeoutMs ?? 30_000, 60_000),
-              },
+            const outcome = await runInSandbox(
+              config,
+              identity,
+              _toolCallId,
+              params,
               signal,
-              buildToolHeaders(identity, _toolCallId, config.apiToken),
+              onUpdate,
             );
-            const text = [
-              data.timedOut ? "[execution timed out]" : `[exit code ${data.exitCode}] (${data.durationMs}ms)`,
-              data.stdout ? `stdout:\n${data.stdout}` : "",
-              data.stderr ? `stderr:\n${data.stderr}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n");
-            return { content: [{ type: "text", text }], details: data };
+            return {
+              content: [{ type: "text", text: outcome.text }],
+              details: outcome.details,
+            };
           } catch (err) {
+            const aborted = isAbortError(err);
+            const code = err instanceof SandboxHttpError ? err.code : undefined;
+            const message = aborted ? "run_code aborted" : `run_code failed: ${errorMessage(err)}`;
             return {
               isError: true,
-              content: [{ type: "text", text: `run_code failed: ${errorMessage(err)}` }],
+              content: [{ type: "text", text: message }],
               details: {
-                stdout: "",
-                stderr: errorMessage(err),
                 exitCode: -1,
                 durationMs: 0,
                 timedOut: false,
+                truncated: false,
+                code,
               },
             };
           }
@@ -192,4 +198,209 @@ export function runCodeExtension(
       }),
     );
   };
+}
+
+class SandboxHttpError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "SandboxHttpError";
+  }
+}
+
+class CappedOutput {
+  private bytes = 0;
+  private readonly out: string[] = [];
+  private readonly err: string[] = [];
+
+  constructor(private readonly limit: number) {}
+
+  append(stream: "stdout" | "stderr", chunk: string): void {
+    if (this.bytes >= this.limit) return;
+    let remaining = this.limit - this.bytes;
+    let prefix = "";
+    for (const char of chunk) {
+      const size = Buffer.byteLength(char, "utf8");
+      if (size > remaining) break;
+      prefix += char;
+      remaining -= size;
+    }
+    if (!prefix) return;
+    this.bytes += Buffer.byteLength(prefix, "utf8");
+    (stream === "stdout" ? this.out : this.err).push(prefix);
+  }
+
+  stdout(): string {
+    return this.out.join("");
+  }
+
+  stderr(): string {
+    return this.err.join("");
+  }
+}
+
+async function runInSandbox(
+  config: GatewayConfig,
+  identity: RunIdentity,
+  toolCallId: string,
+  params: RunCodeParams,
+  signal: AbortSignal | undefined,
+  onUpdate:
+    | ((partial: {
+        content: [];
+        details: SandboxExecDetails;
+      }) => void)
+    | undefined,
+): Promise<{ text: string; details: SandboxExecDetails }> {
+  const res = await fetch(`${config.sandboxApiUrl}/api/exec`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "text/event-stream",
+      ...buildToolHeaders(identity, toolCallId, config.apiToken),
+    },
+    body: JSON.stringify({
+      language: params.language ?? "python",
+      code: params.code,
+      timeoutMs: Math.min(params.timeoutMs ?? 30_000, 60_000),
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    throw await sandboxHttpError(res);
+  }
+  if (!res.body) {
+    throw new Error("run_code response has no body");
+  }
+
+  const reader = res.body.getReader();
+  const parser = new SseFrameParser();
+  const output = new CappedOutput(64 * 1024);
+  let execId: string | undefined;
+  let result: ExecResultFrame | undefined;
+
+  const handle = (frame: SseFrame): void => {
+    switch (frame.event) {
+      case "started": {
+        const data = JSON.parse(frame.data) as { execId?: string };
+        execId = data.execId;
+        break;
+      }
+      case "phase": {
+        const data = JSON.parse(frame.data) as { phase?: string };
+        if (data.phase) {
+          onUpdate?.({
+            content: [],
+            details: { progress: { kind: "phase", phase: data.phase } },
+          });
+        }
+        break;
+      }
+      case "stdout": {
+        const data = JSON.parse(frame.data) as { chunk?: string };
+        if (typeof data.chunk === "string") {
+          output.append("stdout", data.chunk);
+          onUpdate?.({
+            content: [],
+            details: { progress: { kind: "stdout", chunk: data.chunk } },
+          });
+        }
+        break;
+      }
+      case "stderr": {
+        const data = JSON.parse(frame.data) as { chunk?: string };
+        if (typeof data.chunk === "string") {
+          output.append("stderr", data.chunk);
+          onUpdate?.({
+            content: [],
+            details: { progress: { kind: "stderr", chunk: data.chunk } },
+          });
+        }
+        break;
+      }
+      case "result": {
+        result = JSON.parse(frame.data) as ExecResultFrame;
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const frame of parser.push(value)) handle(frame);
+  }
+  for (const frame of parser.end()) handle(frame);
+
+  if (!result) {
+    throw new Error("run_code stream ended without a result frame");
+  }
+  return {
+    text: formatExecText(result, output),
+    details: {
+      execId,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
+      truncated: result.truncated,
+    },
+  };
+}
+
+function formatExecText(result: ExecResultFrame, output: CappedOutput): string {
+  const lines = [
+    result.timedOut
+      ? `[execution timed out] (${result.durationMs}ms)`
+      : `[exit code ${result.exitCode}] (${result.durationMs}ms)`,
+  ];
+  if (result.truncated) lines.push("[output truncated]");
+  const stdout = output.stdout();
+  const stderr = output.stderr();
+  if (stdout) lines.push(`stdout:\n${stdout}`);
+  if (stderr) lines.push(`stderr:\n${stderr}`);
+  return lines.join("\n");
+}
+
+async function sandboxHttpError(res: Response): Promise<SandboxHttpError> {
+  const text = await res.text().catch(() => "");
+  try {
+    const body = JSON.parse(text) as { error?: { code?: string; message?: string } };
+    if (body.error?.code) {
+      return new SandboxHttpError(
+        body.error.code,
+        `${body.error.code}: ${body.error.message ?? "request failed"}`,
+      );
+    }
+  } catch {
+    // Fall through to the generic HTTP error.
+  }
+  return new SandboxHttpError(
+    "HTTP_ERROR",
+    `HTTP ${res.status}${text ? `: ${text.slice(0, 300)}` : ""}`,
+  );
+}
+
+function errorResult(message: string): {
+  isError: true;
+  content: [{ type: "text"; text: string }];
+  details: SandboxExecDetails;
+} {
+  return {
+    isError: true,
+    content: [{ type: "text", text: `run_code failed: ${message}` }],
+    details: {
+      exitCode: -1,
+      durationMs: 0,
+      timedOut: false,
+      truncated: false,
+    },
+  };
+}
+
+function isAbortError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { name?: string }).name === "AbortError";
 }
