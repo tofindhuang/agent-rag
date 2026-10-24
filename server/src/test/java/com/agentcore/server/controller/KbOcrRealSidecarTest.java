@@ -22,6 +22,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
@@ -35,6 +36,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * {@code OCR_IT_BASE_URL=http://127.0.0.1:18000 mvn -Dtest=KbOcrRealSidecarTest test}.
  */
 @AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class KbOcrRealSidecarTest extends AbstractKbIntegrationTest {
 
     @Autowired
