@@ -59,6 +59,18 @@ class KbEmbeddingClientTest {
     }
 
     @Test
+    void classifiesTimeoutsAsRetryable() {
+        server.mode(FakeEmbeddingServer.Mode.SLOW);
+
+        assertThatThrownBy(() -> client.embed(
+                        config(8), List.of("text"), java.time.Duration.ofMillis(100)))
+                .isInstanceOfSatisfying(KbIngestException.class, (error) -> {
+                    assertThat(error.retryable()).isTrue();
+                    assertThat(error.errorCode()).isEqualTo(KbIngestException.EMBEDDING_UNAVAILABLE);
+                });
+    }
+
+    @Test
     void rejectsADimensionThatDiffersFromConfiguration() {
         server.mode(FakeEmbeddingServer.Mode.WRONG_DIMENSION);
 

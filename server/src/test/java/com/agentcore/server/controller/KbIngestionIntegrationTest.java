@@ -9,14 +9,27 @@ import com.agentcore.server.common.messaging.KbDocumentReconciler;
 import com.agentcore.server.common.messaging.KbTaskMessage;
 import com.agentcore.server.common.messaging.KbTaskPublisher;
 import com.agentcore.server.common.vector.VectorStore;
+import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.support.AbstractKbIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
+import org.apache.fontbox.ttf.TrueTypeCollection;
+import org.apache.fontbox.ttf.TrueTypeFont;
 import com.rabbitmq.client.Channel;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
@@ -56,6 +69,7 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
     @BeforeEach
     void resetState() {
         EMBEDDING.reset();
+        EMBEDDING.dimension(1024);
         rabbitTemplate.execute((Channel channel) -> {
             channel.queuePurge(KB_INGEST_QUEUE);
             channel.queuePurge(KB_DLQ);
@@ -96,6 +110,87 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
                         documentId))
                 .isEqualTo(chunkCount);
         assertThat(awaitStatus(documentId, "ready", 5_000)).isEqualTo("ready");
+    }
+
+    @Test
+    void ingestsAOneHundredPagePdfWithinTheFiveMinuteBudget() throws Exception {
+        User user = newUser();
+        long started = System.nanoTime();
+        String documentId = uploadBytes(
+                user.token(), "acceptance.pdf", MediaType.APPLICATION_PDF_VALUE, hundredPagePdf());
+
+        assertThat(awaitStatus(documentId, "ready", 300_000)).isEqualTo("ready");
+        long elapsedSeconds = (System.nanoTime() - started) / 1_000_000_000L;
+        assertThat(elapsedSeconds).isLessThan(300);
+        assertThat(jdbc.queryForObject(
+                        "SELECT chunk_count FROM kb_documents WHERE id = ?",
+                        Integer.class,
+                        documentId))
+                .isGreaterThanOrEqualTo(100);
+
+        String body = mockMvc.perform(post("/api/kb/search")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
+                        .header("X-User-Id", Long.toString(user.id()))
+                        .header("X-Session-Id", "session")
+                        .header("X-Turn-Id", "turn")
+                        .header("X-Run-Id", "run")
+                        .header("X-Tool-Call-Id", "call")
+                        .header("X-Request-Id", "request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"knowledge base acceptance\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        KbSearchResponse response = objectMapper.readValue(body, KbSearchResponse.class);
+        assertThat(response.passages()).isNotEmpty()
+                .allSatisfy((passage) -> {
+                    assertThat(passage.documentId()).isEqualTo(documentId);
+                    assertThat(passage.page()).isBetween(1, 100);
+                    assertThat(passage.title()).isEqualTo("acceptance.pdf");
+                });
+    }
+
+    @Test
+    void ingestsAOneHundredPageChinesePdfWhenACjkFontIsAvailable() throws Exception {
+        Path fontPath = Path.of("/System/Library/Fonts/STHeiti Medium.ttc");
+        Assumptions.assumeTrue(
+                Files.exists(fontPath), "local CJK font is not available; skipping Chinese PDF");
+
+        User user = newUser();
+        long started = System.nanoTime();
+        String documentId = uploadBytes(
+                user.token(),
+                "acceptance-cn.pdf",
+                MediaType.APPLICATION_PDF_VALUE,
+                hundredPageChinesePdf(fontPath));
+
+        assertThat(awaitStatus(documentId, "ready", 300_000)).isEqualTo("ready");
+        long elapsedSeconds = (System.nanoTime() - started) / 1_000_000_000L;
+        assertThat(elapsedSeconds).isLessThan(300);
+        assertThat(jdbc.queryForObject(
+                        "SELECT chunk_count FROM kb_documents WHERE id = ?",
+                        Integer.class,
+                        documentId))
+                .isGreaterThanOrEqualTo(100);
+
+        String body = mockMvc.perform(post("/api/kb/search")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
+                        .header("X-User-Id", Long.toString(user.id()))
+                        .header("X-Session-Id", "session")
+                        .header("X-Turn-Id", "turn")
+                        .header("X-Run-Id", "run")
+                        .header("X-Tool-Call-Id", "call")
+                        .header("X-Request-Id", "request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"中文测试内容\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        KbSearchResponse response = objectMapper.readValue(body, KbSearchResponse.class);
+        assertThat(response.passages()).isNotEmpty()
+                .allSatisfy((passage) -> {
+                    assertThat(passage.documentId()).isEqualTo(documentId);
+                    assertThat(passage.page()).isBetween(1, 100);
+                    assertThat(passage.content()).contains("中文测试内容");
+                });
     }
 
     @Test
@@ -156,6 +251,34 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     @Test
+    void exhaustedRateLimitRetriesMarkFailedAndGoToTheDlq() throws Exception {
+        User user = newUser();
+        String documentId = upload(user.token(), "exhausted.txt", "retry ladder ".repeat(50));
+        assertThat(awaitStatus(documentId, "ready", 25_000)).isEqualTo("ready");
+        int version = jdbc.queryForObject(
+                "SELECT version FROM kb_documents WHERE id = ?", Integer.class, documentId);
+
+        // Claim increments attempts to 4, so the next 429 is terminal without
+        // waiting through the 5s/30s/2m TTL ladder.
+        jdbc.update(
+                "UPDATE kb_documents SET status = 'queued', attempts = 3,"
+                        + " enqueued_at = NOW(6) WHERE id = ?",
+                documentId);
+        EMBEDDING.mode(com.agentcore.server.support.FakeEmbeddingServer.Mode.RATE_LIMITED);
+        assertThat(publisher.publishIngest(
+                        KbTaskMessage.ingest(user.id(), documentId, version)))
+                .isTrue();
+
+        assertThat(awaitStatus(documentId, "failed", 15_000)).isEqualTo("failed");
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT error_code, chunk_count FROM kb_documents WHERE id = ?", documentId);
+        assertThat(row.get("error_code")).isEqualTo("EMBEDDING_UNAVAILABLE");
+        assertThat(((Number) row.get("chunk_count")).intValue()).isZero();
+        Message deadLetter = rabbitTemplate.receive(KB_DLQ, 5000);
+        assertThat(deadLetter).isNotNull();
+    }
+
+    @Test
     void permanentParseFailureMarksTheDocumentFailedAndGoesToTheDlq() throws Exception {
         User user = newUser();
         String documentId = upload(user.token(), "broken.pdf", "not a pdf");
@@ -174,19 +297,74 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
         assertThat(task.documentId()).isEqualTo(documentId);
     }
 
+    private static byte[] hundredPageChinesePdf(Path fontPath) throws Exception {
+        try (TrueTypeCollection ttc = new TrueTypeCollection(fontPath.toFile());
+                PDDocument pdf = new PDDocument();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            TrueTypeFont ttf = ttc.getFontByName("STHeitiSC-Medium");
+            if (ttf == null) {
+                throw new IllegalStateException("STHeitiSC-Medium is missing from the font");
+            }
+            PDType0Font font = PDType0Font.load(pdf, ttf, true);
+            for (int pageNumber = 1; pageNumber <= 100; pageNumber++) {
+                PDPage page = new PDPage();
+                pdf.addPage(page);
+                try (PDPageContentStream content = new PDPageContentStream(pdf, page)) {
+                    content.beginText();
+                    content.setFont(font, 9);
+                    content.newLineAtOffset(40, 760);
+                    content.showText(("第 " + pageNumber
+                            + " 页：这是知识库验收的中文测试内容，用于验证一百页中文 PDF "
+                            + "的上传、解析、切片与检索流程。").repeat(8));
+                    content.endText();
+                }
+            }
+            pdf.save(out);
+            return out.toByteArray();
+        }
+    }
+
     private String upload(String token, String filename, String content) throws Exception {
+        return uploadBytes(
+                token,
+                filename,
+                filename.endsWith(".pdf")
+                        ? MediaType.APPLICATION_PDF_VALUE
+                        : MediaType.TEXT_PLAIN_VALUE,
+                content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String uploadBytes(String token, String filename, String contentType, byte[] content)
+            throws Exception {
         String body = mockMvc.perform(multipart("/api/kb/documents")
-                        .file(new MockMultipartFile(
-                                "file",
-                                filename,
-                                filename.endsWith(".pdf")
-                                        ? MediaType.APPLICATION_PDF_VALUE
-                                        : MediaType.TEXT_PLAIN_VALUE,
-                                content.getBytes(StandardCharsets.UTF_8)))
+                        .file(new MockMultipartFile("file", filename, contentType, content))
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.id");
+    }
+
+    /** 100 pages × ~500 ASCII chars; each page becomes at least one passage. */
+    private static byte[] hundredPagePdf() throws Exception {
+        try (PDDocument pdf = new PDDocument();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDType1Font font =
+                    new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            for (int pageNumber = 1; pageNumber <= 100; pageNumber++) {
+                PDPage page = new PDPage();
+                pdf.addPage(page);
+                try (PDPageContentStream content = new PDPageContentStream(pdf, page)) {
+                    content.beginText();
+                    content.setFont(font, 9);
+                    content.newLineAtOffset(40, 760);
+                    content.showText(("page " + pageNumber + " "
+                            + "knowledge base acceptance content ".repeat(14)).trim());
+                    content.endText();
+                }
+            }
+            pdf.save(out);
+            return out.toByteArray();
+        }
     }
 
     private String awaitStatus(String documentId, String expected, long timeoutMillis)

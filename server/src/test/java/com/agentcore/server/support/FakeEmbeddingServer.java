@@ -18,7 +18,8 @@ public final class FakeEmbeddingServer {
         NORMAL,
         RATE_LIMITED,
         BAD_REQUEST,
-        WRONG_DIMENSION
+        WRONG_DIMENSION,
+        SLOW
     }
 
     private final HttpServer server;
@@ -77,6 +78,13 @@ public final class FakeEmbeddingServer {
         int count = input.isArray() ? input.size() : 0;
 
         Mode current = mode;
+        if (current == Mode.SLOW) {
+            try {
+                Thread.sleep(400);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         if (current == Mode.RATE_LIMITED) {
             respond(exchange, 429, "{\"error\":\"rate limited\"}");
             return;
