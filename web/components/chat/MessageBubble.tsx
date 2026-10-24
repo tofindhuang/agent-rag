@@ -1,4 +1,5 @@
 import type { ChatMessage, ToolStatus } from "@/types/chat";
+import type { CitationPassage } from "@/types/gateway";
 import styles from "./chat.module.css";
 
 interface MessageBubbleProps {
@@ -12,9 +13,24 @@ const TOOL_STATUS_LABEL: Record<ToolStatus, string> = {
   error: "失败",
 };
 
+function citationsOf(message: ChatMessage): CitationPassage[] {
+  const seen = new Set<string>();
+  const citations: CitationPassage[] = [];
+  for (const tool of message.tools) {
+    for (const passage of tool.passages ?? []) {
+      const key = passage.passageId || `${passage.documentId}:${passage.seq}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      citations.push(passage);
+    }
+  }
+  return citations;
+}
+
 export function MessageBubble({ message }: MessageBubbleProps) {
   const roleClass = message.role === "user" ? styles.user : styles.assistant;
   const hasBody = message.content.length > 0 || message.thinking.length > 0 || message.tools.length > 0;
+  const citations = message.role === "assistant" ? citationsOf(message) : [];
 
   return (
     <div className={`${styles.message} ${roleClass}`}>
@@ -48,6 +64,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       )}
 
       {message.content.length > 0 && <div>{message.content}</div>}
+
+      {citations.length > 0 && (
+        <section className={styles.citations} aria-label="引用">
+          <h3 className={styles.citationsTitle}>引用</h3>
+          <ol className={styles.citationList}>
+            {citations.map((passage) => (
+              <li key={passage.passageId || `${passage.documentId}:${passage.seq}`}>
+                <details className={styles.citation}>
+                  <summary className={styles.citationSummary}>
+                    《{passage.title}》· 第 {passage.seq} 段
+                    {passage.page != null ? `（第 ${passage.page} 页）` : ""}
+                  </summary>
+                  <div className={styles.citationBody}>{passage.content}</div>
+                </details>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {!hasBody && message.status === "streaming" && <div>...</div>}
 
       {message.status === "partial" && <div className={styles.messageState}>回复不完整</div>}

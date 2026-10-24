@@ -6,6 +6,7 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.kb.KbAvailability;
 import com.agentcore.server.common.kb.KbFileTypes;
 import com.agentcore.server.domain.KbDocument;
+import com.agentcore.server.domain.KbUsage;
 import com.agentcore.server.dto.kb.KbDocumentCreatedResponse;
 import com.agentcore.server.dto.kb.KbDocumentListResponse;
 import com.agentcore.server.dto.kb.KbDocumentView;
@@ -95,7 +96,11 @@ public class KbDocumentController {
         List<KbDocumentView> items = documentService.list(user.userId()).stream()
                 .map(KbDocumentController::toView)
                 .toList();
-        return new KbDocumentListResponse(items);
+        KbUsage usage = documentService.usage(user.userId());
+        return new KbDocumentListResponse(
+                items,
+                new KbDocumentListResponse.Usage(usage.documents(), usage.bytes()),
+                new KbDocumentListResponse.Quota(usage.maxDocuments(), usage.maxBytes()));
     }
 
     @GetMapping("/{documentId}")

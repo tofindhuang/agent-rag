@@ -128,7 +128,11 @@ class KbDocumentIntegrationTest extends AbstractKbIntegrationTest {
                 .andExpect(jsonPath("$.items[0].id").value(documentId))
                 .andExpect(jsonPath("$.items[0].title").value("notes.pdf"))
                 .andExpect(jsonPath("$.items[0].status").value("queued"))
-                .andExpect(jsonPath("$.items[0].originalKey").doesNotExist());
+                .andExpect(jsonPath("$.items[0].originalKey").doesNotExist())
+                .andExpect(jsonPath("$.usage.documents").value(1))
+                .andExpect(jsonPath("$.usage.bytes").value(content.length))
+                .andExpect(jsonPath("$.quota.maxDocuments").value(200))
+                .andExpect(jsonPath("$.quota.maxBytes").value(1073741824));
 
         mockMvc.perform(get("/api/kb/documents/" + documentId)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))

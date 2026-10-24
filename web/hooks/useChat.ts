@@ -16,7 +16,7 @@ import { ApiError, userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
 import type { ChatMessage, HistoryItem, SessionSummary, ToolActivity } from "@/types/chat";
 import type { MessageEndData } from "@/types/gateway";
-import { parseGatewayEvent } from "@/types/gateway";
+import { parseCitationPassages, parseGatewayEvent } from "@/types/gateway";
 import type { CreateSessionOptions } from "@/lib/api/chat";
 
 const HISTORY_PAGE_SIZE = 50;
@@ -486,6 +486,7 @@ export function useChat() {
               ...tool,
               output: event.data.content.length > 0 ? event.data.content : tool.output,
               status: event.data.isError ? "error" : "done",
+              passages: parseCitationPassages(event.data.details),
             }));
             break;
           case "message_end":

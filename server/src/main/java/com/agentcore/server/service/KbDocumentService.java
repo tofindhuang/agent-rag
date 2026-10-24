@@ -1,6 +1,7 @@
 package com.agentcore.server.service;
 
 import com.agentcore.server.domain.KbDocument;
+import com.agentcore.server.domain.KbUsage;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -14,6 +15,9 @@ public interface KbDocumentService {
     KbDocument uploadUrl(long userId, String url);
 
     List<KbDocument> list(long userId);
+
+    /** Current document count/bytes and the configured per-user limits. */
+    KbUsage usage(long userId);
 
     KbDocument detail(long userId, String documentId);
 

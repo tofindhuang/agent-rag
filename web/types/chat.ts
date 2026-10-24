@@ -1,3 +1,5 @@
+import type { CitationPassage } from "./gateway";
+
 export type ChatRole = "user" | "assistant";
 export type ChatStatus = "streaming" | "complete" | "partial" | "aborted" | "error";
 export type ToolStatus = "calling" | "running" | "done" | "error";
@@ -9,6 +11,8 @@ export interface ToolActivity {
   phase?: string;
   output: string;
   status: ToolStatus;
+  /** kb_search citations parsed from tool_result.details; absent on old gateways. */
+  passages?: CitationPassage[];
 }
 
 export interface ChatMessage {

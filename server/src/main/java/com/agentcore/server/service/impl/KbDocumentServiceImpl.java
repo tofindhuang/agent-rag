@@ -14,6 +14,7 @@ import com.agentcore.server.common.storage.ObjectStore;
 import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbDocumentDao;
 import com.agentcore.server.domain.KbDocument;
+import com.agentcore.server.domain.KbUsage;
 import com.agentcore.server.service.KbDocumentService;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -123,6 +124,16 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     public List<KbDocument> list(long userId) {
         availability.requireEnabled();
         return documentDao.listByUser(userId);
+    }
+
+    @Override
+    public KbUsage usage(long userId) {
+        availability.requireEnabled();
+        return new KbUsage(
+                documentDao.countByUser(userId),
+                documentDao.sumSizeByUser(userId),
+                properties.maxDocumentsPerUser(),
+                properties.maxBytesPerUser());
     }
 
     @Override

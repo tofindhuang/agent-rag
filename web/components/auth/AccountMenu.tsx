@@ -57,6 +57,14 @@ export function AccountMenu() {
           <Link
             className={styles.item}
             role="menuitem"
+            href="/knowledge"
+            onClick={() => setOpen(false)}
+          >
+            知识库
+          </Link>
+          <Link
+            className={styles.item}
+            role="menuitem"
             href="/settings"
             onClick={() => setOpen(false)}
           >
