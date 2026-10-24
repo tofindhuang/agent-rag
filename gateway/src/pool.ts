@@ -204,7 +204,7 @@ export class SessionPool implements GatewayPool {
       settingsManager,
       // Replace pi's coding prompt entirely (requirements.md §1.1).
       systemPromptOverride: () =>
-        buildSystemPrompt({ userName: userId, profileFacts: [] }),
+        buildSystemPrompt({ userName: userId }),
       // Long-term profile facts (FR-5) will be fetched from Java here in M1.
       appendSystemPromptOverride: () => [],
       extensionFactories: [

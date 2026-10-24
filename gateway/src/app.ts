@@ -390,7 +390,7 @@ function readSessionModel(body: Record<string, unknown>): ParsedModel {
   };
 }
 
-function readProfileInput(
+export function readProfileInput(
   body: Record<string, unknown>,
 ): { profile?: ProfileInput } | { error: string } {
   const facts = body.profileFacts;

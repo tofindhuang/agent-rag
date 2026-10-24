@@ -182,8 +182,14 @@ export function parseCandidates(
   return candidates;
 }
 
-export function transcriptFrom(messages: unknown[], maxMessages: number, maxChars: number): string {
+export function transcriptFrom(
+  messages: unknown[],
+  maxMessages: number,
+  maxChars: number,
+): string {
   const lines: string[] = [];
+  let hasUser = false;
+  let hasAssistant = false;
   for (const raw of messages) {
     if (typeof raw !== "object" || raw === null) {
       continue;
@@ -193,9 +199,17 @@ export function transcriptFrom(messages: unknown[], maxMessages: number, maxChar
       continue;
     }
     const text = messageText(message.content);
+    if (message.role === "user") {
+      hasUser = true;
+    } else {
+      hasAssistant = true;
+    }
     if (text) {
       lines.push(`${message.role === "user" ? "User" : "Assistant"}: ${text}`);
     }
+  }
+  if (!hasUser || !hasAssistant) {
+    return "";
   }
   const recent = lines.slice(-maxMessages).join("\n");
   return recent.length > maxChars ? recent.slice(-maxChars) : recent;

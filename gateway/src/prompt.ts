@@ -9,13 +9,9 @@
 
 export interface PromptContext {
   userName: string;
-  /** Stable facts extracted from past sessions (FR-5). Empty until M1. */
-  profileFacts: string[];
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
-  const facts = ctx.profileFacts.length > 0 ? ctx.profileFacts.map((f) => `- ${f}`).join("\n") : "";
-
   return [
     "You are agent-core, a general-purpose conversational assistant with a personal knowledge base.",
     "Answer in the user's language unless asked otherwise. Be accurate and concise.",
@@ -30,6 +26,5 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "",
     "If a tool call fails, tell the user plainly what failed; never fabricate tool results.",
     "",
-    facts ? "## Known facts about this user (long-term memory)\n" + facts : "",
   ].join("\n");
 }

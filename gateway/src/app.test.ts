@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { createApp } from "./app.js";
+import { createApp, readProfileInput } from "./app.js";
 import type { GatewayConfig } from "./config.js";
 import type { RunIdentity } from "./identity.js";
 import type {
@@ -14,6 +14,18 @@ import type {
   SessionModelConfig,
 } from "./pool-contract.js";
 import { SessionConflictError } from "./pool-contract.js";
+
+test("validates the optional profile payload on session ensure", () => {
+  assert.deepEqual(
+    readProfileInput({ profileFacts: ["[preference] 中文"], profileMemoryEnabled: true }),
+    { profile: { facts: ["[preference] 中文"], enabled: true } },
+  );
+  assert.deepEqual(readProfileInput({}), {});
+  assert.ok("error" in readProfileInput({ profileFacts: "not-an-array" }));
+  assert.ok("error" in readProfileInput({ profileFacts: ["a".repeat(1_001)] }));
+  assert.ok("error" in readProfileInput({ profileFacts: Array(51).fill("a") }));
+  assert.ok("error" in readProfileInput({ profileMemoryEnabled: "yes" }));
+});
 
 class FakeSession implements GatewaySession {
   private readonly listeners = new Set<(event: AgentSessionEvent) => void>();

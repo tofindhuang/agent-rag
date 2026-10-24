@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProfileFactServiceImpl implements ProfileFactService {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileFactServiceImpl.class);
+    private static final int MAX_CANDIDATES = 20;
     private static final Set<String> CATEGORIES =
             Set.of("preference", "project", "profile", "other");
     private static final Pattern KEY = Pattern.compile("^[a-z][a-z0-9._-]{0,127}$");
@@ -73,6 +74,9 @@ public class ProfileFactServiceImpl implements ProfileFactService {
         String normalizedCategory = normalizeCategory(category == null
                 ? existing.getCategory()
                 : category);
+        if (normalizedCategory == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "invalid category");
+        }
         if (isSensitive(normalizedCategory, existing.getFactKey(), existing.getFactValue(), text)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "fact contains sensitive data");
         }
@@ -113,12 +117,12 @@ public class ProfileFactServiceImpl implements ProfileFactService {
         List<String> selected = new ArrayList<>();
         int used = 0;
         for (ProfileFact fact : facts) {
-            String line = "[" + fact.getCategory() + "] " + fact.getFactText();
-            if (used + line.length() > properties.maxChars()) {
-                break;
+            int textLength = fact.getFactText().length();
+            if (used + textLength > properties.maxChars()) {
+                continue;
             }
-            selected.add(line);
-            used += line.length();
+            selected.add("[" + fact.getCategory() + "] " + fact.getFactText());
+            used += textLength;
         }
         return selected;
     }
@@ -134,8 +138,9 @@ public class ProfileFactServiceImpl implements ProfileFactService {
             return new ApplyResult(0, 0, candidates.size());
         }
         Map<String, NormalizedCandidate> unique = new LinkedHashMap<>();
-        int dropped = 0;
-        for (ProfileFactCandidate candidate : candidates) {
+        int dropped = Math.max(0, candidates.size() - MAX_CANDIDATES);
+        for (ProfileFactCandidate candidate : candidates.subList(
+                0, Math.min(candidates.size(), MAX_CANDIDATES))) {
             NormalizedCandidate normalized = normalize(candidate);
             if (normalized == null) {
                 dropped++;

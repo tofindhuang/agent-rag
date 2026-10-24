@@ -2,7 +2,6 @@ package com.agentcore.server.common.ratelimit;
 
 import com.agentcore.server.common.auth.AuthPaths;
 import com.agentcore.server.common.auth.AuthenticatedUser;
-import com.agentcore.server.common.auth.ToolTokenFilter;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.error.ErrorResponseWriter;
 import com.agentcore.server.config.RateLimitProperties;

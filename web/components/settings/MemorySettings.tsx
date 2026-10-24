@@ -189,6 +189,9 @@ export function MemorySettings() {
                   <span>{fact.factText}</span>
                 </div>
                 <span className={styles.hint}>
+                  {fact.supersedesId
+                    ? `取代 ${fact.supersedesId.slice(0, 8)} · `
+                    : ""}
                   {fact.updatedAt ? new Date(fact.updatedAt).toLocaleString() : ""}
                 </span>
               </li>

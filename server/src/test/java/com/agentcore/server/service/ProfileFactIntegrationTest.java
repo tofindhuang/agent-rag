@@ -1,10 +1,13 @@
 package com.agentcore.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.agentcore.server.common.error.ApiException;
+import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.domain.ProfileFact;
 import com.agentcore.server.dto.profile.ProfileFactCandidate;
 import com.agentcore.server.support.AbstractIntegrationTest;
@@ -85,6 +88,26 @@ class ProfileFactIntegrationTest extends AbstractIntegrationTest {
         assertThat(updated.getCategory()).isEqualTo("other");
         assertThat(updated.getFactKey()).isEqualTo("reply.language");
         assertThat(updated.getFactValue()).isEqualTo("zh-CN");
+
+        assertThatThrownBy(() -> profileFacts.update(userId, fact.getId(), "x", "bogus"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).code())
+                        .isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    @Test
+    void capsOversizedCandidateBatches() throws Exception {
+        long userId = newUser();
+        List<ProfileFactCandidate> candidates = new java.util.ArrayList<>();
+        for (int i = 0; i < 25; i++) {
+            candidates.add(candidate("other", "fact." + i, "v" + i, "fact " + i));
+        }
+
+        ProfileFactService.ApplyResult result =
+                profileFacts.applyCandidates(userId, "s1", candidates);
+
+        assertThat(result.dropped()).isEqualTo(5);
+        assertThat(profileFacts.list(userId, "active")).hasSize(20);
     }
 
     @Test
