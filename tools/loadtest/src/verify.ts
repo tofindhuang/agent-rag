@@ -6,6 +6,7 @@ export interface VerifyRecord {
   turnId: string;
   status: string;
   errorClass: string;
+  assistantTextChars: number;
 }
 
 export interface VerifyResult {
@@ -14,6 +15,7 @@ export interface VerifyResult {
   missing: string[];
   duplicates: string[];
   roleMismatches: string[];
+  textMismatches: string[];
   errors: string[];
 }
 
@@ -55,6 +57,7 @@ export async function verifySettledMessages(
     missing: [],
     duplicates: [],
     roleMismatches: [],
+    textMismatches: [],
     errors: [],
   };
 
@@ -109,6 +112,15 @@ export async function verifySettledMessages(
         if (userMessages.length === 0) result.missing.push(record.turnId);
         if (userMessages.length > 1) result.duplicates.push(record.turnId);
         if (assistantMessages.length === 0) result.roleMismatches.push(record.turnId);
+        if (record.assistantTextChars > 0) {
+          const projectedChars = assistantMessages.reduce(
+            (sum, message) => sum + message.content.length,
+            0,
+          );
+          if (projectedChars !== record.assistantTextChars) {
+            result.textMismatches.push(record.turnId);
+          }
+        }
       }
     }
   }

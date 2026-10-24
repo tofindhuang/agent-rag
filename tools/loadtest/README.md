@@ -25,9 +25,9 @@ npm run stack:up
 ./scripts/run-gateway.sh
 ```
 
-端口默认：mysql `13306`、redis `16379`、qdrant `16333`、rabbitmq `15673`
-（管理台 `15674`）、silo `19000`（控制台 `19001`）、假 embedding/rerank
-`18099`。都可用 `LOADTEST_*_PORT` 覆盖；Java 连接串由
+端口默认：mysql `23306`、redis `23379`、qdrant `23333`、rabbitmq `23673`
+（管理台 `23674`）、silo `29000`（控制台 `29001`）、假 embedding/rerank
+`28099`。都可用 `LOADTEST_*_PORT` 覆盖；Java 连接串由
 `scripts/stack-env.sh` 里的 `SPRING_DATASOURCE_URL` 覆盖。
 
 ## 单用户冒烟

@@ -46,6 +46,7 @@ function record(overrides: Partial<VerifyRecord>): VerifyRecord {
     turnId: "turn-1",
     status: "completed",
     errorClass: "none",
+    assistantTextChars: 0,
     ...overrides,
   };
 }
@@ -146,4 +147,44 @@ test("paginates through long conversations", async () => {
   assert.deepEqual(result.missing, []);
   assert.equal(client.calls.length, 2);
   assert.equal(client.calls[1].beforeId, 31);
+});
+
+test("matches projected assistant text against the streamed message_end length", async () => {
+  const client = fakeClient({
+    "session-1": [
+      message({ id: 1, turnId: "turn-1", role: "user", ordinal: 1, content: "hi" }),
+      message({ id: 2, turnId: "turn-1", role: "assistant", ordinal: 2, content: "hello" }),
+    ],
+  });
+
+  const matching = await verifySettledMessages(
+    client,
+    [record({ turnId: "turn-1", assistantTextChars: 5 })],
+    "password",
+  );
+  assert.deepEqual(matching.textMismatches, []);
+
+  const mismatched = await verifySettledMessages(
+    client,
+    [record({ turnId: "turn-1", assistantTextChars: 6 })],
+    "password",
+  );
+  assert.deepEqual(mismatched.textMismatches, ["turn-1"]);
+});
+
+test("flags a duplicated assistant reply through the text total", async () => {
+  const client = fakeClient({
+    "session-1": [
+      message({ id: 1, turnId: "turn-1", role: "user", ordinal: 1, content: "hi" }),
+      message({ id: 2, turnId: "turn-1", role: "assistant", ordinal: 2, content: "hello" }),
+      message({ id: 3, turnId: "turn-1", role: "assistant", ordinal: 3, content: "hello" }),
+    ],
+  });
+
+  const result = await verifySettledMessages(
+    client,
+    [record({ turnId: "turn-1", assistantTextChars: 5 })],
+    "password",
+  );
+  assert.deepEqual(result.textMismatches, ["turn-1"]);
 });

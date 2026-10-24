@@ -2,11 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { LoadTestClient } from "./api.js";
-import { baselineOffsets, startBaselineSampler } from "./baseline.js";
+import { baselineOffsets, netOfBaseline, startBaselineSampler } from "./baseline.js";
 import { configFromEnv } from "./config.js";
 import { appendJsonl } from "./metrics.js";
 import { startProcess, waitForHttp, waitForHttpDown, type ManagedProcess } from "./process-runner.js";
-import { runLoadTest, type TurnRecord } from "./scenario.js";
+import { LOADTEST_PASSWORD, runLoadTest, type TurnRecord } from "./scenario.js";
 import { verifySettledMessages } from "./verify.js";
 
 function intEnv(name: string, fallback: number): number {
@@ -14,6 +14,13 @@ function intEnv(name: string, fallback: number): number {
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function stopSampler(
+  sampler: ReturnType<typeof startBaselineSampler>,
+): Promise<{ count: number; medianMs: number | null; p95Ms: number | null; errors: string[] }> {
+  await sampler.stop();
+  return { ...baselineOffsets(sampler.samples), errors: sampler.errors };
 }
 
 async function main(): Promise<void> {
@@ -88,53 +95,53 @@ async function main(): Promise<void> {
 
     const records: TurnRecord[] = [];
     const summary = await runLoadTest({
-    client,
-    runId,
-    users,
-    rounds,
-    composition: { chat: chatUsers, run_code: runCodeUsers, kb_search: kbUsers },
-    thinkTimeMinMs: intEnv("LOADTEST_THINK_MIN_MS", 3_000),
-    thinkTimeMaxMs: intEnv("LOADTEST_THINK_MAX_MS", 8_000),
-    provider: {
-      name: config.model.providerName,
-      api: config.model.api,
-      baseUrl: config.model.baseUrl,
-      apiKey: config.model.apiKey,
-      modelId: config.model.modelId,
-      displayName: config.model.displayName,
-    },
-    kbId: process.env.LOADTEST_KB_ID,
-    kbSeed: {
-      documents: [
-        {
-          filename: "architecture.md",
-          content:
-            "# Agent Core 架构\n\nAgent Core 由 gateway、Java server、web、sandbox 四个模块组成。" +
-            "gateway 托管 pi 会话并通过 SSE 透传事件；Java 负责认证、RAG、沙箱调度与业务编排。",
-        },
-        {
-          filename: "sessions.md",
-          content:
-            "# 会话存储方式\n\n会话消息双写：pi session 以 JSONL 形式落盘，MySQL 侧保留消息投影。" +
-            "服务重启时可以从持久化会话恢复，已持久化消息不会丢失。",
-        },
-        {
-          filename: "sandbox.md",
-          content:
-            "# 代码执行沙箱\n\nrun_code 工具在一次性 Docker 容器中执行 Python 代码：" +
-            "无网络、非 root、只读根文件系统、CPU 与内存受限，执行记录写入 exec_records 审计表。",
-        },
-      ],
-    },
-    retryOnDisconnect: process.env.LOADTEST_RETRY_DISCONNECTS !== "false",
-    maxDisconnectRetries: intEnv("LOADTEST_MAX_DISCONNECT_RETRIES", 2),
-    retryDelayMs: intEnv("LOADTEST_RETRY_DELAY_MS", 1_500),
-    onRecord: (record: TurnRecord) => {
-      records.push(record);
-      return appendJsonl(config.metricsFile, record);
-    },
-    onProgress: (message) => console.error(`[loadtest] ${message}`),
-  });
+      client,
+      runId,
+      users,
+      rounds,
+      composition: { chat: chatUsers, run_code: runCodeUsers, kb_search: kbUsers },
+      thinkTimeMinMs: intEnv("LOADTEST_THINK_MIN_MS", 3_000),
+      thinkTimeMaxMs: intEnv("LOADTEST_THINK_MAX_MS", 8_000),
+      provider: {
+        name: config.model.providerName,
+        api: config.model.api,
+        baseUrl: config.model.baseUrl,
+        apiKey: config.model.apiKey,
+        modelId: config.model.modelId,
+        displayName: config.model.displayName,
+      },
+      kbId: process.env.LOADTEST_KB_ID,
+      kbSeed: {
+        documents: [
+          {
+            filename: "architecture.md",
+            content:
+              "# Agent Core 架构\n\nAgent Core 由 gateway、Java server、web、sandbox 四个模块组成。" +
+              "gateway 托管 pi 会话并通过 SSE 透传事件；Java 负责认证、RAG、沙箱调度与业务编排。",
+          },
+          {
+            filename: "sessions.md",
+            content:
+              "# 会话存储方式\n\n会话消息双写：pi session 以 JSONL 形式落盘，MySQL 侧保留消息投影。" +
+              "服务重启时可以从持久化会话恢复，已持久化消息不会丢失。",
+          },
+          {
+            filename: "sandbox.md",
+            content:
+              "# 代码执行沙箱\n\nrun_code 工具在一次性 Docker 容器中执行 Python 代码：" +
+              "无网络、非 root、只读根文件系统、CPU 与内存受限，执行记录写入 exec_records 审计表。",
+          },
+        ],
+      },
+      retryOnDisconnect: process.env.LOADTEST_RETRY_DISCONNECTS !== "false",
+      maxDisconnectRetries: intEnv("LOADTEST_MAX_DISCONNECT_RETRIES", 2),
+      retryDelayMs: intEnv("LOADTEST_RETRY_DELAY_MS", 1_500),
+      onRecord: (record: TurnRecord) => {
+        records.push(record);
+        return appendJsonl(config.metricsFile, record);
+      },
+      onProgress: (message) => console.error(`[loadtest] ${message}`),
+    });
 
     if (restartTimer) clearTimeout(restartTimer);
     if (restartPromise) await restartPromise;
@@ -142,10 +149,20 @@ async function main(): Promise<void> {
     const verification =
       process.env.LOADTEST_VERIFY === "false"
         ? null
-        : await verifySettledMessages(client, records, "loadtest-password-1");
+        : await verifySettledMessages(client, records, LOADTEST_PASSWORD);
 
     const baseline = sampler ? await stopSampler(sampler) : null;
-    const output = { ...summary, baseline, verification };
+    // Tool turns only emit their first text after the tool result, so the §4
+    // first-token target is judged on the pure-chat workload.
+    const chatP95 = summary.byWorkload.chat.firstTokenMs.p95;
+    const netFirstTokenMs = baseline
+      ? {
+          chatP95Ms: chatP95,
+          chatP95MinusMedianMs: netOfBaseline(chatP95, baseline.medianMs),
+          chatP95MinusP95Ms: netOfBaseline(chatP95, baseline.p95Ms),
+        }
+      : null;
+    const output = { ...summary, baseline, netFirstTokenMs, verification };
     const summaryFile = config.metricsFile.replace(/\.jsonl$/, "") + ".summary.json";
     await writeFile(summaryFile, `${JSON.stringify(output, null, 2)}\n`, "utf8");
     console.log(JSON.stringify(output, null, 2));
@@ -157,6 +174,7 @@ async function main(): Promise<void> {
       (verification.missing.length > 0 ||
         verification.duplicates.length > 0 ||
         verification.roleMismatches.length > 0 ||
+        verification.textMismatches.length > 0 ||
         verification.errors.length > 0);
     const failed =
       summary.errors.hard_error > 0 ||
@@ -173,13 +191,6 @@ async function main(): Promise<void> {
       }
     }
   }
-}
-
-async function stopSampler(
-  sampler: ReturnType<typeof startBaselineSampler>,
-): Promise<{ count: number; medianMs: number | null; p95Ms: number | null; errors: string[] }> {
-  await sampler.stop();
-  return { ...baselineOffsets(sampler.samples), errors: sampler.errors };
 }
 
 main().catch((error: unknown) => {

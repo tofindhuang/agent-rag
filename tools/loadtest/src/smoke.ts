@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { LoadTestClient } from "./api.js";
 import { configFromEnv } from "./config.js";
 import { appendJsonl } from "./metrics.js";
+import { LOADTEST_PASSWORD } from "./scenario.js";
 import { parseSseData, type SseFrame } from "./sse.js";
 
 interface RunSettled {
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
   const client = new LoadTestClient({ baseUrl: config.baseUrl });
   const runId = `smoke-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
   const email = `${runId}@example.com`;
-  const password = "loadtest-password-1";
+  const password = LOADTEST_PASSWORD;
 
   const registered = await client.register(email, password);
   const { accessToken } = await client.login(email, password);
@@ -71,8 +72,6 @@ async function main(): Promise<void> {
     trackFrame(frame);
   }
 
-  // Control-flow analysis cannot see assignments made inside trackFrame, so
-  // read the settled value through an explicit local after the stream closes.
   // The assignment lives inside trackFrame, which control-flow analysis cannot
   // see; assert the union back so the settled fields stay accessible.
   const finalSettled = settled as RunSettled | null;

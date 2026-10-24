@@ -4,6 +4,8 @@ import { ApiError, type CreateProviderInput, type ModelCatalog } from "./api.js"
 import { summarize, type Summary } from "./metrics.js";
 import { parseSseData, type SseFrame } from "./sse.js";
 
+export const LOADTEST_PASSWORD = "loadtest-password-1";
+
 export type Workload = "chat" | "run_code" | "kb_search";
 export type ErrorClass =
   | "none"
@@ -73,6 +75,8 @@ export interface TurnRecord {
   retryReason: ErrorClass | "aborted" | null;
   error: { code: string; message: string; retryable: boolean } | null;
   textChars: number;
+  /** Total text length reported by assistant message_end frames. */
+  assistantTextChars: number;
   toolCalls: ToolCallRecord[];
   at: string;
 }
@@ -212,6 +216,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
   let firstTokenAt: number | null = null;
   let settled: SettledEvent | null = null;
   let textChars = 0;
+  let assistantTextChars = 0;
   const toolCalls: ToolCallRecord[] = [];
   const toolStart = new Map<string, number>();
 
@@ -253,6 +258,10 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
           }
           break;
         }
+        case "message_end": {
+          assistantTextChars += parseSseData<{ role: string; text: string }>(frame).text.length;
+          break;
+        }
         case "run_settled": {
           settled = parseSseData<SettledEvent>(frame);
           break;
@@ -285,6 +294,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
       errorClass: failure,
       error: settled.error ?? null,
       textChars,
+      assistantTextChars,
       toolCalls,
       at: new Date().toISOString(),
     };
@@ -308,6 +318,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
           ? { code: error.code, message: error.message, retryable: error.retryable }
           : { code: "TRANSPORT", message: error instanceof Error ? error.message : String(error), retryable: true },
       textChars,
+      assistantTextChars,
       toolCalls,
       at: new Date().toISOString(),
     };
@@ -437,6 +448,7 @@ async function runUser(
         retryable: error instanceof ApiError ? error.retryable : true,
       },
       textChars: 0,
+      assistantTextChars: 0,
       toolCalls: [],
       at: new Date().toISOString(),
     };
@@ -483,7 +495,7 @@ export async function runLoadTest(options: LoadTestOptions): Promise<RunSummary>
 
   const clock = options.clock ?? { now: () => performance.now() };
   const runId = options.runId ?? `${Date.now()}`;
-  const password = "loadtest-password-1";
+  const password = LOADTEST_PASSWORD;
   const startedAt = clock.now();
   const workloadOf = workloadList(composition);
 
