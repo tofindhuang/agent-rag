@@ -87,7 +87,8 @@ export class SessionPool implements GatewayPool {
     factory?: SessionFactory,
   ) {
     this.store = new SessionFileStore(process.cwd(), config.sessionDir);
-    this.factory = factory ?? ((manager, runRef, userId) => this.createPiSession(manager, runRef, userId));
+    this.factory = factory ?? ((manager, runRef, userId, modelConfig) =>
+      this.createPiSession(manager, runRef, userId, modelConfig));
   }
 
   get size(): number {

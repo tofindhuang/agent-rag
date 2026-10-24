@@ -133,3 +133,4 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 - 小窗口模型下 `max(1024, ...)` 可能让触发点低于 80%；这是保底余量的已知取舍。
 - 压缩后占比为 null 是 pi 的正常行为，不是数据丢失。
 - M1 的全局配置 + 按模型窗口换算已覆盖不同模型；per-user 偏好留到 M2，届时需要用户设置表、Java→gateway 字段与 UI。
+- pi 的自动压缩可能发生在 `run_settled` 之后；此时不会为已结束的 run 补发 `compaction` 帧，下一次 run 的 `context_usage` 会显示压缩后的占比。压缩本身不依赖该提示帧。
