@@ -166,6 +166,15 @@ class ChatServiceImplTest {
     }
 
     @Test
+    void ignoresHeartbeatFramesWithoutInterruptingTheStream() throws Exception {
+        String sse = relay(openPrompt("heartbeat"));
+
+        assertTrue(sse.contains("event: run_settled"));
+        assertFalse(sse.contains("STREAM_INTERRUPTED"));
+        assertFalse(sse.contains("INTERNAL"));
+    }
+
+    @Test
     void archiveUsesDeleteWithOwnerHeader() {
         String sessionId = service.createSession(1L, null, null, false, null, false);
 
@@ -220,6 +229,15 @@ class ChatServiceImplTest {
     /** Replays the shared fixture, echoing the turnId Java generated. */
     private String replayFixture(String turnId) throws IOException {
         String mode = promptMode.get();
+        if ("heartbeat".equals(mode)) {
+            String runId = "run-1";
+            return frame(runId, 1, "run_started",
+                            "{\"runId\":\"run-1\",\"turnId\":\"" + turnId
+                                    + "\",\"sessionId\":\"s\",\"contractVersion\":\"1\"}")
+                    + ": ping\n\n"
+                    + frame(runId, 2, "run_settled",
+                            "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
+        }
         if ("tool-details".equals(mode)) {
             String runId = "run-1";
             return frame(runId, 1, "run_started",

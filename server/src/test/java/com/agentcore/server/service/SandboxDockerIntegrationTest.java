@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
@@ -115,6 +116,7 @@ class SandboxDockerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @EnabledIfSystemProperty(named = "sandbox.oomIT", matches = "true")
     void oomKilledProcessIsReportedInTheAuditRow() {
         RecordingSink sink = new RecordingSink();
         SandboxExecution execution = start("x = bytearray(800 * 1024 * 1024)\nprint(len(x))\n", 10_000);

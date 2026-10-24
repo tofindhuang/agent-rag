@@ -382,6 +382,10 @@ public class ChatServiceImpl implements ChatService {
             SseFrameParser parser = new SseFrameParser(body);
             SseFrame frame;
             while ((frame = parser.read()) != null) {
+                // Heartbeat/comment blocks have no event and must not consume seq.
+                if (frame.event() == null || frame.event().isBlank()) {
+                    continue;
+                }
                 if (frame.id() == null) {
                     seq += 1;
                 } else {
