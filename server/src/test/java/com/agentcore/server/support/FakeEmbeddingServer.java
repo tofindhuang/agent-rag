@@ -32,6 +32,7 @@ public final class FakeEmbeddingServer {
         this.dimension = dimension;
         this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         this.server.createContext("/v1/embeddings", this::handle);
+        this.server.createContext("/v1/models", this::models);
         this.server.start();
     }
 
@@ -63,6 +64,24 @@ public final class FakeEmbeddingServer {
     public void reset() {
         this.mode = Mode.NORMAL;
         this.requests.set(0);
+    }
+
+    private void models(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(405, -1);
+            exchange.close();
+            return;
+        }
+        Mode current = mode;
+        if (current == Mode.RATE_LIMITED) {
+            respond(exchange, 429, "{\"error\":\"rate limited\"}");
+            return;
+        }
+        if (current == Mode.BAD_REQUEST) {
+            respond(exchange, 400, "{\"error\":\"bad request\"}");
+            return;
+        }
+        respond(exchange, 200, "{\"data\":[{\"id\":\"test-embedding-model\"},{\"id\":\"alt-embedding-model\"}]}");
     }
 
     private void handle(HttpExchange exchange) throws IOException {

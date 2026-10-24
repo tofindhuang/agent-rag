@@ -70,7 +70,8 @@ export interface KbEmbeddingInput {
   /** undefined keeps the stored key; "" clears it. */
   apiKey?: string;
   model: string;
-  dimension: number;
+  /** Omitted during discovery; the probe returns the endpoint's actual size. */
+  dimension?: number;
   path?: string;
 }
 
@@ -104,4 +105,24 @@ export interface KbRerankProbe {
 export interface KbProbeResult {
   embedding: KbEmbeddingProbe | null;
   rerank: KbRerankProbe | null;
+}
+
+export type KbModelType = "embedding" | "rerank";
+
+export interface KbModelListRequest {
+  type: KbModelType;
+  baseUrl: string;
+  apiKey?: string;
+}
+
+export interface KbModelListResult {
+  models: string[];
+  message: string | null;
+}
+
+export interface KbRerankProbeInput {
+  baseUrl: string;
+  apiKey?: string;
+  model: string;
+  path?: string;
 }

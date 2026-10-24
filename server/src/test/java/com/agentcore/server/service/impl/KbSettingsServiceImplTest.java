@@ -11,6 +11,7 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.kb.KbAvailability;
 import com.agentcore.server.common.kb.KbEmbeddingClient;
+import com.agentcore.server.common.kb.KbModelsClient;
 import com.agentcore.server.common.kb.KbRerankClient;
 import com.agentcore.server.common.kb.KbUrlGuard;
 import com.agentcore.server.common.vector.VectorStore;
@@ -96,6 +97,7 @@ class KbSettingsServiceImplTest {
                 mock(KbDocumentDao.class),
                 new KbEmbeddingClient(objectMapper, guard),
                 new KbRerankClient(objectMapper, guard),
+                new KbModelsClient(objectMapper),
                 guard,
                 new ApiKeyCipher(new ModelProperties(
                         "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", false)),

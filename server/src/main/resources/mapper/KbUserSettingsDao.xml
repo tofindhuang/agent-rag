@@ -29,4 +29,51 @@
             updated_at = CURRENT_TIMESTAMP(6)
     </insert>
 
+    <!-- Rerank save must not clear a working embedding configuration. -->
+    <insert id="upsertRerank">
+        INSERT INTO kb_user_settings (
+            user_id, rerank_enabled, rerank_base_url, rerank_api_key_cipher,
+            rerank_model, rerank_path, updated_at)
+        VALUES (
+            #{userId}, #{rerankEnabled}, #{rerankBaseUrl}, #{rerankApiKeyCipher},
+            #{rerankModel}, #{rerankPath}, CURRENT_TIMESTAMP(6)) AS new
+        ON DUPLICATE KEY UPDATE
+            rerank_enabled = new.rerank_enabled,
+            rerank_base_url = new.rerank_base_url,
+            rerank_api_key_cipher = new.rerank_api_key_cipher,
+            rerank_model = new.rerank_model,
+            rerank_path = new.rerank_path,
+            updated_at = CURRENT_TIMESTAMP(6)
+    </insert>
+
+    <insert id="upsertRerankEnabled">
+        INSERT INTO kb_user_settings (user_id, rerank_enabled, updated_at)
+        VALUES (#{userId}, #{enabled}, CURRENT_TIMESTAMP(6)) AS new
+        ON DUPLICATE KEY UPDATE
+            rerank_enabled = new.rerank_enabled,
+            updated_at = CURRENT_TIMESTAMP(6)
+    </insert>
+
+    <update id="clearEmbedding">
+        UPDATE kb_user_settings
+        SET embedding_base_url = NULL,
+            embedding_api_key_cipher = NULL,
+            embedding_model = NULL,
+            embedding_dim = NULL,
+            embedding_path = NULL,
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="clearRerank">
+        UPDATE kb_user_settings
+        SET rerank_enabled = TRUE,
+            rerank_base_url = NULL,
+            rerank_api_key_cipher = NULL,
+            rerank_model = NULL,
+            rerank_path = NULL,
+            updated_at = CURRENT_TIMESTAMP(6)
+        WHERE user_id = #{userId}
+    </update>
+
 </mapper>

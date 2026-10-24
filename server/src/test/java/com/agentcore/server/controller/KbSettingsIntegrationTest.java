@@ -1,6 +1,7 @@
 package com.agentcore.server.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -221,6 +222,166 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     @Test
+    void probesRerankWithoutRequiringAnEmbeddingConfiguration() throws Exception {
+        User user = newUser();
+
+        mockMvc.perform(post("/api/kb/settings/probe/rerank")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"baseUrl":"%s","apiKey":"rerank-key",
+                                 "model":"bge-reranker","path":"/rerank"}
+                                """.formatted(RERANK.baseUrl())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embedding").doesNotExist())
+                .andExpect(jsonPath("$.rerank.ok").value(true))
+                .andExpect(jsonPath("$.rerank.score").isNumber());
+    }
+
+    @Test
+    void listsModelsFromTheEmbeddingEndpoint() throws Exception {
+        User user = newUser();
+
+        mockMvc.perform(post("/api/kb/settings/models")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"embedding","baseUrl":"%s","apiKey":"sk-test"}
+                                """.formatted(EMBEDDING.baseUrl())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.models.length()").value(2))
+                .andExpect(jsonPath("$.models[1]").value("test-embedding-model"))
+                .andExpect(jsonPath("$.message").doesNotExist());
+    }
+
+    @Test
+    void modelListFailureFallsBackToManualInput() throws Exception {
+        User user = newUser();
+        EMBEDDING.mode(FakeEmbeddingServer.Mode.RATE_LIMITED);
+
+        mockMvc.perform(post("/api/kb/settings/models")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"embedding","baseUrl":"%s","apiKey":"sk-test"}
+                                """.formatted(EMBEDDING.baseUrl())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.models").isEmpty())
+                .andExpect(jsonPath("$.message").isNotEmpty());
+    }
+
+    @Test
+    void probeDiscoversDimensionWithoutAClaimedValue() throws Exception {
+        User user = newUser();
+
+        mockMvc.perform(post("/api/kb/settings/probe")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"embedding":{"baseUrl":"%s","apiKey":"sk-test",
+                                 "model":"test-embedding-model","path":"/embeddings"}}
+                                """.formatted(EMBEDDING.baseUrl())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embedding.ok").value(true))
+                .andExpect(jsonPath("$.embedding.dimension").value(1024));
+    }
+
+    @Test
+    void rerankTogglePreservesEmbeddingAndStoredConfig() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+        String embeddingCipher = embeddingCipher(user.userId());
+        String rerankBaseUrl = rerankBaseUrl(user.userId());
+
+        mockMvc.perform(put("/api/kb/settings/rerank")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rerank.source").value("disabled"))
+                .andExpect(jsonPath("$.embedding.source").value("user"));
+        assertThat(embeddingCipher(user.userId())).isEqualTo(embeddingCipher);
+        assertThat(rerankBaseUrl(user.userId())).isEqualTo(rerankBaseUrl);
+
+        mockMvc.perform(put("/api/kb/settings/rerank")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rerank.source").value("user"))
+                .andExpect(jsonPath("$.rerank.enabled").value(true))
+                .andExpect(jsonPath("$.rerank.baseUrl").value(RERANK.baseUrl()));
+    }
+
+    @Test
+    void savingEmbeddingKeepsTheExistingRerankConfig() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+        String rerankBaseUrl = rerankBaseUrl(user.userId());
+
+        putSettings(user.token(), embeddingBody("sk-test", EMBEDDING_MODEL, 1024))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rerank.source").value("user"))
+                .andExpect(jsonPath("$.rerank.enabled").value(true));
+        assertThat(rerankBaseUrl(user.userId())).isEqualTo(rerankBaseUrl);
+    }
+
+    @Test
+    void clearingEmbeddingFallsBackAndKeepsRerank() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/kb/settings/embedding")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embedding.source").value("system"))
+                .andExpect(jsonPath("$.rerank.source").value("user"));
+        assertThat(jdbc.queryForObject(
+                        "SELECT embedding_base_url FROM kb_user_settings WHERE user_id = ?",
+                        String.class,
+                        user.userId()))
+                .isNull();
+    }
+
+    @Test
+    void clearingRerankFallsBackToNoneAndKeepsEmbedding() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/kb/settings/rerank")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rerank.source").value("none"))
+                .andExpect(jsonPath("$.rerank.enabled").value(false))
+                .andExpect(jsonPath("$.embedding.source").value("user"));
+    }
+
+    @Test
+    void disablingRerankWorksWithoutOverridingEmbedding() throws Exception {
+        User user = newUser();
+
+        mockMvc.perform(put("/api/kb/settings/rerank")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.embedding.source").value("system"))
+                .andExpect(jsonPath("$.rerank.source").value("disabled"));
+    }
+
+    @Test
+    void enablingRerankWithoutAnyConfigFails() throws Exception {
+        User user = newUser();
+
+        mockMvc.perform(put("/api/kb/settings/rerank")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("KB_NOT_CONFIGURED"));
+    }
+
+    @Test
     void putKeepsTheStoredKeyWhenOmittedAndClearsItWhenBlank() throws Exception {
         User user = newUser();
         putSettings(user.token(), embeddingBody("sk-live-1234", EMBEDDING_MODEL, 1024))
@@ -265,6 +426,41 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
+    }
+
+    private static String settingsBodyWithRerank() {
+        return """
+                {
+                  "embedding": {
+                    "baseUrl": "%s",
+                    "apiKey": "sk-test",
+                    "model": "%s",
+                    "dimension": 1024,
+                    "path": "/embeddings"
+                  },
+                  "rerank": {
+                    "enabled": true,
+                    "baseUrl": "%s",
+                    "apiKey": "rerank-key",
+                    "model": "bge-reranker",
+                    "path": "/rerank"
+                  }
+                }
+                """.formatted(EMBEDDING.baseUrl(), EMBEDDING_MODEL, RERANK.baseUrl());
+    }
+
+    private String embeddingCipher(long userId) {
+        return jdbc.queryForObject(
+                "SELECT embedding_api_key_cipher FROM kb_user_settings WHERE user_id = ?",
+                String.class,
+                userId);
+    }
+
+    private String rerankBaseUrl(long userId) {
+        return jdbc.queryForObject(
+                "SELECT rerank_base_url FROM kb_user_settings WHERE user_id = ?",
+                String.class,
+                userId);
     }
 
     /** API key is optional in the body: null keeps the stored key, "" clears it. */

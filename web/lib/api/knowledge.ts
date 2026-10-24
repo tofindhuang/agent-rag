@@ -5,7 +5,10 @@ import type {
   KbDocumentPage,
   KbDocumentStatus,
   KbEmbeddingSettings,
+  KbModelListRequest,
+  KbModelListResult,
   KbProbeResult,
+  KbRerankProbeInput,
   KbRerankSettings,
   KbSettings,
   KbSettingsInput,
@@ -168,6 +171,67 @@ function parseSettings(value: unknown): KbSettings {
 
 export async function fetchKbSettings(): Promise<KbSettings> {
   return parseSettings(await readJson(await authFetch("/api/kb/settings")));
+}
+
+export async function fetchKbModels(
+  request: KbModelListRequest,
+): Promise<KbModelListResult> {
+  const response = await authFetch("/api/kb/settings/models", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  const body = asRecord(await readJson(response));
+  return {
+    models: Array.isArray(body.models)
+      ? body.models.filter((model): model is string => typeof model === "string")
+      : [],
+    message: asNullableString(body.message),
+  };
+}
+
+export async function probeKbRerank(
+  input: KbRerankProbeInput,
+): Promise<KbProbeResult> {
+  const response = await authFetch("/api/kb/settings/probe/rerank", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = asRecord(await readJson(response));
+  return { embedding: null, rerank: parseRerankProbe(body.rerank) };
+}
+
+/** Saves rerank only; embedding settings are preserved server-side. */
+export async function saveKbRerank(input: {
+  enabled: boolean;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  path?: string;
+}): Promise<KbSettings> {
+  const response = await authFetch("/api/kb/settings/rerank", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseSettings(await readJson(response));
+}
+
+export async function setKbRerankEnabled(enabled: boolean): Promise<KbSettings> {
+  return saveKbRerank({ enabled });
+}
+
+export async function resetKbEmbedding(): Promise<KbSettings> {
+  return parseSettings(
+    await readJson(await authFetch("/api/kb/settings/embedding", { method: "DELETE" })),
+  );
+}
+
+export async function resetKbRerank(): Promise<KbSettings> {
+  return parseSettings(
+    await readJson(await authFetch("/api/kb/settings/rerank", { method: "DELETE" })),
+  );
 }
 
 export async function saveKbSettings(input: KbSettingsInput): Promise<KbSettings> {

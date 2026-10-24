@@ -8,6 +8,8 @@ import com.agentcore.server.common.kb.KbEmbeddingClient;
 import com.agentcore.server.common.kb.KbEmbeddingConfig;
 import com.agentcore.server.common.kb.KbEmbeddingProbe;
 import com.agentcore.server.common.kb.KbIngestException;
+import com.agentcore.server.common.kb.KbModelsClient;
+import com.agentcore.server.common.kb.KbModelsException;
 import com.agentcore.server.common.kb.KbRerankClient;
 import com.agentcore.server.common.kb.KbRerankConfig;
 import com.agentcore.server.common.kb.KbRerankException;
@@ -19,7 +21,11 @@ import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbDocumentDao;
 import com.agentcore.server.dao.KbUserSettingsDao;
 import com.agentcore.server.domain.KbUserSettings;
+import com.agentcore.server.dto.kb.KbModelListRequest;
+import com.agentcore.server.dto.kb.KbModelListResponse;
 import com.agentcore.server.dto.kb.KbProbeResponse;
+import com.agentcore.server.dto.kb.KbRerankProbeRequest;
+import com.agentcore.server.dto.kb.KbRerankUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
 import com.agentcore.server.service.KbSettingsService;
@@ -57,6 +63,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     private final KbDocumentDao documentDao;
     private final KbEmbeddingClient embeddingClient;
     private final KbRerankClient rerankClient;
+    private final KbModelsClient modelsClient;
     private final KbUrlGuard guard;
     private final ApiKeyCipher cipher;
     private final KbProperties properties;
@@ -69,6 +76,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             KbDocumentDao documentDao,
             KbEmbeddingClient embeddingClient,
             KbRerankClient rerankClient,
+            KbModelsClient modelsClient,
             KbUrlGuard guard,
             ApiKeyCipher cipher,
             KbProperties properties,
@@ -79,6 +87,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         this.documentDao = documentDao;
         this.embeddingClient = embeddingClient;
         this.rerankClient = rerankClient;
+        this.modelsClient = modelsClient;
         this.guard = guard;
         this.cipher = cipher;
         this.properties = properties;
@@ -114,24 +123,37 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                 new KbEmbeddingConfig(baseUrl, embeddingKey.plaintext(), model, path, dimension);
         probeEmbeddingOrThrow(candidate);
 
-        boolean rerankEnabled = request.rerank() != null
-                && Boolean.TRUE.equals(request.rerank().enabled());
+        boolean rerankEnabled;
         String rerankBaseUrl = null;
         String rerankModel = null;
         String rerankPath = null;
         String rerankCipher = null;
-        if (rerankEnabled) {
-            KbSettingsUpdateRequest.Rerank rerank = request.rerank();
-            rerankBaseUrl = requireText(rerank.baseUrl(), "rerank baseUrl", MAX_URL);
-            guard.validate(rerankBaseUrl);
-            rerankModel = requireText(rerank.model(), "rerank model", MAX_MODEL);
-            rerankPath = normalizePath(rerank.path(), DEFAULT_RERANK_PATH);
-            String storedRerankCipher =
-                    existing == null ? null : existing.getRerankApiKeyCipher();
-            Secret rerankKey = resolveSecret(userId, rerank.apiKey(), storedRerankCipher);
-            rerankCipher = rerankKey.cipher();
-            probeRerankOrThrow(new KbRerankConfig(
-                    rerankBaseUrl, rerankKey.plaintext(), rerankModel, rerankPath));
+        if (request.rerank() == null) {
+            // Saving embedding must not wipe a working rerank section.
+            if (existing != null) {
+                rerankEnabled = Boolean.TRUE.equals(existing.getRerankEnabled());
+                rerankBaseUrl = existing.getRerankBaseUrl();
+                rerankModel = existing.getRerankModel();
+                rerankPath = existing.getRerankPath();
+                rerankCipher = existing.getRerankApiKeyCipher();
+            } else {
+                rerankEnabled = false;
+            }
+        } else {
+            rerankEnabled = Boolean.TRUE.equals(request.rerank().enabled());
+            if (rerankEnabled) {
+                KbSettingsUpdateRequest.Rerank rerank = request.rerank();
+                rerankBaseUrl = requireText(rerank.baseUrl(), "rerank baseUrl", MAX_URL);
+                guard.validate(rerankBaseUrl);
+                rerankModel = requireText(rerank.model(), "rerank model", MAX_MODEL);
+                rerankPath = normalizePath(rerank.path(), DEFAULT_RERANK_PATH);
+                String storedRerankCipher =
+                        existing == null ? null : existing.getRerankApiKeyCipher();
+                Secret rerankKey = resolveSecret(userId, rerank.apiKey(), storedRerankCipher);
+                rerankCipher = rerankKey.cipher();
+                probeRerankOrThrow(new KbRerankConfig(
+                        rerankBaseUrl, rerankKey.plaintext(), rerankModel, rerankPath));
+            }
         }
 
         KbUserSettings entity = new KbUserSettings();
@@ -173,12 +195,14 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         KbUserSettings existing = settingsDao.selectById(userId);
 
         KbEmbeddingConfig embedding;
+        boolean discoverDimension = false;
         if (request != null && request.embedding() != null) {
             KbSettingsUpdateRequest.Embedding input = request.embedding();
             String baseUrl = requireText(input.baseUrl(), "embedding baseUrl", MAX_URL);
             guard.validate(baseUrl);
             String model = requireText(input.model(), "embedding model", MAX_MODEL);
-            int dimension = requireDimension(input.dimension());
+            discoverDimension = input.dimension() == null || input.dimension() <= 0;
+            int dimension = discoverDimension ? 1 : requireDimension(input.dimension());
             String path = normalizePath(input.path(), DEFAULT_EMBEDDING_PATH);
             Secret key = resolveSecret(
                     userId,
@@ -204,13 +228,112 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             rerankProbe = runRerankProbe(
                     new KbRerankConfig(baseUrl, key.plaintext(), model, path));
         }
-        return new KbProbeResponse(runEmbeddingProbe(embedding), rerankProbe);
+        return new KbProbeResponse(runEmbeddingProbe(embedding, discoverDimension), rerankProbe);
     }
 
-    private KbProbeResponse.EmbeddingProbe runEmbeddingProbe(KbEmbeddingConfig config) {
+    @Override
+    public KbModelListResponse listModels(long userId, KbModelListRequest request) {
+        availability.requireEnabled();
+        if (request == null || request.type() == null) {
+            throw invalid("type is required");
+        }
+        String type = request.type();
+        if (!"embedding".equals(type) && !"rerank".equals(type)) {
+            throw invalid("type must be embedding or rerank");
+        }
+        String baseUrl = requireText(request.baseUrl(), "baseUrl", MAX_URL);
+        guard.validate(baseUrl);
+        KbUserSettings existing = settingsDao.selectById(userId);
+        String storedCipher = "embedding".equals(type)
+                ? (existing == null ? null : existing.getEmbeddingApiKeyCipher())
+                : (existing == null ? null : existing.getRerankApiKeyCipher());
+        Secret key = resolveSecret(userId, request.apiKey(), storedCipher);
+        try {
+            return new KbModelListResponse(
+                    modelsClient.listModels(baseUrl, key.plaintext()), null);
+        } catch (KbModelsException e) {
+            log.warn("cannot list {} models: {}", type, e.getMessage());
+            return new KbModelListResponse(
+                    List.of(), "无法获取模型列表，请手动输入模型 ID");
+        }
+    }
+
+    @Override
+    public KbProbeResponse probeRerank(long userId, KbRerankProbeRequest request) {
+        availability.requireEnabled();
+        String baseUrl = requireText(request.baseUrl(), "rerank baseUrl", MAX_URL);
+        guard.validate(baseUrl);
+        String model = requireText(request.model(), "rerank model", MAX_MODEL);
+        String path = normalizePath(request.path(), DEFAULT_RERANK_PATH);
+        KbUserSettings existing = settingsDao.selectById(userId);
+        Secret key = resolveSecret(
+                userId,
+                request.apiKey(),
+                existing == null ? null : existing.getRerankApiKeyCipher());
+        return new KbProbeResponse(null, runRerankProbe(
+                new KbRerankConfig(baseUrl, key.plaintext(), model, path)));
+    }
+
+    @Override
+    public KbSettingsView updateRerank(long userId, KbRerankUpdateRequest request) {
+        availability.requireEnabled();
+        boolean enabled = request != null && Boolean.TRUE.equals(request.enabled());
+        KbUserSettings existing = settingsDao.selectById(userId);
+        if (!enabled) {
+            settingsDao.upsertRerankEnabled(userId, false);
+            return toView(userId, settingsDao.selectById(userId));
+        }
+        if (request.baseUrl() == null || request.baseUrl().isBlank()) {
+            boolean userConfigured =
+                    existing != null && notBlank(existing.getRerankBaseUrl());
+            boolean systemConfigured =
+                    properties.rerank().configured() && properties.rerank().enabled();
+            if (!userConfigured && !systemConfigured) {
+                throw new ApiException(ErrorCode.KB_NOT_CONFIGURED,
+                        "configure a rerank endpoint or set the deployment default");
+            }
+            settingsDao.upsertRerankEnabled(userId, true);
+            return toView(userId, settingsDao.selectById(userId));
+        }
+
+        String baseUrl = requireText(request.baseUrl(), "rerank baseUrl", MAX_URL);
+        guard.validate(baseUrl);
+        String model = requireText(request.model(), "rerank model", MAX_MODEL);
+        String path = normalizePath(request.path(), DEFAULT_RERANK_PATH);
+        String storedCipher = existing == null ? null : existing.getRerankApiKeyCipher();
+        Secret key = resolveSecret(userId, request.apiKey(), storedCipher);
+        probeRerankOrThrow(new KbRerankConfig(baseUrl, key.plaintext(), model, path));
+
+        KbUserSettings entity = new KbUserSettings();
+        entity.setUserId(userId);
+        entity.setRerankEnabled(true);
+        entity.setRerankBaseUrl(baseUrl);
+        entity.setRerankApiKeyCipher(key.cipher());
+        entity.setRerankModel(model);
+        entity.setRerankPath(path);
+        settingsDao.upsertRerank(entity);
+        return toView(userId, settingsDao.selectById(userId));
+    }
+
+    @Override
+    public KbSettingsView clearEmbedding(long userId) {
+        availability.requireEnabled();
+        settingsDao.clearEmbedding(userId);
+        return toView(userId, settingsDao.selectById(userId));
+    }
+
+    @Override
+    public KbSettingsView clearRerank(long userId) {
+        availability.requireEnabled();
+        settingsDao.clearRerank(userId);
+        return toView(userId, settingsDao.selectById(userId));
+    }
+
+    private KbProbeResponse.EmbeddingProbe runEmbeddingProbe(
+            KbEmbeddingConfig config, boolean discoverDimension) {
         try {
             KbEmbeddingProbe probe = embeddingClient.probe(config);
-            if (probe.dimension() != config.dimension()) {
+            if (!discoverDimension && probe.dimension() != config.dimension()) {
                 return new KbProbeResponse.EmbeddingProbe(
                         false,
                         probe.dimension(),
