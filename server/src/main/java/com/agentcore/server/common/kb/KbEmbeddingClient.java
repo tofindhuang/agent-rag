@@ -44,12 +44,31 @@ public class KbEmbeddingClient {
         List<float[]> result = new ArrayList<>(texts.size());
         for (int start = 0; start < texts.size(); start += MAX_BATCH_SIZE) {
             int end = Math.min(texts.size(), start + MAX_BATCH_SIZE);
-            result.addAll(request(config, texts.subList(start, end)));
+            result.addAll(request(config, texts.subList(start, end), true));
         }
         return result;
     }
 
-    private List<float[]> request(KbEmbeddingConfig config, List<String> batch) {
+    /**
+     * One-vector sanity call for the settings probe. The returned dimension is
+     * the endpoint's actual size, so the caller can reject a wrong claim even
+     * when the stored configuration is not the one being probed.
+     */
+    public KbEmbeddingProbe probe(KbEmbeddingConfig config) {
+        long started = System.nanoTime();
+        List<float[]> vectors = request(
+                config, List.of("knowledge base dimension probe"), false);
+        long latencyMs = (System.nanoTime() - started) / 1_000_000L;
+        if (vectors.isEmpty() || vectors.get(0).length == 0) {
+            throw KbIngestException.permanent(
+                    KbIngestException.EMBEDDING_RESPONSE_INVALID,
+                    "embedding endpoint returned an empty vector");
+        }
+        return new KbEmbeddingProbe(vectors.get(0).length, latencyMs);
+    }
+
+    private List<float[]> request(
+            KbEmbeddingConfig config, List<String> batch, boolean assertDimension) {
         URI uri;
         try {
             uri = guard.validate(endpoint(config));
@@ -107,10 +126,11 @@ public class KbEmbeddingClient {
                     : KbIngestException.permanent(code, message);
         }
 
-        return parse(config, response.body(), batch.size());
+        return parse(config, response.body(), batch.size(), assertDimension);
     }
 
-    private List<float[]> parse(KbEmbeddingConfig config, String body, int expected) {
+    private List<float[]> parse(
+            KbEmbeddingConfig config, String body, int expected, boolean assertDimension) {
         JsonNode data;
         try {
             data = objectMapper.readTree(body).path("data");
@@ -139,13 +159,25 @@ public class KbEmbeddingClient {
         }
 
         List<float[]> vectors = new ArrayList<>(expected);
+        int dimension = assertDimension ? config.dimension() : -1;
         for (JsonNode embedding : ordered) {
-            if (embedding == null || !embedding.isArray()
-                    || embedding.size() != config.dimension()) {
+            if (embedding == null || !embedding.isArray() || embedding.size() == 0) {
                 throw KbIngestException.permanent(
-                        KbIngestException.EMBEDDING_DIMENSION_MISMATCH,
-                        "embedding dimension does not match the configured "
-                                + config.dimension());
+                        KbIngestException.EMBEDDING_RESPONSE_INVALID,
+                        "embedding response contained an empty vector");
+            }
+            if (dimension < 0) {
+                dimension = embedding.size();
+            }
+            if (embedding.size() != dimension) {
+                throw KbIngestException.permanent(
+                        assertDimension
+                                ? KbIngestException.EMBEDDING_DIMENSION_MISMATCH
+                                : KbIngestException.EMBEDDING_RESPONSE_INVALID,
+                        assertDimension
+                                ? "embedding dimension does not match the configured "
+                                        + config.dimension()
+                                : "embedding response vectors have inconsistent dimensions");
             }
             float[] vector = new float[embedding.size()];
             for (int i = 0; i < embedding.size(); i++) {

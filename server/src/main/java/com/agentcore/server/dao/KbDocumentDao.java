@@ -77,6 +77,15 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
 
     List<KbDocument> findStaleByUser(@Param("userId") long userId);
 
+    /**
+     * Marks every non-deleting document stale after an embedding model/dimension
+     * change and bumps the version so in-flight workers cannot publish results.
+     */
+    int markAllStale(@Param("userId") long userId);
+
+    /** Retrieval guard: a partially stale index must not answer with old vectors. */
+    long countStaleByUser(@Param("userId") long userId);
+
     /** Reingest: increments version, clears the old attempt/lease state. */
     int requeue(@Param("id") String id, @Param("userId") long userId);
 }

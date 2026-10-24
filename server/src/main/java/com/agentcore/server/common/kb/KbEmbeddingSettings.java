@@ -4,6 +4,7 @@ import com.agentcore.server.common.crypto.ApiKeyCipher;
 import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbUserSettingsDao;
 import com.agentcore.server.domain.KbUserSettings;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
@@ -26,6 +27,13 @@ public class KbEmbeddingSettings {
     }
 
     public KbEmbeddingConfig resolve(long userId) {
+        return resolveIfPresent(userId).orElseThrow(() -> KbIngestException.permanent(
+                KbIngestException.EMBEDDING_NOT_CONFIGURED,
+                "no embedding endpoint is configured"));
+    }
+
+    /** Non-throwing resolution for settings read/probe paths. */
+    public Optional<KbEmbeddingConfig> resolveIfPresent(long userId) {
         KbProperties.Embedding fallback = properties.embedding();
         KbUserSettings setting = settingsDao.selectById(userId);
         if (setting != null
@@ -43,7 +51,7 @@ public class KbEmbeddingSettings {
                             e);
                 }
             }
-            return new KbEmbeddingConfig(
+            return Optional.of(new KbEmbeddingConfig(
                     setting.getEmbeddingBaseUrl(),
                     apiKey,
                     notBlank(setting.getEmbeddingModel())
@@ -54,20 +62,18 @@ public class KbEmbeddingSettings {
                             : fallback.path(),
                     setting.getEmbeddingDim() != null && setting.getEmbeddingDim() > 0
                             ? setting.getEmbeddingDim()
-                            : fallback.dim());
+                            : fallback.dim()));
         }
 
         if (!fallback.configured()) {
-            throw KbIngestException.permanent(
-                    KbIngestException.EMBEDDING_NOT_CONFIGURED,
-                    "no embedding endpoint is configured");
+            return Optional.empty();
         }
-        return new KbEmbeddingConfig(
+        return Optional.of(new KbEmbeddingConfig(
                 fallback.baseUrl(),
                 fallback.apiKey(),
                 fallback.model(),
                 fallback.path(),
-                fallback.dim());
+                fallback.dim()));
     }
 
     private static boolean notBlank(String value) {

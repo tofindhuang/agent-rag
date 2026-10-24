@@ -116,5 +116,5 @@ _Avoid_: source、reference（口语可用，实体是 Citation）
 
 ### 知识库设置（KB Settings）
 
-用户自带的 embedding/rerank 端点与凭证；未配置时回落到部署默认值。
+用户自带的 embedding/rerank 端点与凭证；未配置时回落到部署默认值。生效来源标记为 `user` / `system` / `none`（rerank 另可标记 `disabled`）。
 _Avoid_: embedding config、RAG config

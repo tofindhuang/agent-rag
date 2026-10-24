@@ -159,6 +159,27 @@
         ORDER BY created_at ASC, id ASC
     </select>
 
+    <update id="markAllStale">
+        UPDATE kb_documents
+        SET status = 'stale',
+            version = version + 1,
+            chunk_count = 0,
+            lease_until = NULL,
+            next_attempt_at = NULL,
+            enqueued_at = NULL,
+            error_code = NULL,
+            error_message = NULL
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'deleting'
+    </update>
+
+    <select id="countStaleByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM kb_documents
+        WHERE user_id = #{userId}
+          AND status = 'stale'
+    </select>
+
     <update id="requeue">
         UPDATE kb_documents
         SET status = 'queued',

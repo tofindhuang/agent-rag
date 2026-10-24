@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.KbUserSettingsDao">
+
+    <!-- PUT replaces the whole row, so every column is assigned; null clears. -->
+    <insert id="upsert">
+        INSERT INTO kb_user_settings (
+            user_id, embedding_base_url, embedding_api_key_cipher, embedding_model,
+            embedding_dim, embedding_path, rerank_enabled, rerank_base_url,
+            rerank_api_key_cipher, rerank_model, rerank_path, updated_at)
+        VALUES (
+            #{userId}, #{embeddingBaseUrl}, #{embeddingApiKeyCipher},
+            #{embeddingModel}, #{embeddingDim}, #{embeddingPath},
+            #{rerankEnabled}, #{rerankBaseUrl},
+            #{rerankApiKeyCipher}, #{rerankModel}, #{rerankPath},
+            CURRENT_TIMESTAMP(6)) AS new
+        ON DUPLICATE KEY UPDATE
+            embedding_base_url = new.embedding_base_url,
+            embedding_api_key_cipher = new.embedding_api_key_cipher,
+            embedding_model = new.embedding_model,
+            embedding_dim = new.embedding_dim,
+            embedding_path = new.embedding_path,
+            rerank_enabled = new.rerank_enabled,
+            rerank_base_url = new.rerank_base_url,
+            rerank_api_key_cipher = new.rerank_api_key_cipher,
+            rerank_model = new.rerank_model,
+            rerank_path = new.rerank_path,
+            updated_at = CURRENT_TIMESTAMP(6)
+    </insert>
+
+</mapper>

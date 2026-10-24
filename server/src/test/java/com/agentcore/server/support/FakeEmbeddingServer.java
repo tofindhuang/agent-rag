@@ -23,7 +23,7 @@ public final class FakeEmbeddingServer {
 
     private final HttpServer server;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final int dimension;
+    private volatile int dimension;
     private final AtomicInteger requests = new AtomicInteger();
     private volatile Mode mode = Mode.NORMAL;
 
@@ -52,6 +52,11 @@ public final class FakeEmbeddingServer {
 
     public void mode(Mode mode) {
         this.mode = mode;
+    }
+
+    /** Lets a settings probe test change the vector size the fake returns. */
+    public void dimension(int dimension) {
+        this.dimension = dimension;
     }
 
     public void reset() {
