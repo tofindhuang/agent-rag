@@ -1,8 +1,7 @@
 # RAG 选型 spike：Qdrant + SiliconFlow
 
 日期：2026-10-23
-关联：`docs/tickets/m0-closeout/02-rag-selection-spike.md`、`docs/adrs/0005-qdrant-external-embedding.md`
-Spike 分支：`spike/rag-selection`（提交 `989e93a`，不合并到 `dev`）
+关联：`docs/adrs/0005-qdrant-external-embedding.md`
 
 ## 结论
 

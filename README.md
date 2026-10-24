@@ -28,8 +28,7 @@
 | 多实例 | gateway 横向扩展、会话亲和路由、滚动更新不断流 | 🚧 M2 |
 
 M1 的验收证据（50 并发压测、重启耐久性、延迟指标）见
-[docs/research/2026-10-25-m1-load-test-report.md](docs/research/2026-10-25-m1-load-test-report.md) 与
-[docs/tickets/m1-closeout/01-closeout-record.md](docs/tickets/m1-closeout/01-closeout-record.md)。
+[docs/research/2026-10-25-m1-load-test-report.md](docs/research/2026-10-25-m1-load-test-report.md)。
 
 ## 架构
 
@@ -247,10 +246,11 @@ bash sandbox/test-isolation.sh
 | 领域词汇表 | [CONTEXT.md](CONTEXT.md) |
 | 跨模块 specs | [docs/specs/](docs/specs/) |
 | ADR | [docs/adrs/](docs/adrs/) |
-| 工单与验收记录 | [docs/tickets/](docs/tickets/) |
 | 研究与压测报告 | [docs/research/](docs/research/) |
 | Java ↔ gateway 契约 | [contract/v1/README.md](contract/v1/README.md) |
 | 开发规范（模块地图/编码/流程） | [AGENTS.md](AGENTS.md) |
+
+内部工单、决策地图与验收记录由维护者保留，不随公开仓发布。
 
 ## 路线图
 

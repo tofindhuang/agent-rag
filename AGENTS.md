@@ -47,11 +47,11 @@ docker compose up -d                # mysql + redis
 | 需求 | `docs/requirements.md` | — |
 | Specs（跨模块） | `docs/specs/YYYY-MM-DD-<slug>.md` | `/to-spec` |
 | Specs（模块内） | `<module>/docs/specs/` | `/to-spec` |
-| Tickets | `docs/tickets/<slug>/NN-<slug>.md` | `/to-tickets` |
-| 决策地图 | `docs/tickets/<slug>/MAP.md` | `/wayfinder` |
 | ADRs | `docs/adrs/`（跨模块）、`<module>/docs/adrs/`（模块内） | `/domain-modeling` |
 | 领域词汇表 | `CONTEXT.md` | `/domain-modeling` |
 | 研究/选型记录 | `docs/research/YYYY-MM-DD-<slug>.md` | `/research` |
+
+工单、决策地图与验收记录由维护者内部保留，不随公开仓发布。
 
 Agent skills（`.pi/skills/`、`.agents/skills/`）由维护者私有维护，不随公开仓发布；下文出现的 `/skill:<name>` 仅为工作流名称。
 

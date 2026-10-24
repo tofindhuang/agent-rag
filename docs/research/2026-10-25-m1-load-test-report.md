@@ -3,7 +3,7 @@
 日期：2026-10-25
 对应 spec：`docs/specs/2026-10-25-m1-load-test.md`
 工具：`tools/loadtest`
-原始样本：`docs/research/2026-10-25-m1-loadtest-artifacts/`（`turns.jsonl`、`summary.json`、`exec-records.tsv`）
+原始样本由维护者内部留档，不随公开仓发布。
 
 ## 环境快照
 
