@@ -89,15 +89,13 @@ export function UploadPanel({ busy, onUploadFile, onUploadUrl }: UploadPanelProp
         </button>
       </div>
 
-      <form className={styles.form} onSubmit={(event) => void submit(event)}>
+      <form className={`${styles.form} ${styles.uploadForm}`} onSubmit={(event) => void submit(event)}>
         {mode === "file" ? (
           <div className={styles.uploadRow}>
-            <label className={styles.hint} htmlFor="kb-file">
-              选择文件
-            </label>
             <input
               id="kb-file"
               className={styles.fileInput}
+              aria-label="选择文件"
               type="file"
               accept={ACCEPT}
               onChange={pickFile}
