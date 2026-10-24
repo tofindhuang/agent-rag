@@ -144,6 +144,9 @@ HTTP 错误码：
 | `RUN_IN_PROGRESS` | 409 | false | 同一会话已有进行中的 Run |
 | `NO_ACTIVE_RUN` | 409 | false | 空闲时调用 abort |
 | `UPSTREAM_UNAVAILABLE` | 503 | true | gateway 无法连接业务层或沙箱 |
+| `SANDBOX_UNAVAILABLE` | 503 | true | 沙箱 Docker daemon 或镜像不可用 |
+| `SANDBOX_QUEUE_TIMEOUT` | 503 | true | 沙箱执行排队超过上限 |
+| `SANDBOX_CODE_TOO_LARGE` | 413 | false | 提交的代码超过大小上限 |
 | `PROVIDER_UNREACHABLE` | 502 | true | 供应商端点不可达（DNS/连接/超时） |
 | `PROVIDER_AUTH_FAILED` | 502 | false | 供应商拒绝 API Key（401/403） |
 | `PROVIDER_PROBE_FAILED` | 502 | false | 供应商返回非 2xx 或无法解析模型列表 |
@@ -230,6 +233,8 @@ result  { exitCode, durationMs, timedOut, truncated }
 - 任何上游断连都杀容器，并写一条 `status=aborted` 的执行记录。
 - `stdout`/`stderr` 单块 ≤ 2 KiB，总量仍受 64 KiB 上限约束。
 - `result` 必须出现且唯一；之后关闭流。
+- 流开始前的错误使用 §7 envelope；排队发生在流开始之前，流内不发送 `queued` phase。
+- 沙箱错误码（纯增量，不升主版本）：`SANDBOX_UNAVAILABLE`、`SANDBOX_QUEUE_TIMEOUT`、`SANDBOX_CODE_TOO_LARGE`。
 
 ## 9. 模型供应商探测（内部）
 

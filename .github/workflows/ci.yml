@@ -54,6 +54,8 @@ jobs:
           distribution: temurin
           java-version: 21
           cache: maven
+      - name: Build sandbox image
+        run: docker build -t agent-core-sandbox:python-3.12 -f sandbox/Dockerfile.python sandbox
       - name: Verify
         working-directory: server
         run: mvn -B verify
