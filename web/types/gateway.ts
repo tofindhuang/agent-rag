@@ -17,6 +17,14 @@ export interface MessageEndData {
   stopReason: string;
 }
 
+export interface ContextUsageData {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  compactionThresholdPercent: number;
+  compactionEnabled: boolean;
+}
+
 export interface ToolProgressData {
   toolCallId: string;
   name: string;
@@ -102,6 +110,7 @@ export type GatewayEvent =
   | { type: "tool_progress"; data: ToolProgressData }
   | { type: "tool_result"; data: ToolResultData }
   | { type: "message_end"; data: MessageEndData }
+  | { type: "context_usage"; data: ContextUsageData }
   | {
       type: "compaction";
       data: { reason: string; tokensBefore: number; tokensAfter: number | null };
@@ -125,6 +134,7 @@ const EVENT_TYPES = new Set<GatewayEvent["type"]>([
   "tool_progress",
   "tool_result",
   "message_end",
+  "context_usage",
   "compaction",
   "retry",
   "run_settled",

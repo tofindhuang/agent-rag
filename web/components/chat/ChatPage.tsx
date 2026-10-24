@@ -6,6 +6,7 @@ import { AccountMenu } from "@/components/auth/AccountMenu";
 import { Banner } from "@/components/ui/Banner";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
+import { ContextUsageMeter } from "./ContextUsageMeter";
 import { MessageList } from "./MessageList";
 import { NewSessionDialog } from "./NewSessionDialog";
 import { SessionKbSelect } from "./SessionKbSelect";
@@ -60,6 +61,9 @@ export function ChatPage() {
                 <span className={styles.modelTag} title="当前会话使用的模型">
                   {chat.currentModel}
                 </span>
+              ) : null}
+              {chat.contextUsage ? (
+                <ContextUsageMeter usage={chat.contextUsage} />
               ) : null}
               {chat.currentSessionId ? (
                 <SessionKbSelect

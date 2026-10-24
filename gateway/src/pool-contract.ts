@@ -1,9 +1,13 @@
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type { RunIdentity } from "./identity.js";
+import type { CompactionPlan } from "./compaction.js";
 
 export interface GatewaySession {
   subscribe(listener: (event: AgentSessionEvent) => void): () => void;
   abort(): Promise<void>;
+  getContextUsage?():
+    | { tokens: number | null; contextWindow: number; percent: number | null }
+    | undefined;
 }
 
 export interface GatewaySessionEntry {
@@ -11,6 +15,8 @@ export interface GatewaySessionEntry {
   userId: string;
   activeRun: RunIdentity | null;
   session: GatewaySession;
+  /** Compaction policy computed for this session's model. */
+  compaction?: CompactionPlan;
 }
 
 import type { ProviderApi } from "./providers.js";

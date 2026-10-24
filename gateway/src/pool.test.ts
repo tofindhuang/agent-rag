@@ -19,6 +19,7 @@ function config(): GatewayConfig {
     sandboxApiUrl: "http://localhost:8080",
     apiToken: undefined,
     allowPrivateModelEndpoints: false,
+    compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
     sessionDir: dir,
   };
 }

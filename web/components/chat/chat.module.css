@@ -594,3 +594,36 @@
     padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom));
   }
 }
+
+.contextMeter {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.contextMeterWarn {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.contextBar {
+  display: block;
+  width: 42px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.contextBarFill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+}

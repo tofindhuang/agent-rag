@@ -46,6 +46,7 @@ function toolFor(url: string): CapturedTool {
     apiToken: "shared-token",
     sessionDir: "/tmp",
     allowPrivateModelEndpoints: false,
+    compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
   };
   runCodeExtension(config, () => identity)(pi);
   assert.ok(captured);

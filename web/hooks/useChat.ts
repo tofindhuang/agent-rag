@@ -16,7 +16,7 @@ import {
 import { ApiError, userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
 import type { ChatMessage, HistoryItem, SessionSummary, ToolActivity } from "@/types/chat";
-import type { MessageEndData } from "@/types/gateway";
+import type { ContextUsageData, MessageEndData } from "@/types/gateway";
 import { parseCitationPassages, parseGatewayEvent } from "@/types/gateway";
 import type { CreateSessionOptions } from "@/lib/api/chat";
 
@@ -105,6 +105,7 @@ export function useChat() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [contextUsage, setContextUsage] = useState<ContextUsageData | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +161,7 @@ export function useChat() {
       currentIdRef.current = sessionId;
       setCurrentSessionId(sessionId);
       setMessages([]);
+      setContextUsage(null);
       setHistoryHasMore(false);
       setNextBeforeId(null);
       setNotice(null);
@@ -502,6 +504,9 @@ export function useChat() {
           case "message_end":
             finalizeMessage(event.data);
             break;
+          case "context_usage":
+            setContextUsage(event.data);
+            break;
           case "compaction":
             setNotice("上下文已压缩");
             break;
@@ -614,6 +619,7 @@ export function useChat() {
     currentModel,
     currentKbId,
     currentKbName,
+    contextUsage,
     messages,
     input,
     setInput,

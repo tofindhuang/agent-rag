@@ -171,3 +171,70 @@ test("omits tool details that exceed the frame budget", () => {
     assert.equal(event.data.details, undefined);
   }
 });
+
+test("emits context usage after start, assistant messages and compaction", () => {
+  let usage: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+  } = { tokens: 1_000, contextWindow: 10_000, percent: 10 };
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+    contextUsage: () => usage,
+    compactionThresholdPercent: 80,
+    compactionEnabled: true,
+  });
+
+  const started = translator.start();
+  assert.deepEqual(
+    started.map((event) => event.type),
+    ["run_started", "context_usage"],
+  );
+  if (started[1]?.type === "context_usage") {
+    assert.deepEqual(started[1].data, {
+      tokens: 1_000,
+      contextWindow: 10_000,
+      percent: 10,
+      compactionThresholdPercent: 80,
+      compactionEnabled: true,
+    });
+  }
+
+  usage = { tokens: 2_000, contextWindow: 10_000, percent: 20 };
+  const message = translator.translate({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      usage: {
+        input: 10,
+        output: 5,
+        totalTokens: 15,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+    },
+  } as unknown as AgentSessionEvent);
+  assert.deepEqual(
+    message.map((event) => event.type),
+    ["message_end", "context_usage"],
+  );
+
+  usage = { tokens: null, contextWindow: 10_000, percent: null };
+  const compaction = translator.translate({
+    type: "compaction_end",
+    reason: "threshold",
+    result: { tokensBefore: 9_000, estimatedTokensAfter: 2_000 },
+  } as unknown as AgentSessionEvent);
+  assert.deepEqual(
+    compaction.map((event) => event.type),
+    ["compaction", "context_usage"],
+  );
+  if (compaction[1]?.type === "context_usage") {
+    assert.equal(compaction[1].data.tokens, null);
+    assert.equal(compaction[1].data.percent, null);
+  }
+});

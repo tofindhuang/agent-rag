@@ -175,6 +175,9 @@ export function createApp({ config, pool }: AppDependencies): Express {
       turnId,
       sessionId: req.params.id,
       contractVersion: CONTRACT_VERSION,
+      contextUsage: () => running.session.getContextUsage?.(),
+      compactionThresholdPercent: running.compaction?.thresholdPercent ?? 80,
+      compactionEnabled: running.compaction?.enabled ?? true,
     });
 
     let seq = 0;

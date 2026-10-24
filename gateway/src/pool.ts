@@ -17,8 +17,14 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   SessionManager,
+  SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
+import {
+  applyCompactionSettings,
+  buildCompactionPlan,
+  type CompactionPlan,
+} from "./compaction.js";
 import { kbSearchExtension, runCodeExtension } from "./extensions.js";
 import type { RunIdentity, RunRef } from "./identity.js";
 import type {
@@ -60,6 +66,8 @@ export interface PoolEntry {
   model?: ModelRef;
   /** Last model configuration applied to this runtime (credentials included). */
   appliedModel?: SessionModelConfig;
+  /** Compaction policy computed for the session's model. */
+  compaction: CompactionPlan;
 }
 
 interface EnsureOutcome {
@@ -154,6 +162,7 @@ export class SessionPool implements GatewayPool {
         modelRefFromSession(session.model) ??
         (modelConfig ? modelRefFromConfig(modelConfig) : undefined),
       appliedModel: modelConfig,
+      compaction: buildCompactionPlan(session.model?.contextWindow, this.config.compaction),
     };
     this.entries.set(sessionId, entry);
     return { entry, created: lease.created, restored: lease.restored };
@@ -165,9 +174,11 @@ export class SessionPool implements GatewayPool {
     userId: string,
     modelConfig?: SessionModelConfig,
   ): Promise<PiSession> {
+    const settingsManager = SettingsManager.create(process.cwd(), getAgentDir());
     const loader = new DefaultResourceLoader({
       cwd: process.cwd(),
       agentDir: getAgentDir(),
+      settingsManager,
       // Replace pi's coding prompt entirely (requirements.md §1.1).
       systemPromptOverride: () =>
         buildSystemPrompt({ userName: userId, profileFacts: [] }),
@@ -191,8 +202,14 @@ export class SessionPool implements GatewayPool {
       // (bash/edit/write/read/...) is excluded (FR-6 tool whitelist).
       tools: [...AGENT_TOOL_WHITELIST],
       sessionManager: manager,
+      settingsManager,
       ...(built ? { modelRuntime: built.runtime, model: built.model } : {}),
     });
+    applyCompactionSettings(
+      settingsManager,
+      built?.model.contextWindow ?? session.model?.contextWindow,
+      this.config.compaction,
+    );
     return session;
   }
 

@@ -37,6 +37,14 @@ export interface MessageToolCall {
  * Contract v1 domain events. See contract/v1/README.md. `seq` and the SSE
  * frame id are transport concerns and are added by the SSE writer.
  */
+export interface ContextUsageData {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+  compactionThresholdPercent: number;
+  compactionEnabled: boolean;
+}
+
 export type DomainEvent =
   | {
       type: "run_started";
@@ -85,6 +93,7 @@ export type DomainEvent =
         stopReason: StopReason;
       };
     }
+  | { type: "context_usage"; data: ContextUsageData }
   | {
       type: "compaction";
       data: {

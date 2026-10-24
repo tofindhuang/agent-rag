@@ -1,4 +1,4 @@
-import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionEvent, ContextUsage } from "@earendil-works/pi-coding-agent";
 import {
   CONTRACT_VERSION,
   type ContractVersion,
@@ -14,6 +14,9 @@ export interface RunContext {
   turnId: string;
   sessionId: string;
   contractVersion?: ContractVersion;
+  contextUsage?: () => ContextUsage | undefined;
+  compactionThresholdPercent?: number;
+  compactionEnabled?: boolean;
 }
 
 interface PiContentBlock {
@@ -133,6 +136,7 @@ export class RunTranslator {
           contractVersion: this.context.contractVersion ?? CONTRACT_VERSION,
         },
       },
+      ...this.contextUsageEvents(),
     ];
   }
 
@@ -146,13 +150,13 @@ export class RunTranslator {
       case "message_update":
         return this.translateMessageUpdate(raw);
       case "message_end":
-        return this.translateMessageEnd(raw);
+        return [...this.translateMessageEnd(raw), ...this.contextUsageEvents()];
       case "tool_execution_update":
         return this.translateToolProgress(raw);
       case "tool_execution_end":
         return this.translateToolResult(raw);
       case "compaction_end":
-        return this.translateCompaction(raw);
+        return [...this.translateCompaction(raw), ...this.contextUsageEvents()];
       case "auto_retry_start":
         return this.translateRetry(raw);
       case "agent_settled":
@@ -170,6 +174,23 @@ export class RunTranslator {
   /** Map an unexpected engine failure to a terminal error. */
   fail(code: string, message: string, retryable = true): DomainEvent[] {
     return this.settle("error", { code, message: concise(message, "internal error"), retryable });
+  }
+
+  private contextUsageEvents(): DomainEvent[] {
+    const usage = this.context.contextUsage?.();
+    if (!usage) return [];
+    return [
+      {
+        type: "context_usage",
+        data: {
+          tokens: usage.tokens,
+          contextWindow: usage.contextWindow,
+          percent: usage.percent,
+          compactionThresholdPercent: this.context.compactionThresholdPercent ?? 80,
+          compactionEnabled: this.context.compactionEnabled ?? true,
+        },
+      },
+    ];
   }
 
   private translateMessageUpdate(event: PiEventLike): DomainEvent[] {

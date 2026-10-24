@@ -147,6 +147,7 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     sandboxApiUrl: "http://localhost:0",
     apiToken,
     allowPrivateModelEndpoints: true,
+    compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
     sessionDir,
   };
   const app = createApp({ config, pool });
