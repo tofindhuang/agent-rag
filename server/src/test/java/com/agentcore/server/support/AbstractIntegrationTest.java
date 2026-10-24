@@ -20,7 +20,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
 // Most tests have no broker; KB integration tests switch the listener back on.
-@TestPropertySource(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
+@TestPropertySource(properties = {
+        "spring.rabbitmq.listener.simple.auto-startup=false",
+        // Keep non-KB tests off a developer's local Qdrant (default :6333).
+        "app.kb.qdrant.url=http://127.0.0.1:1"
+})
 public abstract class AbstractIntegrationTest {
 
     protected static final String JWT_SECRET =

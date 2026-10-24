@@ -59,6 +59,18 @@ class KbEmbeddingClientTest {
     }
 
     @Test
+    void fallsBackToResponseOrderWhenProviderIndexesAreNotZeroBased() {
+        server.mode(FakeEmbeddingServer.Mode.ONE_BASED_INDEX);
+
+        List<float[]> vectors = client.embed(config(8), List.of("a", "b", "c"));
+
+        assertThat(vectors).hasSize(3);
+        assertThat(vectors.get(0)[0]).isEqualTo(1f);
+        assertThat(vectors.get(1)[0]).isEqualTo(2f);
+        assertThat(vectors.get(2)[0]).isEqualTo(3f);
+    }
+
+    @Test
     void classifiesTimeoutsAsRetryable() {
         server.mode(FakeEmbeddingServer.Mode.SLOW);
 

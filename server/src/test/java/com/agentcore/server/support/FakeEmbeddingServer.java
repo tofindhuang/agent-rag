@@ -19,6 +19,7 @@ public final class FakeEmbeddingServer {
         RATE_LIMITED,
         BAD_REQUEST,
         WRONG_DIMENSION,
+        ONE_BASED_INDEX,
         SLOW
     }
 
@@ -118,7 +119,7 @@ public final class FakeEmbeddingServer {
         int size = current == Mode.WRONG_DIMENSION ? 3 : dimension;
         for (int i = 0; i < count; i++) {
             ObjectNode item = data.addObject();
-            item.put("index", i);
+            item.put("index", current == Mode.ONE_BASED_INDEX ? i + 1 : i);
             ArrayNode embedding = item.putArray("embedding");
             for (int j = 0; j < size; j++) {
                 embedding.add(j == 0 ? (i + 1) : 0f);

@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,6 +26,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class KbEmbeddingClient {
+
+    private static final Logger log = LoggerFactory.getLogger(KbEmbeddingClient.class);
 
     public static final int MAX_BATCH_SIZE = 32;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
@@ -156,15 +160,31 @@ public class KbEmbeddingClient {
         }
 
         JsonNode[] ordered = new JsonNode[expected];
+        boolean indexed = true;
         for (int i = 0; i < data.size(); i++) {
             JsonNode item = data.get(i);
-            int index = item.has("index") ? item.path("index").asInt(i) : i;
+            JsonNode indexNode = item.get("index");
+            if (indexNode == null || !indexNode.isNumber() || !indexNode.canConvertToInt()) {
+                indexed = false;
+                break;
+            }
+            int index = indexNode.asInt();
             if (index < 0 || index >= expected || ordered[index] != null) {
-                throw KbIngestException.permanent(
-                        KbIngestException.EMBEDDING_RESPONSE_INVALID,
-                        "embedding response has an invalid index");
+                indexed = false;
+                break;
             }
             ordered[index] = item.path("embedding");
+        }
+        if (!indexed) {
+            // Some OpenAI-compatible providers return 1-based, duplicate, or
+            // string indexes for batched inputs. The array is still one item
+            // per input, so response order is the only safe fallback.
+            log.warn("embedding response indexes are missing or invalid; using response order"
+                    + " for {} inputs", expected);
+            ordered = new JsonNode[expected];
+            for (int i = 0; i < expected; i++) {
+                ordered[i] = data.get(i).path("embedding");
+            }
         }
 
         List<float[]> vectors = new ArrayList<>(expected);

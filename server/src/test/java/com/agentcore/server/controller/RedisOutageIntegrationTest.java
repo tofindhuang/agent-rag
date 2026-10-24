@@ -34,7 +34,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
-@TestPropertySource(properties = "spring.rabbitmq.listener.simple.auto-startup=false")
+@TestPropertySource(properties = {
+        "spring.rabbitmq.listener.simple.auto-startup=false",
+        "app.kb.qdrant.url=http://127.0.0.1:1"
+})
 class RedisOutageIntegrationTest {
 
     private static final String JWT_SECRET = "test-only-jwt-secret-that-is-long-enough-32+";
