@@ -38,7 +38,7 @@ cd ocr && pytest
 docker compose up -d                # mysql + redis
 ```
 
-模型凭证：gateway 复用本机 pi 凭证存储（`~/.pi/agent/`），仓库与 `.env` 中不存任何密钥。
+模型凭证：由用户在应用内配置 provider（API Key 加密入库，ADR-0010）；gateway 仅在会话内存中使用，不写入仓库或 `.env`。
 
 ## Documentation conventions
 
@@ -53,7 +53,7 @@ docker compose up -d                # mysql + redis
 | 领域词汇表 | `CONTEXT.md` | `/domain-modeling` |
 | 研究/选型记录 | `docs/research/YYYY-MM-DD-<slug>.md` | `/research` |
 
-同一套 skills 存放两份：`.pi/skills/`（pi 自动发现）与 `.agents/skills/`（其他 agent 工具的通用位置）。**改动任一份后必须同步另一份**（`cp -R .pi/skills/. .agents/skills/` 或反向），保持两处一致。
+Agent skills（`.pi/skills/`、`.agents/skills/`）由维护者私有维护，不随公开仓发布；下文出现的 `/skill:<name>` 仅为工作流名称。
 
 ## SDD Development Process（强制）
 

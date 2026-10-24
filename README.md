@@ -1,6 +1,6 @@
 # agent-core
 
-[![CI](https://github.com/tofindhuang/agent-core/actions/workflows/ci.yml/badge.svg)](https://github.com/tofindhuang/agent-core/actions/workflows/ci.yml)
+[![CI](https://github.com/tofindhuang/agent-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/tofindhuang/agent-rag/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](https://nodejs.org/)
 [![Java](https://img.shields.io/badge/java-21-ED8B00)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-source--available-blue)](#授权license)
@@ -286,5 +286,4 @@ bash sandbox/test-isolation.sh
 - **第三方组件**：pi SDK 及其他依赖遵循其各自许可证，本授权不改变这些条款。
 - **无担保**：软件按「现状」提供，不附带任何明示或暗示担保。
 
-商业授权与合作请联系仓库维护者。正式对外发布前，建议由维护者补充一份正式的 `LICENSE` 文件；
-在补充之前，本节即项目授权说明。
+商业授权与合作请联系仓库维护者。完整条款见 [LICENSE](LICENSE)；本项目不是 OSI 认可的开源许可证。
