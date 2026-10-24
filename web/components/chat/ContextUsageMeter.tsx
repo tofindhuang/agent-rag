@@ -9,7 +9,7 @@ export function ContextUsageMeter({
   usage: ContextUsageData;
   compacted: boolean;
 }) {
-  const percent = usage.percent;
+  const percent = usage.percent == null ? null : Math.round(usage.percent);
   const warning =
     usage.compactionEnabled && percent != null && percent >= usage.compactionThresholdPercent;
   const title =
