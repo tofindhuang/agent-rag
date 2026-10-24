@@ -71,6 +71,18 @@ class KbEmbeddingClientTest {
     }
 
     @Test
+    void retriesAmbiguousIndexesIndividuallyInsteadOfGuessingOrder() {
+        server.mode(FakeEmbeddingServer.Mode.DUPLICATE_INDEX);
+
+        List<float[]> vectors = client.embed(config(8), List.of("a", "b", "c"));
+
+        assertThat(vectors).hasSize(3);
+        assertThat(vectors).allSatisfy((vector) -> assertThat(vector).hasSize(8));
+        // One batch attempt + one request per input: never guess the mapping.
+        assertThat(server.requests()).isEqualTo(4);
+    }
+
+    @Test
     void classifiesTimeoutsAsRetryable() {
         server.mode(FakeEmbeddingServer.Mode.SLOW);
 

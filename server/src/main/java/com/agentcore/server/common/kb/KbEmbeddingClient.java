@@ -54,7 +54,19 @@ public class KbEmbeddingClient {
         List<float[]> result = new ArrayList<>(texts.size());
         for (int start = 0; start < texts.size(); start += MAX_BATCH_SIZE) {
             int end = Math.min(texts.size(), start + MAX_BATCH_SIZE);
-            result.addAll(request(config, texts.subList(start, end), true, timeout));
+            List<String> batch = texts.subList(start, end);
+            try {
+                result.addAll(request(config, batch, true, timeout));
+            } catch (BatchIndexFallbackException e) {
+                // Never guess the mapping: if a provider's batch response has
+                // no trustworthy index, re-embed this batch one input at a
+                // time. Slow only for non-conforming providers.
+                log.warn("embedding batch response has no usable index mapping;"
+                        + " retrying {} inputs individually", batch.size());
+                for (String text : batch) {
+                    result.addAll(request(config, List.of(text), true, timeout));
+                }
+            }
         }
         return result;
     }
@@ -154,36 +166,64 @@ public class KbEmbeddingClient {
                     e);
         }
         if (!data.isArray() || data.size() != expected) {
+            if (expected > 1) {
+                throw new BatchIndexFallbackException();
+            }
             throw KbIngestException.permanent(
                     KbIngestException.EMBEDDING_RESPONSE_INVALID,
                     "embedding response did not contain one vector per input");
         }
 
         JsonNode[] ordered = new JsonNode[expected];
-        boolean indexed = true;
+        int[] indexes = new int[expected];
+        boolean hasAllIndexes = true;
         for (int i = 0; i < data.size(); i++) {
             JsonNode item = data.get(i);
             JsonNode indexNode = item.get("index");
             if (indexNode == null || !indexNode.isNumber() || !indexNode.canConvertToInt()) {
-                indexed = false;
+                hasAllIndexes = false;
                 break;
             }
             int index = indexNode.asInt();
-            if (index < 0 || index >= expected || ordered[index] != null) {
-                indexed = false;
+            if (index < 0 || index >= expected + 1 || ordered[index % expected] != null) {
+                hasAllIndexes = false;
                 break;
             }
-            ordered[index] = item.path("embedding");
+            indexes[i] = index;
         }
-        if (!indexed) {
-            // Some OpenAI-compatible providers return 1-based, duplicate, or
-            // string indexes for batched inputs. The array is still one item
-            // per input, so response order is the only safe fallback.
-            log.warn("embedding response indexes are missing or invalid; using response order"
-                    + " for {} inputs", expected);
-            ordered = new JsonNode[expected];
-            for (int i = 0; i < expected; i++) {
-                ordered[i] = data.get(i).path("embedding");
+        if (!hasAllIndexes) {
+            if (expected == 1) {
+                ordered[0] = data.get(0).path("embedding");
+            } else {
+                throw new BatchIndexFallbackException();
+            }
+        } else {
+            boolean zeroBased = true;
+            boolean oneBased = true;
+            boolean[] seen = new boolean[expected];
+            for (int index : indexes) {
+                if (index < 0 || index >= expected) {
+                    zeroBased = false;
+                } else {
+                    if (seen[index]) {
+                        zeroBased = false;
+                    }
+                    seen[index] = true;
+                }
+                if (index < 1 || index > expected) {
+                    oneBased = false;
+                }
+            }
+            if (zeroBased) {
+                for (int i = 0; i < expected; i++) {
+                    ordered[i] = data.get(indexOf(indexes, i)).path("embedding");
+                }
+            } else if (oneBased && hasUniqueOneBased(indexes, expected)) {
+                for (int i = 0; i < expected; i++) {
+                    ordered[i] = data.get(indexOf(indexes, i + 1)).path("embedding");
+                }
+            } else {
+                throw new BatchIndexFallbackException();
             }
         }
 
@@ -216,6 +256,28 @@ public class KbEmbeddingClient {
         }
         return vectors;
     }
+
+    private static boolean hasUniqueOneBased(int[] indexes, int expected) {
+        boolean[] seen = new boolean[expected + 1];
+        for (int index : indexes) {
+            if (index < 1 || index > expected || seen[index]) {
+                return false;
+            }
+            seen[index] = true;
+        }
+        return true;
+    }
+
+    private static int indexOf(int[] indexes, int value) {
+        for (int i = 0; i < indexes.length; i++) {
+            if (indexes[i] == value) {
+                return i;
+            }
+        }
+        throw new BatchIndexFallbackException();
+    }
+
+    private static final class BatchIndexFallbackException extends RuntimeException {}
 
     private static String endpoint(KbEmbeddingConfig config) {
         String base = config.baseUrl();
