@@ -256,7 +256,7 @@ export function MemorySettings() {
         ))}
       </div>
 
-      <div className={styles.row}>
+      <div className={`${styles.row} ${styles.createRow}`}>
         <input
           className={styles.input}
           placeholder="新建记忆集（例如：项目 A）"
@@ -266,13 +266,18 @@ export function MemorySettings() {
             if (event.key === "Enter") void addCollection();
           }}
         />
-        <button type="button" onClick={() => void addCollection()} disabled={!newCollectionName.trim()}>
+        <button
+          type="button"
+          className={styles.ghost}
+          onClick={() => void addCollection()}
+          disabled={!newCollectionName.trim()}
+        >
           新建集合
         </button>
       </div>
 
       {selectedIds.size > 0 ? (
-        <div className={styles.row}>
+        <div className={`${styles.row} ${styles.moveRow}`}>
           <span className={styles.hint}>已选 {selectedIds.size} 条</span>
           <select
             className={styles.input}
@@ -285,7 +290,7 @@ export function MemorySettings() {
               </option>
             ))}
           </select>
-          <button type="button" onClick={() => void moveSelected()}>
+          <button type="button" className={styles.ghost} onClick={() => void moveSelected()}>
             移动
           </button>
         </div>
@@ -349,10 +354,10 @@ export function MemorySettings() {
                       </option>
                     ))}
                   </select>
-                  <button type="button" onClick={() => void saveEdit()}>
+                  <button type="button" className={styles.primary} onClick={() => void saveEdit()}>
                     保存
                   </button>
-                  <button type="button" onClick={() => setEditing(null)}>
+                  <button type="button" className={styles.ghost} onClick={() => setEditing(null)}>
                     取消
                   </button>
                 </div>
@@ -369,10 +374,10 @@ export function MemorySettings() {
                   <span className={styles.hint}>
                     {fact.updatedAt ? new Date(fact.updatedAt).toLocaleString() : ""}
                   </span>
-                  <button type="button" onClick={() => startEdit(fact)}>
+                  <button type="button" className={styles.ghost} onClick={() => startEdit(fact)}>
                     编辑
                   </button>
-                  <button type="button" onClick={() => void remove(fact)}>
+                  <button type="button" className={styles.dangerGhost} onClick={() => void remove(fact)}>
                     删除
                   </button>
                 </div>

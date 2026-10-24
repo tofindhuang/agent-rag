@@ -348,6 +348,22 @@
   margin-top: var(--space-3);
 }
 
+.createRow {
+  margin: var(--space-3) 0;
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+
+.createRow .input {
+  flex: 1 1 220px;
+  max-width: 320px;
+  background: var(--surface-0);
+}
+
+.moveRow {
+  margin-top: var(--space-3);
+}
+
 .collectionChipWrap {
   display: inline-flex;
   align-items: center;
