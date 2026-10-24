@@ -73,7 +73,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <li key={passage.passageId || `${passage.documentId}:${passage.seq}`}>
                 <details className={styles.citation}>
                   <summary className={styles.citationSummary}>
-                    《{passage.title}》· 第 {passage.seq} 段
+                    《{passage.title}》
+                    {passage.kbName ? ` · ${passage.kbName}` : ""}· 第 {passage.seq} 段
                     {passage.page != null ? `（第 ${passage.page} 页）` : ""}
                   </summary>
                   <div className={styles.citationBody}>{passage.content}</div>

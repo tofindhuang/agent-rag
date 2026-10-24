@@ -1,7 +1,7 @@
 # 多知识库：管理、会话绑定与检索隔离
 
 日期：2026-10-24
-状态：待实现
+状态：已实现（tickets 16–19）
 关联需求：FR-2（知识库 / RAG）
 关联 ADR：[0016](../adrs/0016-multi-knowledge-base-scoping.md)
 上游 spec：[2026-10-23-knowledge-base-rag.md](2026-10-23-knowledge-base-rag.md)

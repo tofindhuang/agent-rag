@@ -11,6 +11,7 @@ import {
   renameChatSession,
   restoreChatSession,
   switchChatSessionModel,
+  switchSessionKnowledgeBase,
 } from "@/lib/api/chat";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
@@ -563,8 +564,26 @@ export function useChat() {
     abortRef.current?.abort();
   }, []);
 
+  const switchKnowledgeBase = useCallback(
+    async (sessionId: string, kbId: string | null): Promise<boolean> => {
+      try {
+        await switchSessionKnowledgeBase(sessionId, kbId);
+        await refreshSessions();
+        clearError();
+        setNotice("已切换知识库，后续检索使用新库");
+        return true;
+      } catch (cause: unknown) {
+        fail(cause, "other");
+        return false;
+      }
+    },
+    [clearError, fail, refreshSessions],
+  );
+
   const currentSession = sessions.find((session) => session.id === currentSessionId);
   const currentTitle = currentSession?.title ?? "agent-core";
+  const currentKbId = currentSession?.kbId ?? null;
+  const currentKbName = currentSession?.kbName ?? null;
   // System labels store the actual model name; user labels are `provider / model`.
   const currentModel = currentSession?.modelLabel
     ? currentSession.modelSource === "system"
@@ -585,6 +604,8 @@ export function useChat() {
     currentSessionId,
     currentTitle,
     currentModel,
+    currentKbId,
+    currentKbName,
     messages,
     input,
     setInput,
@@ -601,6 +622,7 @@ export function useChat() {
     selectSession,
     createSession,
     switchModel,
+    switchKnowledgeBase,
     restoreSession,
     permanentDeleteSession,
     renameSession,

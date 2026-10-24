@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.agentcore.server.config.GatewayProperties;
+import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.common.gateway.GatewayClient;
@@ -13,6 +14,7 @@ import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.SessionModelService;
@@ -72,6 +74,8 @@ class ChatServiceImplTest {
         when(sessionDao.archive(anyString(), anyLong(), any())).thenReturn(1);
         projection = mock(ChatProjectionService.class);
         sessionModelService = mock(SessionModelService.class);
+        KbKnowledgeBaseService knowledgeBaseService = mock(KbKnowledgeBaseService.class);
+        when(knowledgeBaseService.defaultId(anyLong())).thenReturn("kb-1");
         SessionModelChoice system =
                 SessionModelChoice.system("系统默认");
         when(sessionModelService.forNewSession(anyLong(), any(), anyBoolean())).thenReturn(system);
@@ -80,6 +84,8 @@ class ChatServiceImplTest {
                 properties,
                 mapper,
                 sessionDao,
+                mock(KbSessionKnowledgeBaseDao.class),
+                knowledgeBaseService,
                 mock(SessionModelDao.class),
                 mock(MessageDao.class),
                 mock(RunDao.class),
@@ -103,7 +109,7 @@ class ChatServiceImplTest {
 
     @Test
     void createSessionUsesPutAndIdentityHeader() {
-        String sessionId = service.createSession(1L, null, null, false);
+        String sessionId = service.createSession(1L, null, null, false, null, false);
 
         assertNotNull(sessionId);
         assertEquals("1", lastUserId.get());
@@ -161,7 +167,7 @@ class ChatServiceImplTest {
 
     @Test
     void archiveUsesDeleteWithOwnerHeader() {
-        String sessionId = service.createSession(1L, null, null, false);
+        String sessionId = service.createSession(1L, null, null, false, null, false);
 
         service.archiveSession(1L, sessionId);
 
@@ -171,7 +177,7 @@ class ChatServiceImplTest {
 
     private PromptStream openPrompt(String mode) {
         promptMode.set(mode);
-        String sessionId = service.createSession(1L, null, null, false);
+        String sessionId = service.createSession(1L, null, null, false, null, false);
         return service.openPrompt(1L, sessionId, "hi", null);
     }
 

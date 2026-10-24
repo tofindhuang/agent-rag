@@ -5,6 +5,7 @@ import java.time.Instant;
 /** Document metadata for the management UI; never exposes the original bytes. */
 public record KbDocumentView(
         String id,
+        String kbId,
         String title,
         String sourceType,
         String sourceUrl,

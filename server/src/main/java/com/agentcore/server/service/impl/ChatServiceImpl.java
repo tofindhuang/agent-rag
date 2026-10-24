@@ -9,6 +9,7 @@ import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
+import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.domain.Message;
@@ -18,6 +19,7 @@ import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.SessionModelChoice;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -66,6 +68,8 @@ public class ChatServiceImpl implements ChatService {
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
     private final SessionDao sessionDao;
+    private final KbSessionKnowledgeBaseDao sessionKbDao;
+    private final KbKnowledgeBaseService knowledgeBaseService;
     private final SessionModelDao sessionModelDao;
     private final MessageDao messageDao;
     private final RunDao runDao;
@@ -79,6 +83,8 @@ public class ChatServiceImpl implements ChatService {
             GatewayProperties gateway,
             ObjectMapper objectMapper,
             SessionDao sessionDao,
+            KbSessionKnowledgeBaseDao sessionKbDao,
+            KbKnowledgeBaseService knowledgeBaseService,
             SessionModelDao sessionModelDao,
             MessageDao messageDao,
             RunDao runDao,
@@ -90,6 +96,8 @@ public class ChatServiceImpl implements ChatService {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
+        this.sessionKbDao = sessionKbDao;
+        this.knowledgeBaseService = knowledgeBaseService;
         this.sessionModelDao = sessionModelDao;
         this.messageDao = messageDao;
         this.runDao = runDao;
@@ -101,8 +109,19 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public String createSession(long userId, String title, Long modelId, boolean useSystemDefault) {
+    public String createSession(
+            long userId,
+            String title,
+            Long modelId,
+            boolean useSystemDefault,
+            String kbId,
+            boolean noKnowledgeBase) {
         SessionModelChoice choice = sessionModelService.forNewSession(userId, modelId, useSystemDefault);
+        String resolvedKbId = noKnowledgeBase
+                ? null
+                : kbId == null || kbId.isBlank()
+                        ? knowledgeBaseService.defaultId(userId)
+                        : knowledgeBaseService.requireOwned(userId, kbId).getId();
 
         String sessionId = UUID.randomUUID().toString();
         Session session = new Session();
@@ -112,6 +131,9 @@ public class ChatServiceImpl implements ChatService {
         session.setStatus(STATUS_ACTIVE);
         session.setLastActiveAt(nowUtc());
         sessionDao.insert(session);
+        if (resolvedKbId != null) {
+            sessionKbDao.insert(sessionId, resolvedKbId);
+        }
         sessionModelDao.upsert(sessionId, choice.providerModelId(), choice.label(), choice.source());
 
         // DB first: if the gateway rejects the session, compensate by removing
@@ -131,6 +153,22 @@ public class ChatServiceImpl implements ChatService {
             }
             throw ex;
         }
+    }
+
+    @Override
+    public void switchKnowledgeBase(long userId, String sessionId, String kbId) {
+        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
+        }
+        String resolved = kbId == null || kbId.isBlank()
+                ? null
+                : knowledgeBaseService.requireOwned(userId, kbId).getId();
+        transactionTemplate.executeWithoutResult((status) -> {
+            sessionKbDao.deleteBySession(sessionId);
+            if (resolved != null) {
+                sessionKbDao.insert(sessionId, resolved);
+            }
+        });
     }
 
     @Override

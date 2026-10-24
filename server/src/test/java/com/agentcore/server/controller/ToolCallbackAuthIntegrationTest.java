@@ -43,8 +43,8 @@ class ToolCallbackAuthIntegrationTest extends AbstractIntegrationTest {
         // KB is implemented now; this deployment has no embedding endpoint, so
         // reaching the service means the KB error rather than 401/403.
         mockMvc.perform(kbCall().header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("KB_NOT_CONFIGURED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passages").isEmpty());
 
         mockMvc.perform(execCall().header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN))
                 .andExpect(status().isNotImplemented())

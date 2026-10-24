@@ -216,6 +216,7 @@ public class KbIngestionServiceImpl implements KbIngestionService {
                     vectors.get(i),
                     new VectorPayload(
                             document.getUserId(),
+                            document.getKbId(),
                             document.getId(),
                             chunk.seq(),
                             chunk.page(),

@@ -5,6 +5,7 @@ import type {
   KbDocumentPage,
   KbDocumentStatus,
   KbEmbeddingSettings,
+  KbKnowledgeBase,
   KbModelListRequest,
   KbModelListResult,
   KbPassagePage,
@@ -73,6 +74,7 @@ function parseDocument(value: unknown): KbDocument {
     mime: asNullableString(document.mime),
     sizeBytes: asNumber(document.sizeBytes),
     status: asStatus(document.status),
+    kbId: asString(document.kbId),
     chunkCount: asNumber(document.chunkCount),
     ocrPages: asNumber(document.ocrPages),
     errorCode: asNullableString(document.errorCode),
@@ -92,8 +94,62 @@ function parseUsage(value: unknown): KbUsage {
   };
 }
 
-export async function fetchKnowledgeDocuments(): Promise<KbDocumentPage> {
-  const body = asRecord(await readJson(await authFetch("/api/kb/documents")));
+export async function fetchKnowledgeBases(): Promise<KbKnowledgeBase[]> {
+  const body = asRecord(await readJson(await authFetch("/api/kb/knowledge-bases")));
+  if (!Array.isArray(body.items)) return [];
+  return body.items.map((raw) => {
+    const kb = asRecord(raw);
+    return {
+      id: asString(kb.id),
+      name: asString(kb.name),
+      isDefault: kb.isDefault === true,
+      documentCount: asNumber(kb.documentCount),
+    };
+  });
+}
+
+export async function createKnowledgeBase(name: string): Promise<KbKnowledgeBase> {
+  const body = asRecord(
+    await readJson(
+      await authFetch("/api/kb/knowledge-bases", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    ),
+  );
+  return {
+    id: asString(body.id),
+    name: asString(body.name),
+    isDefault: body.isDefault === true,
+    documentCount: asNumber(body.documentCount),
+  };
+}
+
+export async function renameKnowledgeBase(id: string, name: string): Promise<void> {
+  const response = await authFetch(`/api/kb/knowledge-bases/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw await toApiError(response);
+}
+
+export async function deleteKnowledgeBase(id: string): Promise<void> {
+  const response = await authFetch(`/api/kb/knowledge-bases/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw await toApiError(response);
+}
+
+export async function fetchKnowledgeDocuments(kbId?: string): Promise<KbDocumentPage> {
+  const params = new URLSearchParams();
+  if (kbId) params.set("kbId", kbId);
+  const body = asRecord(
+    await readJson(
+      await authFetch(`/api/kb/documents${params.size > 0 ? `?${params.toString()}` : ""}`),
+    ),
+  );
   const items = Array.isArray(body.items) ? body.items.map(parseDocument) : [];
   return { items, usage: parseUsage(body.usage) };
 }
@@ -131,18 +187,21 @@ export async function fetchKbPassages(
   };
 }
 
-export async function uploadKnowledgeFile(file: File): Promise<void> {
+export async function uploadKnowledgeFile(file: File, kbId?: string): Promise<void> {
   const form = new FormData();
   form.append("file", file);
+  if (kbId) form.append("kbId", kbId);
   const response = await authFetch("/api/kb/documents", { method: "POST", body: form });
   if (!response.ok) throw await toApiError(response);
 }
 
-export async function uploadKnowledgeUrl(url: string): Promise<void> {
+export async function uploadKnowledgeUrl(url: string, kbId?: string): Promise<void> {
+  const params = new URLSearchParams({ url });
+  if (kbId) params.set("kbId", kbId);
   const response = await authFetch("/api/kb/documents", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ url }).toString(),
+    body: params.toString(),
   });
   if (!response.ok) throw await toApiError(response);
 }
@@ -154,8 +213,13 @@ export async function reingestKnowledgeDocument(id: string): Promise<void> {
   if (!response.ok) throw await toApiError(response);
 }
 
-export async function reingestAllKnowledgeDocuments(): Promise<void> {
-  const response = await authFetch("/api/kb/documents/reingest-all", { method: "POST" });
+export async function reingestAllKnowledgeDocuments(kbId?: string): Promise<void> {
+  const params = new URLSearchParams();
+  if (kbId) params.set("kbId", kbId);
+  const response = await authFetch(
+    `/api/kb/documents/reingest-all${params.size > 0 ? `?${params.toString()}` : ""}`,
+    { method: "POST" },
+  );
   if (!response.ok) throw await toApiError(response);
 }
 

@@ -18,8 +18,11 @@ import com.agentcore.server.common.kb.KbRerankSettings;
 import com.agentcore.server.common.kb.KbStoreException;
 import com.agentcore.server.common.vector.VectorHit;
 import com.agentcore.server.common.vector.VectorStore;
+import com.agentcore.server.domain.KbKnowledgeBase;
 import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbDocumentDao;
+import com.agentcore.server.dao.KbKnowledgeBaseDao;
+import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dto.kb.KbSearchRequest;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.service.KbService;
@@ -48,6 +51,8 @@ public class KbServiceImpl implements KbService {
 
     private final KbAvailability availability;
     private final KbDocumentDao documentDao;
+    private final KbSessionKnowledgeBaseDao sessionKbDao;
+    private final KbKnowledgeBaseDao knowledgeBaseDao;
     private final KbEmbeddingSettings embeddingSettings;
     private final KbEmbeddingClient embeddingClient;
     private final KbRerankSettings rerankSettings;
@@ -58,6 +63,8 @@ public class KbServiceImpl implements KbService {
     public KbServiceImpl(
             KbAvailability availability,
             KbDocumentDao documentDao,
+            KbSessionKnowledgeBaseDao sessionKbDao,
+            KbKnowledgeBaseDao knowledgeBaseDao,
             KbEmbeddingSettings embeddingSettings,
             KbEmbeddingClient embeddingClient,
             KbRerankSettings rerankSettings,
@@ -66,6 +73,8 @@ public class KbServiceImpl implements KbService {
             KbProperties properties) {
         this.availability = availability;
         this.documentDao = documentDao;
+        this.sessionKbDao = sessionKbDao;
+        this.knowledgeBaseDao = knowledgeBaseDao;
         this.embeddingSettings = embeddingSettings;
         this.embeddingClient = embeddingClient;
         this.rerankSettings = rerankSettings;
@@ -82,6 +91,11 @@ public class KbServiceImpl implements KbService {
             throw new ApiException(ErrorCode.KB_INDEX_STALE,
                     "the embedding model or dimension changed; rebuild the knowledge base"
                             + " with reingest-all before searching");
+        }
+        String kbId = sessionKbDao.findKbId(identity.sessionId());
+        KbKnowledgeBase kb = kbId == null ? null : knowledgeBaseDao.findOwned(kbId, userId);
+        if (kb == null) {
+            return new KbSearchResponse(List.of());
         }
 
         long deadline = System.nanoTime() + SEARCH_BUDGET.toNanos();
@@ -103,7 +117,8 @@ public class KbServiceImpl implements KbService {
         int candidates = Math.max(topK, properties.rerank().candidates());
         List<VectorHit> hits;
         try {
-            hits = vectorStore.search(userId, vectors.get(0), candidates, remaining(deadline));
+            hits = vectorStore.search(
+                    userId, kbId, vectors.get(0), candidates, remaining(deadline));
         } catch (KbDimensionMismatchException e) {
             throw new ApiException(ErrorCode.KB_INDEX_STALE, e.getMessage(), e);
         } catch (KbStoreException e) {
@@ -133,7 +148,7 @@ public class KbServiceImpl implements KbService {
         if (rerank.isEmpty()) {
             return new KbSearchResponse(own.stream()
                     .limit(topK)
-                    .map((hit) -> toPassage(hit, hit.score(), false))
+                    .map((hit) -> toPassage(hit, hit.score(), false, kb))
                     .toList());
         }
 
@@ -150,7 +165,7 @@ public class KbServiceImpl implements KbService {
         }
         List<KbSearchResponse.Passage> passages = new ArrayList<>(result.hits().size());
         for (KbRerankHit hit : result.hits()) {
-            passages.add(toPassage(own.get(hit.index()), hit.score(), true));
+            passages.add(toPassage(own.get(hit.index()), hit.score(), true, kb));
         }
         return new KbSearchResponse(passages);
     }
@@ -164,7 +179,7 @@ public class KbServiceImpl implements KbService {
     }
 
     private static KbSearchResponse.Passage toPassage(
-            VectorHit hit, double score, boolean reranked) {
+            VectorHit hit, double score, boolean reranked, KbKnowledgeBase kb) {
         return new KbSearchResponse.Passage(
                 hit.id(),
                 hit.payload().documentId(),
@@ -173,7 +188,9 @@ public class KbServiceImpl implements KbService {
                 hit.payload().title(),
                 hit.payload().text(),
                 score,
-                reranked);
+                reranked,
+                kb.getId(),
+                kb.getName());
     }
 
     private static int normalizeTopK(Integer topK) {

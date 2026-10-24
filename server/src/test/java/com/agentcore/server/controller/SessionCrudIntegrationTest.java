@@ -12,12 +12,14 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.common.gateway.GatewayClient;
+import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.ChatProjectionService;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.support.AbstractIntegrationTest;
@@ -49,6 +51,12 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SessionDao sessionDao;
+
+    @Autowired
+    private KbSessionKnowledgeBaseDao sessionKbDao;
+
+    @Autowired
+    private KbKnowledgeBaseService knowledgeBaseService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -156,6 +164,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 gatewayProperties,
                 objectMapper,
                 sessionDao,
+                sessionKbDao,
+                knowledgeBaseService,
                 sessionModelDao,
                 messageDao,
                 runDao,

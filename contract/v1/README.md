@@ -202,7 +202,9 @@ X-Request-Id: <requestId>
       "title": "...",
       "content": "...",
       "score": 0.82,
-      "reranked": true
+      "reranked": true,
+      "kbId": "...",
+      "kbName": "工作资料"
     }
   ]
 }
@@ -210,6 +212,7 @@ X-Request-Id: <requestId>
 
 - `topK` 默认 5、上限 10；超出上限按 10 处理。
 - `page` 可选（PDF 才有）；`passageId` 是同一切片在 Qdrant 中的稳定点 id。
+- `kbId`/`kbName` 是引用来源的知识库快照；旧 gateway/旧数据可能缺失，消费者需容忍。
 - 空结果返回 `{ "passages": [] }`；索引不可用、未配置或超时返回错误 envelope，不降级为空。
 
 ### `run_code`（M1 流式）

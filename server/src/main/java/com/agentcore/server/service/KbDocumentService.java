@@ -10,12 +10,12 @@ import java.util.List;
 public interface KbDocumentService {
 
     /** Stores an uploaded file, inserts the queued row and publishes the task. */
-    KbDocument uploadFile(long userId, String filename, Path source);
+    KbDocument uploadFile(long userId, String kbId, String filename, Path source);
 
     /** Fetches an HTML URL, stores the snapshot and queues ingestion. */
-    KbDocument uploadUrl(long userId, String url);
+    KbDocument uploadUrl(long userId, String kbId, String url);
 
-    List<KbDocument> list(long userId);
+    List<KbDocument> list(long userId, String kbId);
 
     /** Current document count/bytes and the configured per-user limits. */
     KbUsage usage(long userId);
@@ -32,5 +32,5 @@ public interface KbDocumentService {
     void reingest(long userId, String documentId);
 
     /** Queues every stale document for rebuild; returns the queued count. */
-    int reingestAll(long userId);
+    int reingestAll(long userId, String kbId);
 }

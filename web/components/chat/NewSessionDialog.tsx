@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Select } from "@/components/ui/Select";
 import { TextField } from "@/components/ui/TextField";
 import uiStyles from "@/components/ui/ui.module.css";
+import { fetchKnowledgeBases } from "@/lib/api/knowledge";
+import type { KbKnowledgeBase } from "@/types/knowledge";
 import { useModelCatalog } from "@/hooks/useModelCatalog";
 import type { CreateSessionOptions } from "@/lib/api/chat";
 import { ModelOptions, SYSTEM_MODEL_VALUE, defaultModelValue } from "./ModelSelect";
@@ -26,7 +28,25 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
   const { catalog, loading, error: catalogError } = useModelCatalog();
   const [title, setTitle] = useState("");
   const [model, setModel] = useState<string | null>(null);
+  const [knowledgeBases, setKnowledgeBases] = useState<KbKnowledgeBase[]>([]);
+  const [kbId, setKbId] = useState<string>("");
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchKnowledgeBases()
+      .then((items) => {
+        if (!active) return;
+        setKnowledgeBases(items);
+        setKbId((current) =>
+          current || items.find((item) => item.isDefault)?.id || items[0]?.id || "none",
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const hasModels =
     catalog != null &&
     (catalog.systemDefault.available ||
@@ -42,6 +62,8 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
         title: title.trim().length > 0 ? title.trim() : undefined,
         modelId: value !== SYSTEM_MODEL_VALUE ? Number(value) : undefined,
         useSystemDefault: value === SYSTEM_MODEL_VALUE || undefined,
+        kbId: kbId === "none" ? undefined : kbId || undefined,
+        noKnowledgeBase: kbId === "none",
       });
       if (ok) onClose();
     } finally {
@@ -89,6 +111,21 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
         ) : (
           <Banner tone="status">{loading ? "加载模型…" : "模型列表不可用"}</Banner>
         )}
+
+        <Select
+          label="知识库"
+          value={kbId}
+          onChange={(event) => setKbId(event.target.value)}
+          disabled={pending}
+        >
+          <option value="none">不使用知识库</option>
+          {knowledgeBases.map((kb) => (
+            <option key={kb.id} value={kb.id}>
+              {kb.name}
+              {kb.isDefault ? "（默认）" : ""}
+            </option>
+          ))}
+        </Select>
 
         {catalogError && catalog == null ? <Banner tone="error">{catalogError}</Banner> : null}
 

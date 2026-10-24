@@ -18,6 +18,7 @@ import com.agentcore.server.domain.KbDocument;
 import com.agentcore.server.domain.KbPassage;
 import com.agentcore.server.domain.KbUsage;
 import com.agentcore.server.service.KbDocumentService;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
     private final KbDocumentDao documentDao;
     private final KbPassageDao passageDao;
+    private final KbKnowledgeBaseService knowledgeBaseService;
     private final ObjectStore objectStore;
     private final KbTaskPublisher publisher;
     private final KbProperties properties;
@@ -50,6 +52,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     public KbDocumentServiceImpl(
             KbDocumentDao documentDao,
             KbPassageDao passageDao,
+            KbKnowledgeBaseService knowledgeBaseService,
             ObjectStore objectStore,
             KbTaskPublisher publisher,
             KbProperties properties,
@@ -59,6 +62,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             PlatformTransactionManager transactionManager) {
         this.documentDao = documentDao;
         this.passageDao = passageDao;
+        this.knowledgeBaseService = knowledgeBaseService;
         this.objectStore = objectStore;
         this.publisher = publisher;
         this.properties = properties;
@@ -69,7 +73,8 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     }
 
     @Override
-    public KbDocument uploadFile(long userId, String filename, Path source) {
+    public KbDocument uploadFile(long userId, String kbId, String filename, Path source) {
+        kbId = resolveKb(userId, kbId);
         availability.requireEnabled();
         configurationGate.requireEmbeddingConfigured(userId);
         configurationGate.requireStorageConfigured();
@@ -85,6 +90,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
         KbDocument document = newDocument(
                 userId,
+                kbId,
                 titleOf(filename),
                 KbDocument.SOURCE_UPLOAD,
                 null,
@@ -98,7 +104,8 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     }
 
     @Override
-    public KbDocument uploadUrl(long userId, String url) {
+    public KbDocument uploadUrl(long userId, String kbId, String url) {
+        kbId = resolveKb(userId, kbId);
         availability.requireEnabled();
         configurationGate.requireEmbeddingConfigured(userId);
         configurationGate.requireStorageConfigured();
@@ -110,6 +117,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
             KbDocument document = newDocument(
                     userId,
+                    kbId,
                     titleOf(fetched.uri().toString()),
                     KbDocument.SOURCE_URL,
                     fetched.uri().toString(),
@@ -126,9 +134,9 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     }
 
     @Override
-    public List<KbDocument> list(long userId) {
+    public List<KbDocument> list(long userId, String kbId) {
         availability.requireEnabled();
-        return documentDao.listByUser(userId);
+        return documentDao.listByUser(userId, resolveKb(userId, kbId));
     }
 
     @Override
@@ -183,10 +191,10 @@ public class KbDocumentServiceImpl implements KbDocumentService {
     }
 
     @Override
-    public int reingestAll(long userId) {
+    public int reingestAll(long userId, String kbId) {
         availability.requireEnabled();
         int queued = 0;
-        for (KbDocument stale : documentDao.findStaleByUser(userId)) {
+        for (KbDocument stale : documentDao.findStaleByUser(userId, resolveKb(userId, kbId))) {
             if (documentDao.requeue(stale.getId(), userId) == 0) {
                 continue;
             }
@@ -201,6 +209,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
 
     private KbDocument newDocument(
             long userId,
+            String kbId,
             String title,
             String sourceType,
             String sourceUrl,
@@ -213,6 +222,7 @@ public class KbDocumentServiceImpl implements KbDocumentService {
         KbDocument document = new KbDocument();
         document.setId(documentId);
         document.setUserId(userId);
+        document.setKbId(kbId);
         document.setTitle(title);
         document.setSourceType(sourceType);
         document.setSourceUrl(sourceUrl);
@@ -248,6 +258,12 @@ public class KbDocumentServiceImpl implements KbDocumentService {
             deleteObjectQuietly(document.getOriginalKey());
             throw e;
         }
+    }
+
+    private String resolveKb(long userId, String kbId) {
+        return kbId == null || kbId.isBlank()
+                ? knowledgeBaseService.defaultId(userId)
+                : knowledgeBaseService.requireOwned(userId, kbId).getId();
     }
 
     private void enqueueIngest(KbDocument document) {

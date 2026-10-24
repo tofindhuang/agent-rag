@@ -4,7 +4,7 @@
 <mapper namespace="com.agentcore.server.dao.KbDocumentDao">
 
     <sql id="documentColumns">
-        id, user_id, title, source_type, source_url, original_key, original_sha256,
+        id, user_id, kb_id, title, source_type, source_url, original_key, original_sha256,
         mime, size_bytes, status, attempts, next_attempt_at, lease_until, enqueued_at,
         chunk_count, ocr_pages, error_code, error_message, version, created_at, updated_at
     </sql>
@@ -20,6 +20,7 @@
         SELECT <include refid="documentColumns"/>
         FROM kb_documents
         WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
         ORDER BY created_at DESC, id DESC
     </select>
 
@@ -27,6 +28,12 @@
         SELECT COUNT(*)
         FROM kb_documents
         WHERE user_id = #{userId}
+    </select>
+
+    <select id="countByKb" resultType="long">
+        SELECT COUNT(*)
+        FROM kb_documents
+        WHERE user_id = #{userId} AND kb_id = #{kbId}
     </select>
 
     <select id="sumSizeByUser" resultType="long">
@@ -157,6 +164,7 @@
         SELECT <include refid="documentColumns"/>
         FROM kb_documents
         WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
           AND status = 'stale'
         ORDER BY created_at ASC, id ASC
     </select>

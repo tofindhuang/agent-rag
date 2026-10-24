@@ -59,7 +59,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .requestMatchers(ToolTokenFilter.PATTERNS).hasAuthority("TOOL")
                         .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/logout-all",
-                                "/api/chat/**", "/api/models/**", "/api/kb/documents/**",
+                                "/api/chat/**", "/api/models/**", "/api/kb/documents/**", "/api/kb/knowledge-bases/**",
                                 "/api/kb/settings/**")
                         .hasAuthority("USER")
                         .anyRequest().authenticated())

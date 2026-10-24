@@ -13,9 +13,11 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
 
     KbDocument findOwned(@Param("id") String id, @Param("userId") long userId);
 
-    List<KbDocument> listByUser(@Param("userId") long userId);
+    List<KbDocument> listByUser(@Param("userId") long userId, @Param("kbId") String kbId);
 
     long countByUser(@Param("userId") long userId);
+
+    long countByKb(@Param("userId") long userId, @Param("kbId") String kbId);
 
     long sumSizeByUser(@Param("userId") long userId);
 
@@ -76,7 +78,7 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
             @Param("nextAttemptAt") LocalDateTime nextAttemptAt,
             @Param("enqueuedAt") LocalDateTime enqueuedAt);
 
-    List<KbDocument> findStaleByUser(@Param("userId") long userId);
+    List<KbDocument> findStaleByUser(@Param("userId") long userId, @Param("kbId") String kbId);
 
     /**
      * Marks every non-deleting document stale after an embedding model/dimension

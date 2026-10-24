@@ -27,7 +27,7 @@ function isActive(document: KbDocument): boolean {
  * polled every 2s until the worker settles them; every mutation refreshes the
  * list so the outbox has one visible source of truth.
  */
-export function useKnowledge() {
+export function useKnowledge(kbId: string | null) {
   const [documents, setDocuments] = useState<KbDocument[]>([]);
   const [usage, setUsage] = useState<KbUsage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,14 +36,20 @@ export function useKnowledge() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const page = await fetchKnowledgeDocuments();
+    const page = await fetchKnowledgeDocuments(kbId ?? undefined);
     setDocuments(page.items);
     setUsage(page.usage);
-  }, []);
+  }, [kbId]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    if (!kbId) {
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
     refresh()
       .catch((cause: unknown) => {
         if (!cancelled) setError(knowledgeError(cause));
@@ -54,7 +60,7 @@ export function useKnowledge() {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [kbId, refresh]);
 
   const polling = documents.some(isActive);
   useEffect(() => {
@@ -96,12 +102,15 @@ export function useKnowledge() {
     refresh,
     clearError: () => setError(null),
     uploadFile: (file: File) =>
-      run(() => uploadKnowledgeFile(file), "已提交，正在排队解析与建立索引"),
+      run(() => uploadKnowledgeFile(file, kbId ?? undefined), "已提交，正在排队解析与建立索引"),
     uploadUrl: (url: string) =>
-      run(() => uploadKnowledgeUrl(url), "已提交，正在抓取与建立索引"),
+      run(() => uploadKnowledgeUrl(url, kbId ?? undefined), "已提交，正在抓取与建立索引"),
     reingest: (id: string) => run(() => reingestKnowledgeDocument(id), "已重新排队"),
     reingestAll: () =>
-      run(() => reingestAllKnowledgeDocuments(), "已把需重建的文档全部重新排队"),
+      run(
+        () => reingestAllKnowledgeDocuments(kbId ?? undefined),
+        "已把当前知识库中需重建的文档全部重新排队",
+      ),
     remove: (id: string) => run(() => deleteKnowledgeDocument(id), "已提交删除"),
   };
 }

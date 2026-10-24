@@ -32,9 +32,15 @@ public interface VectorStore {
 
     /** Top-k similarity search restricted to the user; empty when no collection. */
     default List<VectorHit> search(long userId, float[] query, int limit) {
-        return search(userId, query, limit, Duration.ofSeconds(15));
+        return search(userId, null, query, limit, Duration.ofSeconds(15));
     }
 
     /** Same search with a caller-supplied deadline (retrieval's 20s budget). */
-    List<VectorHit> search(long userId, float[] query, int limit, Duration timeout);
+    default List<VectorHit> search(long userId, float[] query, int limit, Duration timeout) {
+        return search(userId, null, query, limit, timeout);
+    }
+
+    /** Search restricted to one KB when kbId is non-null. */
+    List<VectorHit> search(
+            long userId, String kbId, float[] query, int limit, Duration timeout);
 }

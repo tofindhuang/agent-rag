@@ -18,6 +18,7 @@ export interface KbDocument {
   mime: string | null;
   sizeBytes: number;
   status: KbDocumentStatus;
+  kbId: string;
   chunkCount: number;
   /** Pages recognized by OCR in the last ingestion; 0 = text layer only. */
   ocrPages: number;
@@ -32,6 +33,13 @@ export interface KbUsage {
   bytes: number;
   maxDocuments: number;
   maxBytes: number;
+}
+
+export interface KbKnowledgeBase {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  documentCount: number;
 }
 
 export interface KbDocumentPage {

@@ -176,7 +176,8 @@ public class QdrantVectorStore implements VectorStore {
     }
 
     @Override
-    public List<VectorHit> search(long userId, float[] query, int limit, Duration timeout) {
+    public List<VectorHit> search(
+            long userId, String kbId, float[] query, int limit, Duration timeout) {
         if (limit <= 0 || query == null || query.length == 0) {
             return List.of();
         }
@@ -200,8 +201,11 @@ public class QdrantVectorStore implements VectorStore {
         body.put("limit", limit);
         body.put("with_payload", true);
         body.put("with_vector", false);
-        body.putObject("filter").putArray("must")
-                .addObject().put("key", "user_id").putObject("match").put("value", userId);
+        ArrayNode must = body.putObject("filter").putArray("must");
+        must.addObject().put("key", "user_id").putObject("match").put("value", userId);
+        if (kbId != null && !kbId.isBlank()) {
+            must.addObject().put("key", "kb_id").putObject("match").put("value", kbId);
+        }
 
         QdrantResponse response = send(
                 "POST", "/collections/" + encode(name) + "/points/search", body, timeout);
@@ -269,6 +273,7 @@ public class QdrantVectorStore implements VectorStore {
 
     private void createPayloadIndexes(String name) {
         createPayloadIndex(name, "user_id", "integer");
+        createPayloadIndex(name, "kb_id", "keyword");
         createPayloadIndex(name, "document_id", "keyword");
     }
 

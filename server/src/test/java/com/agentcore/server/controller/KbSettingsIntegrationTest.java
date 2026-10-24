@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.agentcore.server.common.crypto.ApiKeyCipher;
 import com.agentcore.server.common.vector.VectorCollection;
 import com.agentcore.server.common.vector.VectorStore;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.support.AbstractKbIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
 import com.agentcore.server.support.FakeEmbeddingServer;
@@ -46,6 +47,9 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
 
     @Autowired
     private VectorStore vectorStore;
+
+    @Autowired
+    private KbKnowledgeBaseService knowledgeBaseService;
 
     @AfterEach
     void resetFakes() {
@@ -513,12 +517,13 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
     private String seedReadyDocument(long userId) {
         String id = UUID.randomUUID().toString();
         jdbc.update("""
-                INSERT INTO kb_documents (id, user_id, title, source_type, original_key,
+                INSERT INTO kb_documents (id, user_id, kb_id, title, source_type, original_key,
                     original_sha256, mime, size_bytes, status, chunk_count, version,
                     created_at, updated_at)
-                VALUES (?, ?, 'seed.pdf', 'upload', ?, ?, 'application/pdf', 10, 'ready', 3, 0,
+                VALUES (?, ?, ?, 'seed.pdf', 'upload', ?, ?, 'application/pdf', 10, 'ready', 3, 0,
                     NOW(6), NOW(6))
-                """, id, userId, userId + "/" + id + "/seed.pdf", "a".repeat(64));
+                """, id, userId, knowledgeBaseService.defaultId(userId),
+                userId + "/" + id + "/seed.pdf", "a".repeat(64));
         return id;
     }
 

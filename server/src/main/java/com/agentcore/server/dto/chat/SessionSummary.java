@@ -7,5 +7,7 @@ public record SessionSummary(
         String title,
         String modelLabel,
         String modelSource,
+        String kbId,
+        String kbName,
         Instant lastActiveAt,
         Instant createdAt) {}

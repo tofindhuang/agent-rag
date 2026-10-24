@@ -12,6 +12,9 @@ export interface CreateSessionOptions {
   modelId?: number;
   /** Explicitly start on the system default model, bypassing the user default. */
   useSystemDefault?: boolean;
+  /** Omitted binds the default KB; null needs noKnowledgeBase. */
+  kbId?: string | null;
+  noKnowledgeBase?: boolean;
 }
 
 export async function createChatSession(
@@ -26,6 +29,8 @@ export async function createChatSession(
       title: hasTitle ? options?.title : undefined,
       modelId: options?.modelId,
       useSystemDefault: options?.useSystemDefault === true ? true : undefined,
+      kbId: options?.kbId ?? undefined,
+      noKnowledgeBase: options?.noKnowledgeBase === true ? true : undefined,
     }),
     signal,
   });
@@ -100,6 +105,21 @@ export async function permanentDeleteChatSession(sessionId: string): Promise<voi
   if (!response.ok) throw await toApiError(response);
 }
 
+export async function switchSessionKnowledgeBase(
+  sessionId: string,
+  kbId: string | null,
+): Promise<void> {
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/kb`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kbId }),
+    },
+  );
+  if (!response.ok) throw await toApiError(response);
+}
+
 export async function fetchHistory(
   sessionId: string,
   beforeId?: number | null,
@@ -156,6 +176,8 @@ function parseSessionPage(value: unknown): SessionPage {
       modelLabel: typeof item.modelLabel === "string" ? item.modelLabel : null,
       modelSource:
         item.modelSource === "system" || item.modelSource === "user" ? item.modelSource : null,
+      kbId: typeof item.kbId === "string" ? item.kbId : null,
+      kbName: typeof item.kbName === "string" ? item.kbName : null,
       lastActiveAt: typeof item.lastActiveAt === "string" ? item.lastActiveAt : "",
       createdAt: typeof item.createdAt === "string" ? item.createdAt : "",
     };

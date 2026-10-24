@@ -26,6 +26,7 @@ public class KbDocument {
     @TableId(type = IdType.INPUT)
     private String id;
     private Long userId;
+    private String kbId;
     private String title;
     private String sourceType;
     private String sourceUrl;
@@ -61,6 +62,10 @@ public class KbDocument {
     public void setUserId(Long userId) {
         this.userId = userId;
     }
+
+    public String getKbId() { return kbId; }
+
+    public void setKbId(String kbId) { this.kbId = kbId; }
 
     public String getTitle() {
         return title;

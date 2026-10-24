@@ -53,6 +53,7 @@ public class KbDocumentController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public KbDocumentCreatedResponse uploadFile(
             @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(value = "kbId", required = false) String kbId,
             @RequestPart("file") MultipartFile file) {
         availability.requireEnabled();
         if (file == null || file.isEmpty()) {
@@ -68,7 +69,7 @@ public class KbDocumentController {
         try {
             temp = Files.createTempFile("kb-upload-", ".tmp");
             file.transferTo(temp);
-            KbDocument document = documentService.uploadFile(user.userId(), filename, temp);
+            KbDocument document = documentService.uploadFile(user.userId(), kbId, filename, temp);
             return new KbDocumentCreatedResponse(document.getId(), document.getStatus());
         } catch (IOException e) {
             throw new ApiException(ErrorCode.INTERNAL, "cannot read uploaded file", e);
@@ -81,6 +82,7 @@ public class KbDocumentController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public KbDocumentCreatedResponse uploadUrl(
             @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(value = "kbId", required = false) String kbId,
             @RequestParam("url") String url) {
         availability.requireEnabled();
         if (url == null || url.isBlank()) {
@@ -90,13 +92,15 @@ public class KbDocumentController {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
                     "url must be at most 2048 characters");
         }
-        KbDocument document = documentService.uploadUrl(user.userId(), url);
+        KbDocument document = documentService.uploadUrl(user.userId(), kbId, url);
         return new KbDocumentCreatedResponse(document.getId(), document.getStatus());
     }
 
     @GetMapping
-    public KbDocumentListResponse list(@AuthenticationPrincipal AuthenticatedUser user) {
-        List<KbDocumentView> items = documentService.list(user.userId()).stream()
+    public KbDocumentListResponse list(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(value = "kbId", required = false) String kbId) {
+        List<KbDocumentView> items = documentService.list(user.userId(), kbId).stream()
                 .map(KbDocumentController::toView)
                 .toList();
         KbUsage usage = documentService.usage(user.userId());
@@ -150,8 +154,10 @@ public class KbDocumentController {
 
     @PostMapping("/reingest-all")
     @ResponseStatus(HttpStatus.ACCEPTED)
-    public void reingestAll(@AuthenticationPrincipal AuthenticatedUser user) {
-        documentService.reingestAll(user.userId());
+    public void reingestAll(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(value = "kbId", required = false) String kbId) {
+        documentService.reingestAll(user.userId(), kbId);
     }
 
     @DeleteMapping("/{documentId}")
@@ -165,6 +171,7 @@ public class KbDocumentController {
     private static KbDocumentView toView(KbDocument document) {
         return new KbDocumentView(
                 document.getId(),
+                document.getKbId(),
                 document.getTitle(),
                 document.getSourceType(),
                 document.getSourceUrl(),

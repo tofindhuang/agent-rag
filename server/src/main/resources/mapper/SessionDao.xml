@@ -5,9 +5,12 @@
 
     <select id="findActiveOwned" resultType="com.agentcore.server.domain.Session">
         SELECT s.id, s.user_id, s.title, s.status, s.last_active_at, s.deleted_at,
-               s.created_at, s.updated_at, sm.model_label, sm.model_source
+               s.created_at, s.updated_at, sm.model_label, sm.model_source,
+               skb.kb_id, kb.name AS kb_name
         FROM sessions s
         LEFT JOIN session_models sm ON sm.session_id = s.id
+        LEFT JOIN session_knowledge_bases skb ON skb.session_id = s.id
+        LEFT JOIN knowledge_bases kb ON kb.id = skb.kb_id
         WHERE s.id = #{id}
           AND s.user_id = #{userId}
           AND s.status = 'active'
@@ -15,9 +18,12 @@
 
     <select id="findArchivedOwned" resultType="com.agentcore.server.domain.Session">
         SELECT s.id, s.user_id, s.title, s.status, s.last_active_at, s.deleted_at,
-               s.created_at, s.updated_at, sm.model_label, sm.model_source
+               s.created_at, s.updated_at, sm.model_label, sm.model_source,
+               skb.kb_id, kb.name AS kb_name
         FROM sessions s
         LEFT JOIN session_models sm ON sm.session_id = s.id
+        LEFT JOIN session_knowledge_bases skb ON skb.session_id = s.id
+        LEFT JOIN knowledge_bases kb ON kb.id = skb.kb_id
         WHERE s.id = #{id}
           AND s.user_id = #{userId}
           AND s.status = 'archived'
@@ -26,9 +32,12 @@
     <!-- Composite cursor: (last_active_at DESC, id DESC); same order for both tabs. -->
     <select id="listPage" resultType="com.agentcore.server.domain.Session">
         SELECT s.id, s.user_id, s.title, s.status, s.last_active_at, s.deleted_at,
-               s.created_at, s.updated_at, sm.model_label, sm.model_source
+               s.created_at, s.updated_at, sm.model_label, sm.model_source,
+               skb.kb_id, kb.name AS kb_name
         FROM sessions s
         LEFT JOIN session_models sm ON sm.session_id = s.id
+        LEFT JOIN session_knowledge_bases skb ON skb.session_id = s.id
+        LEFT JOIN knowledge_bases kb ON kb.id = skb.kb_id
         WHERE s.user_id = #{userId}
           AND s.status = #{status}
         <if test="beforeActiveAt != null">

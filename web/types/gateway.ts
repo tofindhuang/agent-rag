@@ -44,6 +44,8 @@ export interface CitationPassage {
   content: string;
   score: number;
   reranked: boolean;
+  kbId?: string;
+  kbName?: string;
 }
 
 /**
@@ -76,6 +78,8 @@ export function parseCitationPassages(details: unknown): CitationPassage[] {
       content: passage.content,
       score: passage.score,
       reranked: passage.reranked === true,
+      kbId: typeof passage.kbId === "string" ? passage.kbId : undefined,
+      kbName: typeof passage.kbName === "string" ? passage.kbName : undefined,
     });
   }
   return parsed;

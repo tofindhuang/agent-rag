@@ -138,7 +138,7 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
         String body = mockMvc.perform(post("/api/kb/search")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
                         .header("X-User-Id", Long.toString(user.id()))
-                        .header("X-Session-Id", "session")
+                        .header("X-Session-Id", sessionFor(user.id()))
                         .header("X-Turn-Id", "turn")
                         .header("X-Run-Id", "run")
                         .header("X-Tool-Call-Id", "call")
@@ -182,7 +182,7 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
         String body = mockMvc.perform(post("/api/kb/search")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
                         .header("X-User-Id", Long.toString(user.id()))
-                        .header("X-Session-Id", "session")
+                        .header("X-Session-Id", sessionFor(user.id()))
                         .header("X-Turn-Id", "turn")
                         .header("X-Run-Id", "run")
                         .header("X-Tool-Call-Id", "call")
@@ -217,7 +217,7 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
         String body = mockMvc.perform(post("/api/kb/search")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
                         .header("X-User-Id", Long.toString(user.id()))
-                        .header("X-Session-Id", "session")
+                        .header("X-Session-Id", sessionFor(user.id()))
                         .header("X-Turn-Id", "turn")
                         .header("X-Run-Id", "run")
                         .header("X-Tool-Call-Id", "call")
@@ -452,6 +452,24 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
             Thread.sleep(100);
         }
         throw new AssertionError("condition was not met within " + timeoutMillis + "ms");
+    }
+
+    private String sessionFor(long userId) {
+        String sessionId = java.util.UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO sessions (id, user_id, title, status, last_active_at,
+                    created_at, updated_at)
+                VALUES (?, ?, 'ingest-test', 'active', NOW(6), NOW(6), NOW(6))
+                """, sessionId, userId);
+        String kbId = jdbc.queryForObject(
+                "SELECT id FROM knowledge_bases WHERE user_id = ? AND is_default = TRUE",
+                String.class,
+                userId);
+        jdbc.update(
+                "INSERT INTO session_knowledge_bases (session_id, kb_id) VALUES (?, ?)",
+                sessionId,
+                kbId);
+        return sessionId;
     }
 
     private User newUser() throws Exception {

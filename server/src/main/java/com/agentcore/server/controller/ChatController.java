@@ -14,6 +14,7 @@ import com.agentcore.server.dto.chat.RenameSessionRequest;
 import com.agentcore.server.dto.chat.SendMessageRequest;
 import com.agentcore.server.dto.chat.SessionListResponse;
 import com.agentcore.server.dto.chat.SessionSummary;
+import com.agentcore.server.dto.chat.SwitchKbRequest;
 import com.agentcore.server.dto.chat.SwitchModelRequest;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
@@ -35,6 +36,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -78,7 +80,18 @@ public class ChatController {
                     "modelId and useSystemDefault are mutually exclusive");
         }
         return new CreateSessionResponse(
-                chatService.createSession(user.userId(), title, modelId, useSystemDefault));
+                chatService.createSession(
+                user.userId(), title, modelId, useSystemDefault,
+                request == null ? null : request.kbId(),
+                request != null && Boolean.TRUE.equals(request.noKnowledgeBase())));
+    }
+
+    @PutMapping("/sessions/{sessionId}/kb")
+    public void switchKnowledgeBase(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId,
+            @RequestBody SwitchKbRequest request) {
+        chatService.switchKnowledgeBase(user.userId(), sessionId, request.kbId());
     }
 
     @PostMapping("/sessions/{sessionId}/model")
@@ -215,6 +228,8 @@ public class ChatController {
                 session.getTitle(),
                 session.getModelLabel(),
                 session.getModelSource(),
+                session.getKbId(),
+                session.getKbName(),
                 toInstant(session.getLastActiveAt()),
                 toInstant(session.getCreatedAt()));
     }

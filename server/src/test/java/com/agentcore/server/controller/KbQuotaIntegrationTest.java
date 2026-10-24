@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.agentcore.server.support.AbstractKbIntegrationTest;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.support.AuthTestCalls;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -29,6 +30,9 @@ class KbQuotaIntegrationTest extends AbstractKbIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private KbKnowledgeBaseService knowledgeBaseService;
 
     @Test
     void rejectsTheTwoHundredAndFirstDocument() throws Exception {
@@ -66,15 +70,17 @@ class KbQuotaIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     private void seedDocuments(long userId, int count, long sizeBytes) {
-        String sql = "INSERT INTO kb_documents (id, user_id, title, source_type, original_key,"
-                + " original_sha256, mime, size_bytes, status, attempts, chunk_count, version)"
-                + " VALUES (?, ?, ?, 'upload', ?, ?, ?, ?, 'failed', 0, 0, 0)";
+        String sql = "INSERT INTO kb_documents (id, user_id, kb_id, title, source_type,"
+                + " original_key, original_sha256, mime, size_bytes, status, attempts,"
+                + " chunk_count, version)"
+                + " VALUES (?, ?, ?, ?, 'upload', ?, ?, ?, ?, 'failed', 0, 0, 0)";
         List<Object[]> rows = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             String id = UUID.randomUUID().toString();
             rows.add(new Object[] {
                 id,
                 userId,
+                knowledgeBaseService.defaultId(userId),
                 "seed-" + i,
                 userId + "/" + id + "/" + "a".repeat(64) + ".pdf",
                 "a".repeat(64),

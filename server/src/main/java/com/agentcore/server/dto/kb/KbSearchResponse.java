@@ -16,5 +16,7 @@ public record KbSearchResponse(List<Passage> passages) {
             String title,
             String content,
             double score,
-            boolean reranked) {}
+            boolean reranked,
+            String kbId,
+            String kbName) {}
 }

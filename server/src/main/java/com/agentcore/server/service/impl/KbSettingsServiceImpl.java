@@ -23,6 +23,7 @@ import com.agentcore.server.common.vector.VectorStore;
 import com.agentcore.server.config.KbProperties;
 import com.agentcore.server.dao.KbDocumentDao;
 import com.agentcore.server.dao.KbUserSettingsDao;
+import com.agentcore.server.domain.KbKnowledgeBase;
 import com.agentcore.server.domain.KbUserSettings;
 import com.agentcore.server.dto.kb.KbModelListRequest;
 import com.agentcore.server.dto.kb.KbModelListResponse;
@@ -33,6 +34,7 @@ import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.KbSettingsService;
 import java.time.Duration;
 import java.util.List;
@@ -71,6 +73,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     private final KbRerankClient rerankClient;
     private final KbModelsClient modelsClient;
     private final KbRerankSettings rerankSettings;
+    private final KbKnowledgeBaseService knowledgeBaseService;
     private final KbUrlGuard guard;
     private final ApiKeyCipher cipher;
     private final KbProperties properties;
@@ -85,6 +88,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             KbRerankClient rerankClient,
             KbModelsClient modelsClient,
             KbRerankSettings rerankSettings,
+            KbKnowledgeBaseService knowledgeBaseService,
             KbUrlGuard guard,
             ApiKeyCipher cipher,
             KbProperties properties,
@@ -97,6 +101,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         this.rerankClient = rerankClient;
         this.modelsClient = modelsClient;
         this.rerankSettings = rerankSettings;
+        this.knowledgeBaseService = knowledgeBaseService;
         this.guard = guard;
         this.cipher = cipher;
         this.properties = properties;
@@ -359,10 +364,12 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                     "embedding endpoint returned an empty query vector");
         }
 
+        String kbId = knowledgeBaseService.defaultId(userId);
+        KbKnowledgeBase kb = knowledgeBaseService.requireOwned(userId, kbId);
         List<VectorHit> hits;
         try {
             hits = vectorStore.search(
-                    userId, vectors.get(0), 5, Duration.ofSeconds(15));
+                    userId, kbId, vectors.get(0), 5, Duration.ofSeconds(15));
         } catch (KbStoreException e) {
             throw new ApiException(ErrorCode.KB_UNAVAILABLE, e.getMessage(), e);
         }
@@ -395,12 +402,12 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             reranked = true;
             rerankLatencyMs = result.latencyMs();
             passages = result.hits().stream()
-                    .map((hit) -> toPassage(own.get(hit.index()), hit.score(), true))
+                    .map((hit) -> toPassage(own.get(hit.index()), hit.score(), true, kb))
                     .toList();
         } else {
             passages = own.stream()
                     .limit(5)
-                    .map((hit) -> toPassage(hit, hit.score(), false))
+                    .map((hit) -> toPassage(hit, hit.score(), false, kb))
                     .toList();
         }
         return new KbRetrievalTestResponse(
@@ -417,7 +424,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     }
 
     private static KbSearchResponse.Passage toPassage(
-            VectorHit hit, double score, boolean reranked) {
+            VectorHit hit, double score, boolean reranked, KbKnowledgeBase kb) {
         return new KbSearchResponse.Passage(
                 hit.id(),
                 hit.payload().documentId(),
@@ -426,7 +433,9 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                 hit.payload().title(),
                 hit.payload().text(),
                 score,
-                reranked);
+                reranked,
+                kb.getId(),
+                kb.getName());
     }
 
     private KbProbeResponse.EmbeddingProbe runEmbeddingProbe(

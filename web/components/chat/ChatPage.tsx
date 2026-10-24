@@ -8,6 +8,7 @@ import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { NewSessionDialog } from "./NewSessionDialog";
+import { SessionKbSelect } from "./SessionKbSelect";
 import { SessionSidebar, type SessionTab } from "./SessionSidebar";
 import { SwitchModelDialog } from "./SwitchModelDialog";
 import styles from "./chat.module.css";
@@ -59,6 +60,15 @@ export function ChatPage() {
                 <span className={styles.modelTag} title="当前会话使用的模型">
                   {chat.currentModel}
                 </span>
+              ) : null}
+              {chat.currentSessionId ? (
+                <SessionKbSelect
+                  currentKbId={chat.currentKbId}
+                  disabled={chat.busy}
+                  onChange={(kbId) =>
+                    void chat.switchKnowledgeBase(chat.currentSessionId!, kbId)
+                  }
+                />
               ) : null}
             </div>
             <AccountMenu />

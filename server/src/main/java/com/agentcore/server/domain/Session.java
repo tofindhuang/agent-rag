@@ -30,6 +30,12 @@ public class Session {
     @TableField(exist = false)
     private String modelSource;
 
+    @TableField(exist = false)
+    private String kbId;
+
+    @TableField(exist = false)
+    private String kbName;
+
     public String getId() {
         return id;
     }
@@ -45,6 +51,14 @@ public class Session {
     public void setUserId(Long userId) {
         this.userId = userId;
     }
+
+    public String getKbId() { return kbId; }
+
+    public void setKbId(String kbId) { this.kbId = kbId; }
+
+    public String getKbName() { return kbName; }
+
+    public void setKbName(String kbName) { this.kbName = kbName; }
 
     public String getTitle() {
         return title;

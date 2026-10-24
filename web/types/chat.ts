@@ -33,6 +33,8 @@ export interface SessionSummary {
   /** Snapshot written at create/switch; `provider / model` or the actual system model name. */
   modelLabel: string | null;
   modelSource: "system" | "user" | null;
+  kbId: string | null;
+  kbName: string | null;
   lastActiveAt: string;
   createdAt: string;
 }

@@ -14,7 +14,9 @@ import java.util.List;
 public interface ChatService {
 
     /** Creates the AgentSession and stores the business session row. */
-    String createSession(long userId, String title, Long modelId, boolean useSystemDefault);
+    String createSession(
+            long userId, String title, Long modelId, boolean useSystemDefault,
+            String kbId, boolean noKnowledgeBase);
 
     /** Sessions of the user in the given status, newest activity first. */
     List<Session> listSessions(
@@ -44,6 +46,9 @@ public interface ChatService {
 
     /** Switches the session model; effective from the next prompt. */
     void switchModel(long userId, String sessionId, Long modelId);
+
+    /** Binds or unbinds the session's KB; only future retrieval is affected. */
+    void switchKnowledgeBase(long userId, String sessionId, String kbId);
 
     /** Opens the gateway prompt stream after validating ownership. */
     PromptStream openPrompt(long userId, String sessionId, String text, String turnId);

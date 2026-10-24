@@ -13,6 +13,7 @@ import com.agentcore.server.common.vector.VectorStore;
 import com.agentcore.server.dto.kb.KbSearchRequest;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.support.AbstractKbIntegrationTest;
+import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.support.AuthTestCalls;
 import com.agentcore.server.support.FakeEmbeddingServer;
 import com.agentcore.server.support.FakeRerankServer;
@@ -54,6 +55,11 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private KbKnowledgeBaseService knowledgeBaseService;
+
+    private final java.util.Map<Long, String> sessions = new java.util.HashMap<>();
 
     @BeforeEach
     void resetFakes() {
@@ -162,6 +168,39 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     @Test
+    void keepsTwoKnowledgeBasesOfTheSameUserIsolated() throws Exception {
+        User user = newUser();
+        String defaultKb = knowledgeBaseService.defaultId(user.id());
+        String otherKb = knowledgeBaseService.create(user.id(), "另一个库").getId();
+        String alphaDoc = seedDocumentInKb(
+                user.id(), defaultKb, "alpha.txt", 2, null, "alpha");
+        String betaDoc = seedDocumentInKb(
+                user.id(), otherKb, "beta.txt", 2, null, "beta");
+
+        String alphaSession = sessionFor(user.id(), defaultKb);
+        String betaSession = sessionFor(user.id(), otherKb);
+        KbSearchResponse alpha = readSearch(searchWithSession(
+                        user.id(), alphaSession, "alpha", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+        KbSearchResponse beta = readSearch(searchWithSession(
+                        user.id(), betaSession, "beta", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(alpha.passages()).isNotEmpty()
+                .allSatisfy((passage) -> {
+                    assertThat(passage.documentId()).isEqualTo(alphaDoc);
+                    assertThat(passage.kbId()).isEqualTo(defaultKb);
+                });
+        assertThat(beta.passages()).isNotEmpty()
+                .allSatisfy((passage) -> {
+                    assertThat(passage.documentId()).isEqualTo(betaDoc);
+                    assertThat(passage.kbId()).isEqualTo(otherKb);
+                });
+    }
+
+    @Test
     void settingsTestProvesWhichModelsRetrievalUses() throws Exception {
         User user = newUser();
         enableRerank(user.token());
@@ -217,14 +256,26 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
     private String seedDocument(
             long userId, String title, int passageCount, Integer page, String prefix)
             throws Exception {
+        return seedDocumentInKb(
+                userId, knowledgeBaseService.defaultId(userId), title, passageCount, page, prefix);
+    }
+
+    private String seedDocumentInKb(
+            long userId,
+            String kbId,
+            String title,
+            int passageCount,
+            Integer page,
+            String prefix)
+            throws Exception {
         String documentId = UUID.randomUUID().toString();
         jdbc.update("""
-                INSERT INTO kb_documents (id, user_id, title, source_type, original_key,
+                INSERT INTO kb_documents (id, user_id, kb_id, title, source_type, original_key,
                     original_sha256, mime, size_bytes, status, chunk_count, version,
                     created_at, updated_at)
-                VALUES (?, ?, ?, 'upload', ?, ?, 'text/plain', 100, 'ready', ?, 0,
+                VALUES (?, ?, ?, ?, 'upload', ?, ?, 'text/plain', 100, 'ready', ?, 0,
                     NOW(6), NOW(6))
-                """, documentId, userId, title, userId + "/" + documentId + "/" + title,
+                """, documentId, userId, kbId, title, userId + "/" + documentId + "/" + title,
                 "b".repeat(64), passageCount);
 
         List<VectorPoint> points = new ArrayList<>(passageCount);
@@ -237,7 +288,7 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
             points.add(new VectorPoint(
                     VectorPoint.pointId(documentId, seq),
                     vector(),
-                    new VectorPayload(userId, documentId, seq, page, title, content)));
+                    new VectorPayload(userId, kbId, documentId, seq, page, title, content)));
         }
         vectorStore.upsert(userId, DIMENSION, points);
         return documentId;
@@ -277,11 +328,16 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
 
     private org.springframework.test.web.servlet.ResultActions search(
             long userId, String query, Integer topK) throws Exception {
+        return searchWithSession(userId, sessionFor(userId), query, topK);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions searchWithSession(
+            long userId, String sessionId, String query, Integer topK) throws Exception {
         String body = objectMapper.writeValueAsString(new KbSearchRequest(query, topK));
         return mockMvc.perform(post("/api/kb/search")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
                 .header("X-User-Id", Long.toString(userId))
-                .header("X-Session-Id", "session")
+                .header("X-Session-Id", sessionId)
                 .header("X-Turn-Id", "turn")
                 .header("X-Run-Id", "run")
                 .header("X-Tool-Call-Id", "call")
@@ -296,6 +352,25 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
         } catch (Exception e) {
             throw new AssertionError("cannot read kb_search response: " + body, e);
         }
+    }
+
+    private String sessionFor(long userId) {
+        return sessions.computeIfAbsent(
+                userId, (id) -> sessionFor(id, knowledgeBaseService.defaultId(id)));
+    }
+
+    private String sessionFor(long userId, String kbId) {
+        String sessionId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO sessions (id, user_id, title, status, last_active_at,
+                    created_at, updated_at)
+                VALUES (?, ?, 'search-test', 'active', NOW(6), NOW(6), NOW(6))
+                """, sessionId, userId);
+        jdbc.update(
+                "INSERT INTO session_knowledge_bases (session_id, kb_id) VALUES (?, ?)",
+                sessionId,
+                kbId);
+        return sessionId;
     }
 
     private User newUser() throws Exception {
