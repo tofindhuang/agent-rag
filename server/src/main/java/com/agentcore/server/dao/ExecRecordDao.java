@@ -29,4 +29,13 @@ public interface ExecRecordDao {
             @Param("finishedAt") LocalDateTime finishedAt);
 
     ExecRecord findById(@Param("id") String id);
+
+    /** Recovery: rows stuck in running after a JVM restart. */
+    int markStaleRunning(
+            @Param("before") LocalDateTime before,
+            @Param("errorMessage") String errorMessage,
+            @Param("finishedAt") LocalDateTime finishedAt);
+
+    /** Retention: rows older than the configured window. */
+    int deleteOlderThan(@Param("before") LocalDateTime before);
 }

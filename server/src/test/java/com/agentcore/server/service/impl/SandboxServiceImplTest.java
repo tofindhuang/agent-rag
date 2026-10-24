@@ -81,7 +81,7 @@ class SandboxServiceImplTest {
     @Test
     void startRejectsOversizedCode() {
         SandboxProperties tiny = new SandboxProperties(
-                null, null, null, null, 4, null, null, null, null, null, null);
+                null, null, null, null, 4, null, null, null, null, null, null, null);
         SandboxServiceImpl strict = new SandboxServiceImpl(tiny, runner, admission, records);
 
         assertThatThrownBy(() ->
@@ -400,6 +400,17 @@ class SandboxServiceImplTest {
         @Override
         public ExecRecord findById(String id) {
             return rows.get(id);
+        }
+
+        @Override
+        public int markStaleRunning(
+                LocalDateTime before, String errorMessage, LocalDateTime finishedAt) {
+            return 0;
+        }
+
+        @Override
+        public int deleteOlderThan(LocalDateTime before) {
+            return 0;
         }
     }
 }

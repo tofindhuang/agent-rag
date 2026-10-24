@@ -48,4 +48,18 @@
         WHERE id = #{id}
     </select>
 
+    <update id="markStaleRunning">
+        UPDATE exec_records
+        SET status = 'aborted',
+            error_message = #{errorMessage},
+            finished_at = #{finishedAt}
+        WHERE status = 'running'
+          AND created_at &lt; #{before}
+    </update>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM exec_records
+        WHERE created_at &lt; #{before}
+    </delete>
+
 </mapper>

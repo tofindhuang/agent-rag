@@ -18,10 +18,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /** Wiring for the run_code executor: Docker client, execution pool, heartbeats. */
 @Configuration
+@EnableScheduling
 public class SandboxConfiguration {
 
     @Bean(destroyMethod = "close")

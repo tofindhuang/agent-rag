@@ -95,7 +95,7 @@ class SandboxAdmissionIntegrationTest extends AbstractIntegrationTest {
 
     private static SandboxProperties properties(int perUser, Duration queue, Duration lease) {
         return new SandboxProperties(
-                null, null, null, null, null, null, null, 8, perUser, queue, lease);
+                null, null, null, null, null, null, null, 8, perUser, queue, lease, null);
     }
 
     private static long randomUserId() {

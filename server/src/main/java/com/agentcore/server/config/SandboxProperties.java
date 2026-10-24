@@ -19,7 +19,8 @@ public record SandboxProperties(
         Integer globalConcurrency,
         Integer perUserConcurrency,
         Duration queueTimeout,
-        Duration permitLease) {
+        Duration permitLease,
+        Integer retentionDays) {
 
     public SandboxProperties {
         if (image == null || image.isBlank()) {
@@ -52,11 +53,14 @@ public record SandboxProperties(
         if (permitLease == null) {
             permitLease = Duration.ofSeconds(240);
         }
+        if (retentionDays == null || retentionDays <= 0) {
+            retentionDays = 90;
+        }
     }
 
     /** Test/fallback constructor with all defaults. */
     public static SandboxProperties defaults() {
         return new SandboxProperties(
-                null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null);
     }
 }

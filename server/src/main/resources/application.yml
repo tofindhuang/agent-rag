@@ -81,6 +81,7 @@ app:
     per-user-concurrency: ${SANDBOX_PER_USER_CONCURRENCY:2}
     queue-timeout: ${SANDBOX_QUEUE_TIMEOUT:120s}
     permit-lease: ${SANDBOX_PERMIT_LEASE:240s}
+    retention-days: ${SANDBOX_RETENTION_DAYS:90}
 
 # Local defaults match docker-compose.yml. Flyway owns the schema; the app
 # connects at boot and never generates DDL from entities (ADR-0009).
