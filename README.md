@@ -261,13 +261,16 @@ bash sandbox/test-isolation.sh
   - 沙箱预热池/容器复用评估、gVisor 评估；
   - OAuth 登录（P1）、限流调优。
 
-## 参与贡献
+## 贡献指南
 
-- 开发在 `dev` 分支进行，完成后以 PR 合并回 `main`。
-- 提交信息遵循 `{feat,fix,docs,chore,refactor,test}(scope): message`。
-- 新功能 / 架构组件 / schema 变更 / 外部集成走 spec → tickets → TDD → review 流程，详见 [AGENTS.md](AGENTS.md)。
-- 数据库迁移 **up-only**：只新增 `YYYYMMDDHHMMSS__slug.up.sql`，不要提交 `*.down.sql`。
-- 不要提交任何密钥、`.env`、模型凭证或本地数据；PR 前跑对应模块的 typecheck / 测试。
+欢迎提交 Issue 与 PR。公开仓以 `main` 为发布分支：
+
+1. 从 `main` 切出功能分支（或 fork 后提交），完成后向 `main` 发起 PR；CI 会自动运行。
+2. 提交信息遵循 `{feat,fix,docs,chore,refactor,test}(scope): message`，scope 可省略（如 `gateway`、`server`、`web`、`docs`）。
+3. 较大的功能或架构变更请先开 Issue 讨论；设计文档放在 `docs/specs/`，实现请附带测试。维护者的内部工单与验收记录不随公开仓发布。
+4. 数据库迁移只向前：如需迁移，只新增 `YYYYMMDDHHMMSS__slug.up.sql`，不要提交 `*.down.sql`；迁移由维护者审核后执行。
+5. 不要提交任何密钥、`.env`、模型凭证或本地数据；PR 前跑对应模块的 typecheck / 测试。
+6. 提交 PR 即表示你同意以本项目的 [LICENSE](LICENSE) 授权你的贡献。
 
 ## 安全
 

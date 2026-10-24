@@ -100,7 +100,8 @@ Agent skills（`.pi/skills/`、`.agents/skills/`）由维护者私有维护，�
 
 ## Git
 
-- 分支：`dev` 开发，功能完成后 PR 回 `main`。不要直接 push `main`。
+- 公开镜像：`main` 为发布分支；贡献者从 `main` 切分支并 PR 回 `main`。公开镜像不含 `dev` 分支与内部工单。
+- 维护者私有仓：`dev` 开发，功能完成后 PR 回 `main`。不要直接 push `main`。
 - Commit 格式：`{feat,fix,docs,chore,refactor,test}(gateway|server|web|sandbox|docs): <message>`，scope 可省略（跨模块时）。
 - 只 stage 本次工作自己改动的文件；禁止 `git add -A` / `git add .`。
 - 禁止 `git reset --hard` / `git checkout .` / `git stash` / force push。
