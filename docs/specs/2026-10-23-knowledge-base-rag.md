@@ -1,7 +1,7 @@
 # 知识库 / RAG（FR-2）：摄取、检索与引用
 
 日期：2026-10-23
-状态：实现中（tickets 01–04 已完成；05–08 待做）
+状态：实现中（tickets 01–05 已完成；06–08 待做）
 关联需求：FR-2（知识库 / RAG，P0）
 关联 ADR：[0005](../adrs/0005-qdrant-external-embedding.md)（Qdrant + OpenAI 兼容 embedding/rerank）、[0006](../adrs/0006-persistence-ownership.md)、[0013](../adrs/0013-object-storage-for-kb-originals.md)（原文入对象存储）
 上游 spec：[2026-10-23-requirements.md](../requirements.md)

@@ -81,6 +81,26 @@ interface PiEventLike {
 
 const TOOL_RESULT_MAX_BYTES = 65_536;
 const TOOL_PROGRESS_MAX_BYTES = 2_048;
+const TOOL_DETAILS_MAX_BYTES = 8_192;
+
+/**
+ * Structured tool details are additive contract data (e.g. kb_search passages).
+ * They are optional and bounded so a chatty tool cannot bloat an SSE frame.
+ */
+function toolDetails(result: unknown): unknown | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  const details = (result as { details?: unknown }).details;
+  if (details === undefined || details === null) return undefined;
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(details);
+  } catch {
+    return undefined;
+  }
+  if (typeof serialized !== "string") return undefined;
+  if (new TextEncoder().encode(serialized).length > TOOL_DETAILS_MAX_BYTES) return undefined;
+  return details;
+}
 
 /**
  * Translates pi AgentSessionEvent values into contract v1 domain events.
@@ -271,23 +291,25 @@ export class RunTranslator {
     if (typeof event.toolCallId !== "string" || typeof event.toolName !== "string") return [];
 
     const result = event.result as { content?: PiContentBlock[] } | undefined;
+    const details = toolDetails(event.result);
     const content = (result?.content ?? [])
       .filter((block) => block.type === "text" && typeof block.text === "string")
       .map((block) => block.text as string)
       .join("\n");
     const truncated = truncateUtf8(content, TOOL_RESULT_MAX_BYTES);
 
+    const data = {
+      toolCallId: event.toolCallId,
+      name: event.toolName,
+      isError: event.isError === true,
+      durationMs: typeof event.durationMs === "number" ? event.durationMs : 0,
+      content: truncated.text,
+      truncated: truncated.truncated,
+    };
     return [
       {
         type: "tool_result",
-        data: {
-          toolCallId: event.toolCallId,
-          name: event.toolName,
-          isError: event.isError === true,
-          durationMs: typeof event.durationMs === "number" ? event.durationMs : 0,
-          content: truncated.text,
-          truncated: truncated.truncated,
-        },
+        data: details === undefined ? data : { ...data, details },
       },
     ];
   }

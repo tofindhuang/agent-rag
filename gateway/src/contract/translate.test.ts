@@ -102,3 +102,72 @@ test("truncates large tool results and reports truncation", () => {
     assert.ok(Buffer.byteLength(event.data.content, "utf8") <= 65_536);
   }
 });
+
+test("passes structured kb_search details through tool_result", () => {
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+  });
+  translator.translate({ type: "agent_start" } as unknown as AgentSessionEvent);
+
+  const details = {
+    count: 1,
+    passages: [
+      {
+        passageId: "p-1",
+        documentId: "doc-1",
+        seq: 2,
+        page: 3,
+        title: "handbook.pdf",
+        content: "passage text",
+        score: 0.82,
+        reranked: true,
+      },
+    ],
+  };
+  const events = translator.translate({
+    type: "tool_execution_end",
+    toolCallId: "call-1",
+    toolName: "kb_search",
+    result: { content: [{ type: "text", text: "passage text" }], details },
+    isError: false,
+    durationMs: 1,
+  } as unknown as AgentSessionEvent);
+
+  assert.equal(events.length, 1);
+  const event = events[0];
+  assert.equal(event?.type, "tool_result");
+  if (event?.type === "tool_result") {
+    assert.deepEqual(event.data.details, details);
+  }
+});
+
+test("omits tool details that exceed the frame budget", () => {
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+  });
+  translator.translate({ type: "agent_start" } as unknown as AgentSessionEvent);
+
+  const events = translator.translate({
+    type: "tool_execution_end",
+    toolCallId: "call-1",
+    toolName: "kb_search",
+    result: {
+      content: [{ type: "text", text: "ok" }],
+      details: { passages: [{ content: "a".repeat(9_000) }] },
+    },
+    isError: false,
+    durationMs: 1,
+  } as unknown as AgentSessionEvent);
+
+  const event = events[0];
+  assert.equal(event?.type, "tool_result");
+  if (event?.type === "tool_result") {
+    assert.equal(event.data.details, undefined);
+  }
+});

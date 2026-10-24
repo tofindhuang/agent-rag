@@ -44,6 +44,16 @@ public class KbRerankClient {
 
     public KbRerankResult rerank(
             KbRerankConfig config, String query, List<String> documents, int topN) {
+        return rerank(config, query, documents, topN, REQUEST_TIMEOUT);
+    }
+
+    /** Retrieval passes the remaining 20s budget so one call cannot overrun it. */
+    public KbRerankResult rerank(
+            KbRerankConfig config,
+            String query,
+            List<String> documents,
+            int topN,
+            Duration timeout) {
         if (documents == null || documents.isEmpty()) {
             return new KbRerankResult(List.of(), 0);
         }
@@ -65,7 +75,7 @@ public class KbRerankClient {
         }
 
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(timeout)
                 .header("content-type", "application/json")
                 .header("accept", "application/json");
         if (config.apiKey() != null && !config.apiKey().isBlank()) {

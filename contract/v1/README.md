@@ -78,7 +78,7 @@ data: <单行紧凑 JSON>
 | `tool_call_delta` | `{ toolCallId, name, delta }` |
 | `tool_call` | `{ toolCallId, name, args }` |
 | `tool_progress` | `{ toolCallId, name, kind, phase?, chunk? }` |
-| `tool_result` | `{ toolCallId, name, isError, durationMs, content, truncated }` |
+| `tool_result` | `{ toolCallId, name, isError, durationMs, content, truncated, details? }` |
 | `message_end` | `{ seqInTurn, role: "assistant", text, thinking, toolCalls, usage, stopReason }` |
 | `compaction` | `{ reason, tokensBefore, tokensAfter }` |
 | `retry` | `{ attempt, maxAttempts, delayMs, message }` |
@@ -88,6 +88,7 @@ data: <单行紧凑 JSON>
 
 - `tool_progress.kind`：`phase`、`stdout`、`stderr`。`phase` 时必须有 `phase` 字段且无 `chunk`；`stdout`/`stderr` 时必须有 `chunk`，单块 ≤ 2048 UTF-8 字节，按字符边界切分。
 - `tool_result.content`：文本结果，按 64 KiB（65536 UTF-8 字节）截断；被截断时 `truncated: true`。模型看到的内容与这里一致。
+- `tool_result.details`：可选的结构化工具结果，不进入模型上下文，只供 UI/消费者展示（当前 `kb_search` 放 `{ count, passages }`）。序列化后超过 8 KiB 时 gateway 省略该字段；消费者必须容忍缺失（旧 gateway 不发送）。
 - `message_end`：
   - `seqInTurn` 每轮从 1 开始，每一条 assistant 消息递增；工具循环会产生多条。
   - `text` 为所有 `text` 内容块拼接；`thinking` 为所有 `thinking` 内容块拼接；没有则为空字符串。
@@ -197,6 +198,7 @@ X-Request-Id: <requestId>
       "passageId": "...",
       "documentId": "...",
       "seq": 3,
+      "page": 12,
       "title": "...",
       "content": "...",
       "score": 0.82,
@@ -205,6 +207,10 @@ X-Request-Id: <requestId>
   ]
 }
 ```
+
+- `topK` 默认 5、上限 10；超出上限按 10 处理。
+- `page` 可选（PDF 才有）；`passageId` 是同一切片在 Qdrant 中的稳定点 id。
+- 空结果返回 `{ "passages": [] }`；索引不可用、未配置或超时返回错误 envelope，不降级为空。
 
 ### `run_code`（M1 流式）
 

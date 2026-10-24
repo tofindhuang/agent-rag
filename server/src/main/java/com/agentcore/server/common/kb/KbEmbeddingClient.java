@@ -41,10 +41,16 @@ public class KbEmbeddingClient {
     }
 
     public List<float[]> embed(KbEmbeddingConfig config, List<String> texts) {
+        return embed(config, texts, REQUEST_TIMEOUT);
+    }
+
+    /** Retrieval passes the remaining 20s budget so one call cannot overrun it. */
+    public List<float[]> embed(
+            KbEmbeddingConfig config, List<String> texts, Duration timeout) {
         List<float[]> result = new ArrayList<>(texts.size());
         for (int start = 0; start < texts.size(); start += MAX_BATCH_SIZE) {
             int end = Math.min(texts.size(), start + MAX_BATCH_SIZE);
-            result.addAll(request(config, texts.subList(start, end), true));
+            result.addAll(request(config, texts.subList(start, end), true, timeout));
         }
         return result;
     }
@@ -57,7 +63,7 @@ public class KbEmbeddingClient {
     public KbEmbeddingProbe probe(KbEmbeddingConfig config) {
         long started = System.nanoTime();
         List<float[]> vectors = request(
-                config, List.of("knowledge base dimension probe"), false);
+                config, List.of("knowledge base dimension probe"), false, REQUEST_TIMEOUT);
         long latencyMs = (System.nanoTime() - started) / 1_000_000L;
         if (vectors.isEmpty() || vectors.get(0).length == 0) {
             throw KbIngestException.permanent(
@@ -68,7 +74,10 @@ public class KbEmbeddingClient {
     }
 
     private List<float[]> request(
-            KbEmbeddingConfig config, List<String> batch, boolean assertDimension) {
+            KbEmbeddingConfig config,
+            List<String> batch,
+            boolean assertDimension,
+            Duration timeout) {
         URI uri;
         try {
             uri = guard.validate(endpoint(config));
@@ -83,7 +92,7 @@ public class KbEmbeddingClient {
         batch.forEach(input::add);
 
         HttpRequest.Builder request = HttpRequest.newBuilder(uri)
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(timeout)
                 .header("content-type", "application/json")
                 .header("accept", "application/json");
         if (config.apiKey() != null && !config.apiKey().isBlank()) {

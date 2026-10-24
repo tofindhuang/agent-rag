@@ -39,10 +39,12 @@ class ToolCallbackAuthIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void toolCallbacksAcceptSharedTokenAndReachTheStub() throws Exception {
+    void toolCallbacksAcceptSharedTokenAndReachTheHandler() throws Exception {
+        // KB is implemented now; this deployment has no embedding endpoint, so
+        // reaching the service means the KB error rather than 401/403.
         mockMvc.perform(kbCall().header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN))
-                .andExpect(status().isNotImplemented())
-                .andExpect(jsonPath("$.error.code").value("NOT_IMPLEMENTED"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("KB_NOT_CONFIGURED"));
 
         mockMvc.perform(execCall().header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN))
                 .andExpect(status().isNotImplemented())

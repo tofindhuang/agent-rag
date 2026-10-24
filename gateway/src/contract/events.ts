@@ -70,6 +70,7 @@ export type DomainEvent =
         durationMs: number;
         content: string;
         truncated: boolean;
+        details?: unknown;
       };
     }
   | {

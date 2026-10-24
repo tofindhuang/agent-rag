@@ -176,7 +176,7 @@ public class QdrantVectorStore implements VectorStore {
     }
 
     @Override
-    public List<VectorHit> search(long userId, float[] query, int limit) {
+    public List<VectorHit> search(long userId, float[] query, int limit, Duration timeout) {
         if (limit <= 0 || query == null || query.length == 0) {
             return List.of();
         }
@@ -204,7 +204,7 @@ public class QdrantVectorStore implements VectorStore {
                 .addObject().put("key", "user_id").putObject("match").put("value", userId);
 
         QdrantResponse response = send(
-                "POST", "/collections/" + encode(name) + "/points/search", body);
+                "POST", "/collections/" + encode(name) + "/points/search", body, timeout);
         if (response.status() == 404) {
             return List.of();
         }
@@ -294,8 +294,13 @@ public class QdrantVectorStore implements VectorStore {
     }
 
     private QdrantResponse send(String method, String path, ObjectNode body) {
+        return send(method, path, body, REQUEST_TIMEOUT);
+    }
+
+    private QdrantResponse send(
+            String method, String path, ObjectNode body, Duration timeout) {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl() + path))
-                .timeout(REQUEST_TIMEOUT);
+                .timeout(timeout);
         if (properties.hasApiKey()) {
             request.header("api-key", properties.apiKey());
         }

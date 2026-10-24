@@ -12,6 +12,7 @@ public record KbSearchResponse(List<Passage> passages) {
             String passageId,
             String documentId,
             int seq,
+            Integer page,
             String title,
             String content,
             double score,

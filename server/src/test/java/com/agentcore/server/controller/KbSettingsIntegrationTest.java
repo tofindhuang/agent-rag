@@ -198,8 +198,8 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
                 .andExpect(status().isAccepted());
         assertThat(documentStatus(documentId)).isEqualTo("queued");
         search(user.userId())
-                .andExpect(status().isNotImplemented())
-                .andExpect(jsonPath("$.error.code").value("NOT_IMPLEMENTED"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passages").isEmpty());
     }
 
     @Test

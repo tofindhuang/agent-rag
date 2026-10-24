@@ -14,8 +14,19 @@ import type { GatewayConfig } from "./config.js";
 import type { RunIdentity } from "./identity.js";
 import { buildToolHeaders } from "./tool-headers.js";
 
+interface KbPassage {
+  passageId: string;
+  documentId: string;
+  seq: number;
+  page?: number | null;
+  title?: string;
+  content: string;
+  score: number;
+  reranked?: boolean;
+}
+
 interface KbSearchResponse {
-  passages?: Array<{ documentId: string; seq: number; content: string; score: number }>;
+  passages?: KbPassage[];
   error?: string;
 }
 
@@ -73,7 +84,7 @@ export function kbSearchExtension(
             return {
               isError: true,
               content: [{ type: "text", text: "kb_search failed: no active run" }],
-              details: { count: 0 },
+              details: { count: 0, passages: [] },
             };
           }
           try {
@@ -83,21 +94,26 @@ export function kbSearchExtension(
               signal,
               buildToolHeaders(identity, _toolCallId, config.apiToken),
             );
+            const passages = data.passages ?? [];
             const text =
-              data.passages && data.passages.length > 0
-                ? data.passages
-                    .map(
-                      (p, i) =>
-                        `[${i + 1}] doc=${p.documentId} seq=${p.seq} score=${p.score.toFixed(3)}\n${p.content}`,
-                    )
+              passages.length > 0
+                ? passages
+                    .map((p, i) => {
+                      const title = p.title ? `《${p.title}》 ` : "";
+                      const page = p.page != null ? ` page=${p.page}` : "";
+                      return `[${i + 1}] ${title}doc=${p.documentId} seq=${p.seq}${page} score=${p.score.toFixed(3)}\n${p.content}`;
+                    })
                     .join("\n\n")
                 : "No matching passages.";
-            return { content: [{ type: "text", text }], details: { count: data.passages?.length ?? 0 } };
+            return {
+              content: [{ type: "text", text }],
+              details: { count: passages.length, passages },
+            };
           } catch (err) {
             return {
               isError: true,
               content: [{ type: "text", text: `kb_search failed: ${errorMessage(err)}` }],
-              details: { count: 0 },
+              details: { count: 0, passages: [] },
             };
           }
         },
