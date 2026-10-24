@@ -1,19 +1,19 @@
 package com.agentcore.server.controller;
 
-import com.agentcore.server.common.error.ApiException;
-import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.common.sandbox.CancellationToken;
 import com.agentcore.server.dto.sandbox.SandboxExecRequest;
 import com.agentcore.server.dto.sandbox.SandboxExecution;
 import com.agentcore.server.service.SandboxService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.ScheduledFuture;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -51,14 +51,10 @@ public class SandboxController {
     }
 
     @PostMapping(produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter exec(
+    public ResponseEntity<SseEmitter> exec(
             @RequestHeader HttpHeaders headers,
             @RequestBody SandboxExecRequest request) {
         ToolIdentity identity = ToolIdentity.from(headers);
-        if (request.code() == null || request.code().isBlank()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "code is required");
-        }
-
         SandboxExecution execution = sandboxService.start(request, identity);
         SseEmitter emitter = new SseEmitter(EMITTER_TIMEOUT_MS);
         CancellationToken cancellation = new CancellationToken();
@@ -90,7 +86,11 @@ public class SandboxController {
             sandboxService.abandon(execution, "sandbox executor rejected the request");
             emitter.completeWithError(ex);
         }
-        return emitter;
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "event-stream", StandardCharsets.UTF_8))
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-transform")
+                .header("x-accel-buffering", "no")
+                .body(emitter);
     }
 
     private static void sendHeartbeat(

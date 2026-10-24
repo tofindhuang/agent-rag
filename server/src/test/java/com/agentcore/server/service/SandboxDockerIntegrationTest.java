@@ -115,6 +115,22 @@ class SandboxDockerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void oomKilledProcessIsReportedInTheAuditRow() {
+        RecordingSink sink = new RecordingSink();
+        SandboxExecution execution = start("x = bytearray(800 * 1024 * 1024)\nprint(len(x))\n", 10_000);
+
+        sandboxService.run(execution, sink, new CancellationToken());
+
+        assertThat(sink.result).isNotNull();
+        assertThat(sink.result.exitCode()).isEqualTo(137);
+        assertThat(sink.result.timedOut()).isFalse();
+        assertThat(sink.stderr()).contains("out of memory");
+        ExecRecord row = execRecordDao.findById(execution.execId());
+        assertThat(row.getOomKilled()).isTrue();
+        assertThat(row.getStatus()).isEqualTo("failed");
+    }
+
+    @Test
     void containerRunsAsNonRootWithReadonlyRootfsAndWritableWorkDir() {
         String code = """
                 import os

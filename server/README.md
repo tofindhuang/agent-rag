@@ -76,6 +76,7 @@ service / dao ──> domain
 - 对 gateway 的 HTTP 调用集中在 service；controller 只做参数校验与编排。
 - 超时、重试、鉴权 header 在 service 内统一处理；上游不可用映射为 `UPSTREAM_UNAVAILABLE`，上游返回错误映射为 `UPSTREAM_ERROR`。
 - SSE 透传由 controller 包装 `StreamingResponseBody`，客户端断连的 `IOException` 静默丢弃。
+- 需要 emitter 生命周期回调来取消后台工作的流（如 `run_code` 断连杀容器）使用 `SseEmitter`，同样只在 controller 层出现。
 
 ## 测试
 

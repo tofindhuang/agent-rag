@@ -150,7 +150,7 @@ test("maps a JSON error envelope to an error result with the code", async () => 
 
     assert.equal(result.isError, true);
     assert.match(result.content[0]?.text ?? "", /SANDBOX_QUEUE_TIMEOUT/);
-    assert.equal(result.details?.code, "SANDBOX_QUEUE_TIMEOUT");
+    assert.equal(result.details?.errorCode, "SANDBOX_QUEUE_TIMEOUT");
   } finally {
     server.close();
   }

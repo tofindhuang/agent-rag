@@ -6,6 +6,7 @@ import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
 import com.github.dockerjava.api.model.Capability;
+import com.github.dockerjava.api.model.Event;
 import com.github.dockerjava.api.model.Frame;
 import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Statistics;
@@ -24,6 +25,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
@@ -44,20 +47,29 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
     private static final long MEMORY_BYTES = 512L * 1024 * 1024;
     private static final long NANO_CPUS = 1_000_000_000L;
     private static final long PIDS_LIMIT = 64L;
-    private static final long STATS_INTERVAL_MS = 250L;
+    private static final long STATS_INTERVAL_MS = 1_000L;
     private static final long ATTACH_GRACE_MS = 15_000L;
 
     private final DockerClient docker;
     private final SandboxProperties properties;
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, runnable -> {
-        Thread thread = new Thread(runnable, "sandbox-docker-");
-        thread.setDaemon(true);
-        return thread;
-    });
+    // Kills must never wait behind a blocking stats call.
+    private final ScheduledExecutorService timeoutScheduler =
+            Executors.newSingleThreadScheduledExecutor(runnable -> daemon(runnable, "sandbox-timeout-"));
+    private final ScheduledExecutorService statsScheduler =
+            Executors.newScheduledThreadPool(4, runnable -> daemon(runnable, "sandbox-stats-"));
 
     public DockerSandboxContainerRunner(DockerClient docker, SandboxProperties properties) {
         this.docker = docker;
         this.properties = properties;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void logAvailability() {
+        try {
+            ensureAvailable();
+        } catch (SandboxUnavailableException ex) {
+            log.error("run_code is unavailable: {}", ex.getMessage());
+        }
     }
 
     @Override
@@ -78,12 +90,32 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
                 sink, properties.chunkMaxBytes(), properties.outputMaxBytes());
         String containerId = null;
         ResultCallback.Adapter<Frame> execOutput = null;
+        ResultCallback.Adapter<Event> oomEvents = null;
         ScheduledFuture<?> timeoutTask = null;
         ScheduledFuture<?> statsTask = null;
         boolean timedOut = false;
         try {
             containerId = createAndStartContainer(spec.execId());
+            sink.phase("running");
             byte[] codeBytes = spec.code().getBytes(StandardCharsets.UTF_8);
+
+            AtomicReference<Boolean> oomEvent = new AtomicReference<>(false);
+            oomEvents = new ResultCallback.Adapter<>() {
+                @Override
+                public void onNext(Event event) {
+                    if ("oom".equals(event.getAction())) {
+                        oomEvent.set(true);
+                    }
+                }
+            };
+            try {
+                docker.eventsCmd()
+                        .withContainerFilter(containerId)
+                        .withEventFilter("oom")
+                        .exec(oomEvents);
+            } catch (RuntimeException ex) {
+                log.warn("failed to subscribe to sandbox OOM events", ex);
+            }
 
             long startedNanos = System.nanoTime();
             ExecCreateCmdResponse exec = docker.execCreateCmd(containerId)
@@ -124,17 +156,16 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
             String container = containerId;
             cancellation.onCancel(() -> killQuietly(container));
             AtomicReference<Boolean> timedOutFlag = new AtomicReference<>(false);
-            timeoutTask = scheduler.schedule(() -> {
+            timeoutTask = timeoutScheduler.schedule(() -> {
                 timedOutFlag.set(true);
                 killQuietly(container);
             }, spec.timeoutMs(), TimeUnit.MILLISECONDS);
             AtomicLong peakMemory = new AtomicLong();
             AtomicLong cpuTotal = new AtomicLong();
-            statsTask = scheduler.scheduleAtFixedRate(
+            statsTask = statsScheduler.scheduleAtFixedRate(
                     () -> sampleStats(container, peakMemory, cpuTotal),
                     0, STATS_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
-            sink.phase("running");
             docker.execStartCmd(exec.getId())
                     .withStdIn(new ByteArrayInputStream(codeBytes))
                     .exec(execOutput);
@@ -163,7 +194,7 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
             }
 
             Integer exitCode = inspectExitCode(exec.getId());
-            boolean oomKilled = isOomKilled(containerId);
+            boolean oomKilled = isOomKilled(containerId) || Boolean.TRUE.equals(oomEvent.get());
             if (oomKilled) {
                 if (!output.stderr().isEmpty() && !output.stderr().endsWith("\n")) {
                     output.appendStderrText("\n");
@@ -191,6 +222,13 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
             if (execOutput != null) {
                 try {
                     execOutput.close();
+                } catch (Exception ignored) {
+                    // Best-effort; the container is removed below.
+                }
+            }
+            if (oomEvents != null) {
+                try {
+                    oomEvents.close();
                 } catch (Exception ignored) {
                     // Best-effort; the container is removed below.
                 }
@@ -317,6 +355,13 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
 
     @PreDestroy
     void shutdown() {
-        scheduler.shutdownNow();
+        timeoutScheduler.shutdownNow();
+        statsScheduler.shutdownNow();
+    }
+
+    private static Thread daemon(Runnable runnable, String name) {
+        Thread thread = new Thread(runnable, name);
+        thread.setDaemon(true);
+        return thread;
     }
 }

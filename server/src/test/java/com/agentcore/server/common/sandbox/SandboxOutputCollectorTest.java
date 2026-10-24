@@ -51,6 +51,18 @@ class SandboxOutputCollectorTest {
     }
 
     @Test
+    void marksTruncatedWhenTheCapEndsExactlyOnAChunkBoundary() {
+        SandboxOutputCollector collector = new SandboxOutputCollector(sink, 10, 4);
+
+        collector.appendStdout("abcd".getBytes(StandardCharsets.UTF_8));
+        assertThat(collector.truncated()).isFalse();
+
+        collector.appendStdout("e".getBytes(StandardCharsets.UTF_8));
+        assertThat(collector.truncated()).isTrue();
+        assertThat(collector.stdout()).isEqualTo("abcd");
+    }
+
+    @Test
     void countsUtf8BytesNotCharacters() {
         SandboxOutputCollector collector = new SandboxOutputCollector(sink, 10, 7);
 

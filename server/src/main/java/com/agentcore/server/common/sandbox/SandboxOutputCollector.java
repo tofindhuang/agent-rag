@@ -54,7 +54,12 @@ public final class SandboxOutputCollector {
     }
 
     private void append(boolean error, String text) {
-        if (text == null || text.isEmpty() || emittedBytes >= totalMaxBytes) {
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        if (emittedBytes >= totalMaxBytes) {
+            // The cap was reached exactly at a chunk boundary; later output is dropped.
+            truncated = true;
             return;
         }
         List<String> chunks = splitByUtf8Bytes(text, chunkMaxBytes);

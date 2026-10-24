@@ -4,8 +4,8 @@
  * - kb_search  -> Java business layer /api/kb/search (RAG retrieval, M1)
  * - run_code   -> sandbox execution service /api/exec  (FR-3, M1)
  *
- * Both endpoints are stubs in the Java skeleton and return 501, so tools
- * surface a clear error until the features land.
+ * kb_search returns JSON; run_code consumes the Java SSE stream
+ * (started/phase/stdout/stderr/result) and forwards progress updates.
  */
 
 import { Type } from "@earendil-works/pi-ai";
@@ -37,7 +37,7 @@ interface SandboxExecDetails {
   durationMs?: number;
   timedOut?: boolean;
   truncated?: boolean;
-  code?: string;
+  errorCode?: string;
   progress?: {
     kind: "phase" | "stdout" | "stderr";
     phase?: string;
@@ -163,7 +163,7 @@ export function runCodeExtension(
         async execute(_toolCallId, params, signal, onUpdate) {
           const identity = getIdentity();
           if (!identity) {
-            return errorResult("no active run");
+            return errorResult("run_code failed: no active run");
           }
           try {
             const outcome = await runInSandbox(
@@ -182,17 +182,7 @@ export function runCodeExtension(
             const aborted = isAbortError(err);
             const code = err instanceof SandboxHttpError ? err.code : undefined;
             const message = aborted ? "run_code aborted" : `run_code failed: ${errorMessage(err)}`;
-            return {
-              isError: true,
-              content: [{ type: "text", text: message }],
-              details: {
-                exitCode: -1,
-                durationMs: 0,
-                timedOut: false,
-                truncated: false,
-                code,
-              },
-            };
+            return errorResult(message, code);
           }
         },
       }),
@@ -384,19 +374,20 @@ async function sandboxHttpError(res: Response): Promise<SandboxHttpError> {
   );
 }
 
-function errorResult(message: string): {
+function errorResult(message: string, errorCode?: string): {
   isError: true;
   content: [{ type: "text"; text: string }];
   details: SandboxExecDetails;
 } {
   return {
     isError: true,
-    content: [{ type: "text", text: `run_code failed: ${message}` }],
+    content: [{ type: "text", text: message }],
     details: {
       exitCode: -1,
       durationMs: 0,
       timedOut: false,
       truncated: false,
+      errorCode,
     },
   };
 }

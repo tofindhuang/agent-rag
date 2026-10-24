@@ -53,7 +53,7 @@ public class SandboxMaintenance {
         removeOrphanContainers();
     }
 
-    @Scheduled(cron = "${app.sandbox.retention-cron:0 0 3 * * *}")
+    @Scheduled(cron = "0 0 3 * * *")
     public void purgeExpiredRecords() {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         LocalDateTime cutoff = now.minusDays(properties.retentionDays());

@@ -11,7 +11,6 @@ import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
 import org.redisson.config.SingleServerConfig;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -78,10 +77,9 @@ public class SandboxConfiguration {
     }
 
     @Bean(name = "sandboxHeartbeatScheduler")
-    public TaskScheduler sandboxHeartbeatScheduler(
-            @Value("${app.sandbox.heartbeat-pool-size:1}") int poolSize) {
+    public TaskScheduler sandboxHeartbeatScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setPoolSize(Math.max(1, poolSize));
+        scheduler.setPoolSize(1);
         scheduler.setThreadNamePrefix("sandbox-heartbeat-");
         scheduler.setDaemon(true);
         scheduler.initialize();
