@@ -52,6 +52,8 @@ export interface HistoryItem {
   status: string | null;
   deliveryStatus: string | null;
   createdAt: string;
+  /** Persisted tool_result.details (kb_search citations); absent on old rows. */
+  details?: unknown;
 }
 
 export interface MessagePage {

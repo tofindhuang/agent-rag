@@ -18,6 +18,7 @@ public class Message {
     private String content;
     private String thinking;
     private String toolCalls;
+    private String details;
     private String status;
     private String deliveryStatus;
     private String runId;
@@ -88,6 +89,15 @@ public class Message {
 
     public void setToolCalls(String toolCalls) {
         this.toolCalls = toolCalls;
+    }
+
+    /** Tool-specific JSON (e.g. kb_search citations); null for user/assistant rows. */
+    public String getDetails() {
+        return details;
+    }
+
+    public void setDetails(String details) {
+        this.details = details;
     }
 
     public String getStatus() {

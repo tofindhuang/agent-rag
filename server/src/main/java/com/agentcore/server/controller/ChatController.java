@@ -17,12 +17,17 @@ import com.agentcore.server.dto.chat.SessionSummary;
 import com.agentcore.server.dto.chat.SwitchModelRequest;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -48,10 +53,14 @@ public class ChatController {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_TITLE_LENGTH = 255;
 
-    private final ChatService chatService;
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
-    public ChatController(ChatService chatService) {
+    private final ChatService chatService;
+    private final ObjectMapper objectMapper;
+
+    public ChatController(ChatService chatService, ObjectMapper objectMapper) {
         this.chatService = chatService;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping("/sessions")
@@ -121,7 +130,7 @@ public class ChatController {
         }
         MessagePage page = chatService.history(user.userId(), sessionId, beforeId, limit);
         return new MessageListResponse(
-                page.items().stream().map(ChatController::toView).toList(),
+                page.items().stream().map(this::toView).toList(),
                 page.hasMore(),
                 page.nextBeforeId());
     }
@@ -173,7 +182,7 @@ public class ChatController {
         return out -> chatService.relayPrompt(stream, out);
     }
 
-    private static MessageSummary toView(Message message) {
+    private MessageSummary toView(Message message) {
         return new MessageSummary(
                 message.getId(),
                 message.getTurnId(),
@@ -183,7 +192,21 @@ public class ChatController {
                 message.getThinking(),
                 message.getStatus(),
                 message.getDeliveryStatus(),
-                toInstant(message.getCreatedAt()));
+                toInstant(message.getCreatedAt()),
+                parseDetails(message));
+    }
+
+    private JsonNode parseDetails(Message message) {
+        String details = message.getDetails();
+        if (details == null || details.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(details);
+        } catch (JsonProcessingException e) {
+            log.warn("ignoring malformed details for message {}", message.getId());
+            return null;
+        }
     }
 
     private static SessionSummary toSummary(Session session) {

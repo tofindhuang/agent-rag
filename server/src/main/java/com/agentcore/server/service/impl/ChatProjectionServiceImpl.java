@@ -21,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class ChatProjectionServiceImpl implements ChatProjectionService {
 
     private static final int TOOL_CONTENT_LIMIT_BYTES = 65_536;
+    private static final int TOOL_DETAILS_LIMIT_BYTES = 8_192;
     private static final int ERROR_MESSAGE_LIMIT_BYTES = 1_024;
     private static final int TITLE_LIMIT = 20;
 
@@ -98,9 +99,10 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     }
 
     @Override
-    public void appendTool(TurnKey turn, int ordinal, String content) {
+    public void appendTool(TurnKey turn, int ordinal, String content, String detailsJson) {
         Message message = baseMessage(turn, ordinal, "tool");
         message.setContent(truncateUtf8(content, TOOL_CONTENT_LIMIT_BYTES));
+        message.setDetails(boundedDetails(detailsJson));
         messageDao.upsert(message);
         cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
     }
@@ -138,6 +140,22 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
                 0L,
                 nowUtc());
         messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "failed");
+    }
+
+    /**
+     * details is JSON: truncation would corrupt it, so an oversized payload is
+     * dropped entirely (history then degrades to the plain tool card).
+     */
+    private static String boundedDetails(String detailsJson) {
+        if (detailsJson == null || detailsJson.isBlank()) {
+            return null;
+        }
+        if (detailsJson.getBytes(StandardCharsets.UTF_8).length > TOOL_DETAILS_LIMIT_BYTES) {
+            org.slf4j.LoggerFactory.getLogger(ChatProjectionServiceImpl.class).warn(
+                    "dropping tool details larger than {} bytes", TOOL_DETAILS_LIMIT_BYTES);
+            return null;
+        }
+        return detailsJson;
     }
 
     /** The cache is auxiliary and must only see committed rows. */

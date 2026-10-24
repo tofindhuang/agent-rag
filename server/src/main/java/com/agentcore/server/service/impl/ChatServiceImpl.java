@@ -20,6 +20,7 @@ import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.PromptStream;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -403,7 +404,8 @@ public class ChatServiceImpl implements ChatService {
                     case "tool_result" -> projection.appendTool(
                             prompt.turn(),
                             state.nextOrdinal++,
-                            data.path("content").asText(""));
+                            data.path("content").asText(""),
+                            detailsJson(data.path("details")));
                     case "run_settled" -> {
                         JsonNode error = data.path("error");
                         projection.settleRun(
@@ -485,6 +487,18 @@ public class ChatServiceImpl implements ChatService {
             return null;
         }
         return objectMapper.writeValueAsString(toolCalls);
+    }
+
+    private String detailsJson(JsonNode details) {
+        if (details == null || details.isMissingNode() || details.isNull()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(details);
+        } catch (JsonProcessingException e) {
+            log.warn("cannot serialize tool details; history citations will be missing", e);
+            return null;
+        }
     }
 
     /** Contract error envelope; falls back to the HTTP status. */

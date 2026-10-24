@@ -35,11 +35,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatServiceImplTest {
@@ -143,6 +147,19 @@ class ChatServiceImplTest {
     }
 
     @Test
+    void relaysToolResultDetailsToTheProjection() throws Exception {
+        PromptStream stream = openPrompt("tool-details");
+
+        relay(stream);
+
+        org.mockito.ArgumentCaptor<String> details =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(projection).appendTool(
+                any(), anyInt(), eq("tool output"), details.capture());
+        assertThat(details.getValue()).contains("\"passageId\":\"p-1\"");
+    }
+
+    @Test
     void archiveUsesDeleteWithOwnerHeader() {
         String sessionId = service.createSession(1L, null, null, false);
 
@@ -197,6 +214,19 @@ class ChatServiceImplTest {
     /** Replays the shared fixture, echoing the turnId Java generated. */
     private String replayFixture(String turnId) throws IOException {
         String mode = promptMode.get();
+        if ("tool-details".equals(mode)) {
+            String runId = "run-1";
+            return frame(runId, 1, "run_started",
+                            "{\"runId\":\"run-1\",\"turnId\":\"" + turnId
+                                    + "\",\"sessionId\":\"s\",\"contractVersion\":\"1\"}")
+                    + frame(runId, 2, "tool_result",
+                            "{\"toolCallId\":\"c1\",\"name\":\"kb_search\",\"isError\":false,"
+                                    + "\"durationMs\":12,\"content\":\"tool output\","
+                                    + "\"truncated\":false,\"details\":{\"count\":1,"
+                                    + "\"passages\":[{\"passageId\":\"p-1\"}]}}")
+                    + frame(runId, 3, "run_settled",
+                            "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
+        }
         JsonNode frames = "complete".equals(mode)
                 ? loadFixture("gateway", "01-text-thinking.json").path("expected").path("frames")
                 : loadFixture("consumer", "01-interrupted-stream.json").path("input").path("frames");

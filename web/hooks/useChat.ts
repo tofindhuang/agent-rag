@@ -45,6 +45,7 @@ function toHistoryMessages(items: HistoryItem[]): ChatMessage[] {
         argsText: "",
         output: item.content ?? "",
         status: item.status === "error" ? "error" : "done",
+        passages: parseCitationPassages(item.details),
       };
       const previous = messages[messages.length - 1];
       if (previous && previous.role === "assistant") {

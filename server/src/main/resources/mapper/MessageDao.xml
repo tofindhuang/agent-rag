@@ -4,7 +4,7 @@
 <mapper namespace="com.agentcore.server.dao.MessageDao">
 
     <sql id="messageColumns">
-        id, session_id, turn_id, ordinal, role, content, thinking, tool_calls,
+        id, session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
         status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
         created_at
     </sql>
@@ -12,10 +12,11 @@
     <!-- Idempotent projection write (ADR-0006); MySQL 8 alias form. -->
     <insert id="upsert">
         INSERT INTO messages (
-            session_id, turn_id, ordinal, role, content, thinking, tool_calls,
+            session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
             status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out
         ) VALUES (
             #{sessionId}, #{turnId}, #{ordinal}, #{role}, #{content}, #{thinking}, #{toolCalls},
+            #{details},
             #{status}, #{deliveryStatus}, #{runId}, #{assistantSeqInTurn}, #{tokensIn}, #{tokensOut}
         ) AS new
         ON DUPLICATE KEY UPDATE
@@ -23,6 +24,7 @@
             content = new.content,
             thinking = new.thinking,
             tool_calls = new.tool_calls,
+            details = new.details,
             status = new.status,
             delivery_status = new.delivery_status,
             run_id = new.run_id,

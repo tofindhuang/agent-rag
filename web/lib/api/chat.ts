@@ -189,6 +189,7 @@ function parseMessagePage(value: unknown): MessagePage {
       status: text(item.status),
       deliveryStatus: text(item.deliveryStatus),
       createdAt: text(item.createdAt) ?? "",
+      details: item.details,
     };
   });
   return {
