@@ -51,7 +51,11 @@ LOADTEST_MODEL_API_KEY=... npm run run
 ```
 
 重启期间被中断/中止的 turn 会以同一 `turnId` 重试；跑完后逐会话读取消息投影，
-校验每个 completed turn 恰好一条 user 消息、至少一条 assistant 消息（不丢不重）。
+校验每个 completed turn 恰好一条 user 消息、至少一条 assistant 消息，且 assistant
+文本总量与流式 `message_end` 一致（不丢不重）。
+
+重启 Java（验证 §4「任一重启」）用 `LOADTEST_RESTART_SERVER_AFTER_MS` 替代
+`LOADTEST_RESTART_GATEWAY_AFTER_MS`，其余参数相同。
 
 ## 拆栈
 

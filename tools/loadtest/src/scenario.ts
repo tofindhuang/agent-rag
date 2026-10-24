@@ -162,6 +162,11 @@ export function classifyFailure(error: unknown): ErrorClass {
     if (error.status === 429) {
       return error.code === "RATE_LIMITED" ? "rate_limited" : "upstream_429";
     }
+    // A previous run may still be settling after the caller's process died;
+    // the retry of the same turnId can briefly race with the abort.
+    if (error.status === 409 && error.code === "RUN_IN_PROGRESS") {
+      return "upstream_unavailable";
+    }
     // 5xx with retryable=true means the gateway hop was unavailable (for
     // example during a rolling gateway restart); the turn can be resumed.
     if (error.retryable) return "upstream_unavailable";

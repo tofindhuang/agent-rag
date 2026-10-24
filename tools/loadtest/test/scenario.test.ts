@@ -233,6 +233,10 @@ test("classifies local rate limits, upstream 429s, hard errors and disconnects",
     }),
     "upstream_unavailable",
   );
+  assert.equal(
+    classifyFailure(new ApiError(409, "RUN_IN_PROGRESS", "run already in progress", false)),
+    "upstream_unavailable",
+  );
   assert.equal(isRetryableClass("upstream_unavailable"), true);
   assert.equal(isRetryableClass("hard_error"), false);
   assert.equal(classifyFailure(new TypeError("fetch failed")), "disconnected");

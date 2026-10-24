@@ -38,12 +38,14 @@ async function main(): Promise<void> {
   const root = resolve(process.cwd(), "../..");
   const manageApp = process.env.LOADTEST_MANAGE_APP === "1";
   const keepApp = process.env.LOADTEST_KEEP_APP === "1";
-  const restartAfterMs = intEnv("LOADTEST_RESTART_GATEWAY_AFTER_MS", 0);
+  const restartGatewayAfterMs = intEnv("LOADTEST_RESTART_GATEWAY_AFTER_MS", 0);
+  const restartServerAfterMs = intEnv("LOADTEST_RESTART_SERVER_AFTER_MS", 0);
   const logDir = dirname(config.metricsFile);
   const managed: ManagedProcess[] = [];
+  let server: ManagedProcess | null = null;
   let gateway: ManagedProcess | null = null;
-  let restartPromise: Promise<void> | null = null;
-  let restartTimer: NodeJS.Timeout | null = null;
+  const restartPromises: Promise<void>[] = [];
+  const restartTimers: NodeJS.Timeout[] = [];
 
   const startGateway = (): ManagedProcess =>
     startProcess({
@@ -51,6 +53,14 @@ async function main(): Promise<void> {
       args: [resolve(root, "tools/loadtest/scripts/run-gateway.sh")],
       cwd: root,
       logFile: join(logDir, "gateway.log"),
+    });
+
+  const startServer = (): ManagedProcess =>
+    startProcess({
+      command: "bash",
+      args: [resolve(root, "tools/loadtest/scripts/run-server.sh")],
+      cwd: root,
+      logFile: join(logDir, "server.log"),
     });
 
   const baselineEnabled = process.env.LOADTEST_BASELINE_ENABLED !== "false";
@@ -65,12 +75,7 @@ async function main(): Promise<void> {
 
   try {
     if (manageApp) {
-      const server = startProcess({
-        command: "bash",
-        args: [resolve(root, "tools/loadtest/scripts/run-server.sh")],
-        cwd: root,
-        logFile: join(logDir, "server.log"),
-      });
+      server = startServer();
       managed.push(server);
       await waitForHttp("http://127.0.0.1:8080/api/health", 180_000);
       gateway = startGateway();
@@ -78,19 +83,38 @@ async function main(): Promise<void> {
       await waitForHttp("http://127.0.0.1:3001/health", 60_000);
     }
 
-    if (restartAfterMs > 0) {
-      restartTimer = setTimeout(() => {
-        restartPromise = (async () => {
-          if (!gateway) throw new Error("gateway restart requested without LOADTEST_MANAGE_APP=1");
-          console.error("[loadtest] restarting gateway");
-          await gateway.stop();
-          await waitForHttpDown("http://127.0.0.1:3001/health", 30_000);
-          gateway = startGateway();
-          managed.push(gateway);
-          await waitForHttp("http://127.0.0.1:3001/health", 60_000);
-          console.error("[loadtest] gateway restarted");
-        })();
-      }, restartAfterMs);
+    if (restartGatewayAfterMs > 0) {
+      restartTimers.push(
+        setTimeout(() => {
+          restartPromises.push((async () => {
+            if (!gateway) throw new Error("gateway restart requires LOADTEST_MANAGE_APP=1");
+            console.error("[loadtest] restarting gateway");
+            await gateway.stop();
+            await waitForHttpDown("http://127.0.0.1:3001/health", 30_000);
+            gateway = startGateway();
+            managed.push(gateway);
+            await waitForHttp("http://127.0.0.1:3001/health", 60_000);
+            console.error("[loadtest] gateway restarted");
+          })());
+        }, restartGatewayAfterMs),
+      );
+    }
+
+    if (restartServerAfterMs > 0) {
+      restartTimers.push(
+        setTimeout(() => {
+          restartPromises.push((async () => {
+            if (!server) throw new Error("server restart requires LOADTEST_MANAGE_APP=1");
+            console.error("[loadtest] restarting server");
+            await server.stop();
+            await waitForHttpDown("http://127.0.0.1:8080/api/health", 30_000);
+            server = startServer();
+            managed.push(server);
+            await waitForHttp("http://127.0.0.1:8080/api/health", 180_000);
+            console.error("[loadtest] server restarted");
+          })());
+        }, restartServerAfterMs),
+      );
     }
 
     const records: TurnRecord[] = [];
@@ -143,8 +167,8 @@ async function main(): Promise<void> {
       onProgress: (message) => console.error(`[loadtest] ${message}`),
     });
 
-    if (restartTimer) clearTimeout(restartTimer);
-    if (restartPromise) await restartPromise;
+    for (const timer of restartTimers) clearTimeout(timer);
+    await Promise.all(restartPromises);
 
     const verification =
       process.env.LOADTEST_VERIFY === "false"
@@ -184,7 +208,7 @@ async function main(): Promise<void> {
       verificationFailed;
     if (failed) process.exitCode = 1;
   } finally {
-    if (restartTimer) clearTimeout(restartTimer);
+    for (const timer of restartTimers) clearTimeout(timer);
     if (manageApp && !keepApp) {
       for (const processHandle of [...managed].reverse()) {
         await processHandle.stop();
