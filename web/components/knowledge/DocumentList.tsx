@@ -80,8 +80,8 @@ export function DocumentList({
         <div className={styles.quota}>
           <div className={styles.quotaRow}>
             <span>
-              文档 {usage.documents}/{usage.maxDocuments} · 原文 {formatBytes(usage.bytes)}/
-              {formatBytes(usage.maxBytes)}
+              账号配额：文档 {usage.documents}/{usage.maxDocuments} · 原文{" "}
+              {formatBytes(usage.bytes)}/{formatBytes(usage.maxBytes)}
             </span>
           </div>
           <div

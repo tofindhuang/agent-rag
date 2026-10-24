@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Banner } from "@/components/ui/Banner";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { TextField } from "@/components/ui/TextField";
@@ -105,20 +105,17 @@ export function KnowledgePage() {
   };
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.back} href="/">
-          ← 返回聊天
-        </Link>
-        <h1 className={styles.title}>知识库</h1>
-        <p className={styles.subtitle}>
-          上传后自动解析、切片并建立索引；对话中的 kb_search 只检索当前对话绑定的知识库。
-        </p>
-      </header>
-
-      {kbError ? <Banner tone="error">{kbError}</Banner> : null}
-      {knowledge.error ? <Banner tone="error">{knowledge.error}</Banner> : null}
-      {knowledge.notice ? <Banner tone="notice">{knowledge.notice}</Banner> : null}
+    <PageShell
+      title="知识库"
+      subtitle="上传后自动解析、切片并建立索引；对话中的 kb_search 只检索当前对话绑定的知识库。"
+    >
+      {kbError || knowledge.error || knowledge.notice ? (
+        <div className={styles.notices}>
+          {kbError ? <Banner tone="error">{kbError}</Banner> : null}
+          {knowledge.error ? <Banner tone="error">{knowledge.error}</Banner> : null}
+          {knowledge.notice ? <Banner tone="notice">{knowledge.notice}</Banner> : null}
+        </div>
+      ) : null}
 
       <section className={styles.kbBar} aria-label="知识库选择">
         <label className={styles.label} htmlFor="kb-select">
@@ -259,6 +256,6 @@ export function KnowledgePage() {
           }
         />
       ) : null}
-    </main>
+    </PageShell>
   );
 }
