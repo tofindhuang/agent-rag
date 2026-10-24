@@ -2,6 +2,7 @@ package com.agentcore.server.common.error;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -34,7 +35,7 @@ public class GlobalExceptionHandler {
         } else {
             log.warn("request rejected: {} - {}", ex.code(), ex.getMessage());
         }
-        return respond(ex.code(), ex.getMessage());
+        return respond(ex.code(), ex.getMessage(), ex.retryAfterSeconds());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -75,10 +76,18 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ApiError> respond(ErrorCode code, String message) {
+        return respond(code, message, null);
+    }
+
+    private ResponseEntity<ApiError> respond(
+            ErrorCode code, String message, Long retryAfterSeconds) {
         // SSE prompt requests send `accept: text/event-stream`; a preset
         // content type skips content negotiation so error envelopes stay JSON.
-        return ResponseEntity.status(HttpStatus.valueOf(code.status()))
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(ApiError.of(code, message));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.status(HttpStatus.valueOf(code.status()))
+                .contentType(MediaType.APPLICATION_JSON);
+        if (retryAfterSeconds != null) {
+            builder.header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
+        }
+        return builder.body(ApiError.of(code, message));
     }
 }

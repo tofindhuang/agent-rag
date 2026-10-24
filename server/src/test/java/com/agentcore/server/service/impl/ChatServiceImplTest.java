@@ -10,6 +10,8 @@ import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.common.gateway.GatewayClient;
+import com.agentcore.server.common.ratelimit.RateLimitDecision;
+import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionDao;
@@ -55,6 +57,7 @@ class ChatServiceImplTest {
     private final AtomicReference<String> lastMethod = new AtomicReference<>();
     private final AtomicReference<String> lastUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
+    private final TestRateLimitService rateLimit = new TestRateLimitService();
 
     private HttpServer server;
     private SessionDao sessionDao;
@@ -93,7 +96,39 @@ class ChatServiceImplTest {
                 projection,
                 sessionModelService,
                 transactionManager(),
-                new GatewayClient(properties, mapper));
+                new GatewayClient(properties, mapper),
+                rateLimit);
+    }
+
+    private static final class TestRateLimitService implements RateLimitService {
+
+        private RateLimitDecision tpm = RateLimitDecision.permit();
+        private long addedTokens;
+
+        @Override
+        public RateLimitDecision checkUserRpm(long userId) {
+            return RateLimitDecision.permit();
+        }
+
+        @Override
+        public RateLimitDecision checkAuthIpRpm(String clientIp) {
+            return RateLimitDecision.permit();
+        }
+
+        @Override
+        public RateLimitDecision checkUserTpm(long userId) {
+            return tpm;
+        }
+
+        @Override
+        public void addUserTokens(long userId, long tokens) {
+            addedTokens += tokens;
+        }
+
+        @Override
+        public boolean enabled() {
+            return true;
+        }
     }
 
     private static PlatformTransactionManager transactionManager() {
@@ -166,6 +201,30 @@ class ChatServiceImplTest {
     }
 
     @Test
+    void rejectsPromptBeforeProjectionWhenTpmIsExceeded() {
+        rateLimit.tpm = new RateLimitDecision(false, 7);
+
+        com.agentcore.server.common.error.ApiException error =
+                org.junit.jupiter.api.Assertions.assertThrows(
+                        com.agentcore.server.common.error.ApiException.class,
+                        () -> service.openPrompt(1L, "session-1", "hi", null));
+
+        assertThat(error.code()).isEqualTo(com.agentcore.server.common.error.ErrorCode.RATE_LIMITED);
+        assertThat(error.getMessage()).contains("retry in 7s");
+        verify(projection, org.mockito.Mockito.never())
+                .startTurn(any(), anyString());
+    }
+
+    @Test
+    void addsObservedTokensWhenAnAssistantMessageEnds() throws Exception {
+        PromptStream stream = openPrompt("usage");
+
+        relay(stream);
+
+        assertThat(rateLimit.addedTokens).isEqualTo(42L);
+    }
+
+    @Test
     void ignoresHeartbeatFramesWithoutInterruptingTheStream() throws Exception {
         String sse = relay(openPrompt("heartbeat"));
 
@@ -229,6 +288,19 @@ class ChatServiceImplTest {
     /** Replays the shared fixture, echoing the turnId Java generated. */
     private String replayFixture(String turnId) throws IOException {
         String mode = promptMode.get();
+        if ("usage".equals(mode)) {
+            String runId = "run-1";
+            return frame(runId, 1, "run_started",
+                            "{\"runId\":\"run-1\",\"turnId\":\"" + turnId
+                                    + "\",\"sessionId\":\"s\",\"contractVersion\":\"1\"}")
+                    + frame(runId, 2, "message_end",
+                            "{\"seqInTurn\":1,\"role\":\"assistant\",\"text\":\"ok\","
+                                    + "\"thinking\":\"\",\"toolCalls\":[],"
+                                    + "\"usage\":{\"input\":10,\"output\":5,\"totalTokens\":42},"
+                                    + "\"stopReason\":\"stop\"}")
+                    + frame(runId, 3, "run_settled",
+                            "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
+        }
         if ("heartbeat".equals(mode)) {
             String runId = "run-1";
             return frame(runId, 1, "run_started",

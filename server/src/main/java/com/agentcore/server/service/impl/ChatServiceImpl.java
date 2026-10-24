@@ -3,6 +3,8 @@ package com.agentcore.server.service.impl;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.gateway.GatewayClient;
+import com.agentcore.server.common.ratelimit.RateLimitDecision;
+import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.common.sse.SseFrame;
 import com.agentcore.server.common.sse.SseFrameParser;
 import com.agentcore.server.config.GatewayProperties;
@@ -78,6 +80,7 @@ public class ChatServiceImpl implements ChatService {
     private final SessionModelService sessionModelService;
     private final TransactionTemplate transactionTemplate;
     private final GatewayClient client;
+    private final RateLimitService rateLimitService;
 
     public ChatServiceImpl(
             GatewayProperties gateway,
@@ -92,7 +95,8 @@ public class ChatServiceImpl implements ChatService {
             ChatProjectionService projection,
             SessionModelService sessionModelService,
             PlatformTransactionManager transactionManager,
-            GatewayClient client) {
+            GatewayClient client,
+            RateLimitService rateLimitService) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
@@ -106,6 +110,7 @@ public class ChatServiceImpl implements ChatService {
         this.sessionModelService = sessionModelService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.client = client;
+        this.rateLimitService = rateLimitService;
     }
 
     @Override
@@ -328,6 +333,12 @@ public class ChatServiceImpl implements ChatService {
             throw sessionNotFound();
         }
         SessionModelChoice choice = sessionModelService.forExistingSession(userId, sessionId);
+        RateLimitDecision tpm = rateLimitService.checkUserTpm(userId);
+        if (!tpm.allowed()) {
+            throw new ApiException(ErrorCode.RATE_LIMITED,
+                    "token rate limit exceeded; retry in " + tpm.retryAfterSeconds() + "s",
+                    tpm.retryAfterSeconds());
+        }
 
         String turnId = requestTurnId == null || requestTurnId.isBlank()
                 ? UUID.randomUUID().toString()
@@ -367,7 +378,7 @@ public class ChatServiceImpl implements ChatService {
             throw new ApiException(ErrorCode.UPSTREAM_ERROR,
                     "gateway error " + response.statusCode() + ": " + detail);
         }
-        return new PromptStream(response.body(), turn, requestId);
+        return new PromptStream(response.body(), turn, requestId, userId);
     }
 
     @Override
@@ -426,6 +437,9 @@ public class ChatServiceImpl implements ChatService {
                         long tokensOut = data.path("usage").path("output").asLong(0);
                         state.tokensIn += tokensIn;
                         state.tokensOut += tokensOut;
+                        long totalTokens = data.path("usage").path("totalTokens").asLong(0);
+                        rateLimitService.addUserTokens(
+                                prompt.userId(), totalTokens > 0 ? totalTokens : tokensIn + tokensOut);
                         String status = "error".equals(data.path("stopReason").asText())
                                 ? "error" : "complete";
                         projection.appendAssistant(

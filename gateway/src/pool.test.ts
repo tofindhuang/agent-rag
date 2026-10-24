@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
-import { SessionPool, type PiSession, type SessionFactory } from "./pool.js";
+import { AGENT_TOOL_WHITELIST, SessionPool, type PiSession, type SessionFactory } from "./pool.js";
 import { SessionConflictError } from "./pool-contract.js";
 
 const dirs: string[] = [];
@@ -42,6 +42,10 @@ const fakeFactory: SessionFactory = async (manager) => {
 
 after(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+});
+
+test("only the FR-6 tool whitelist is exposed to the model", () => {
+  assert.deepEqual([...AGENT_TOOL_WHITELIST], ["kb_search", "run_code"]);
 });
 
 test("ensure echoes the requested model and keeps its key off disk", async () => {

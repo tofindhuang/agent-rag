@@ -39,6 +39,9 @@ import {
 export type PiSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
 
 /** Injectable for tests; production builds a real pi AgentSession. */
+/** FR-6: only these extension tools are exposed to the model. */
+export const AGENT_TOOL_WHITELIST = ["kb_search", "run_code"] as const;
+
 export type SessionFactory = (
   manager: SessionManager,
   runRef: RunRef,
@@ -186,7 +189,7 @@ export class SessionPool implements GatewayPool {
       resourceLoader: loader,
       // Only the extension-registered tools are active; every built-in tool
       // (bash/edit/write/read/...) is excluded (FR-6 tool whitelist).
-      tools: ["kb_search", "run_code"],
+      tools: [...AGENT_TOOL_WHITELIST],
       sessionManager: manager,
       ...(built ? { modelRuntime: built.runtime, model: built.model } : {}),
     });

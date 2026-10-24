@@ -23,7 +23,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @TestPropertySource(properties = {
         "spring.rabbitmq.listener.simple.auto-startup=false",
         // Keep non-KB tests off a developer's local Qdrant (default :6333).
-        "app.kb.qdrant.url=http://127.0.0.1:1"
+        "app.kb.qdrant.url=http://127.0.0.1:1",
+        // Existing suites are not about quotas; dedicated tests lower these.
+        "app.rate-limit.user-rpm=999999",
+        "app.rate-limit.user-tpm=999999999",
+        "app.rate-limit.auth-ip-rpm=999999",
+        "management.server.port=0",
+        "management.endpoints.web.exposure.include=prometheus"
 })
 public abstract class AbstractIntegrationTest {
 

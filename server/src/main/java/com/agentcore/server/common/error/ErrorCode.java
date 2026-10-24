@@ -30,6 +30,7 @@ public enum ErrorCode {
     KB_FILE_TOO_LARGE(413, false),
     SANDBOX_CODE_TOO_LARGE(413, false),
     CONFLICT(409, false),
+    RATE_LIMITED(429, true),
     RUN_IN_PROGRESS(409, false),
     NO_ACTIVE_RUN(409, false),
     INTERNAL(500, false),
@@ -66,6 +67,7 @@ public enum ErrorCode {
             case 403 -> FORBIDDEN;
             case 404 -> NOT_FOUND;
             case 409 -> CONFLICT;
+            case 429 -> RATE_LIMITED;
             case 501 -> NOT_IMPLEMENTED;
             case 502 -> UPSTREAM_ERROR;
             case 503 -> UPSTREAM_UNAVAILABLE;

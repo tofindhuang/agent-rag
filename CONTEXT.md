@@ -94,6 +94,11 @@ _Avoid_: code runner、REPL
 一次沙箱执行的审计实体，记录代码、触发身份、资源消耗与终态，供追溯与排障；随会话彻底删除而删除，到期后清理。
 _Avoid_: exec log、sandbox log、audit row
 
+### 限流（Rate Limit）
+
+按用户或来源 IP 在固定时间窗口内限制请求数与 token 消耗的保护机制；触发后返回 429 与重试窗口。
+_Avoid_: 流控、throttle、quota（quota 指长期额度）
+
 ### 工具（Tool）
 
 模型可主动调用的操作。首期两个：`kb_search`（知识库检索）、`run_code`（沙箱执行）。

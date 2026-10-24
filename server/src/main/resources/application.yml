@@ -53,6 +53,13 @@ app:
       total-budget-ms: ${KB_OCR_TOTAL_BUDGET_MS:480000}
       min-text-chars: ${KB_OCR_MIN_TEXT_CHARS:10}
       dpi: ${KB_OCR_DPI:200}
+  # Fixed-window rate limits (FR-6). `enabled=false` is the incident switch.
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    user-rpm: ${RATE_LIMIT_USER_RPM:120}
+    user-tpm: ${RATE_LIMIT_USER_TPM:100000}
+    auth-ip-rpm: ${RATE_LIMIT_AUTH_IP_RPM:10}
+    window: ${RATE_LIMIT_WINDOW:60s}
   message-cache:
     ttl: 24h
     max-entries: 100
@@ -82,6 +89,20 @@ app:
     queue-timeout: ${SANDBOX_QUEUE_TIMEOUT:120s}
     permit-lease: ${SANDBOX_PERMIT_LEASE:240s}
     retention-days: ${SANDBOX_RETENTION_DAYS:90}
+
+# Rate-limit metrics live on a separate management port; do not expose other
+# actuator endpoints there.
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9091}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: prometheus
 
 # Local defaults match docker-compose.yml. Flyway owns the schema; the app
 # connects at boot and never generates DDL from entities (ADR-0009).
