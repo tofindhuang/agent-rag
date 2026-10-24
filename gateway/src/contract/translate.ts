@@ -12,7 +12,6 @@ import { truncateUtf8 } from "./text.js";
 export interface ContextUsageSnapshot {
   tokens: number | null;
   contextWindow: number;
-  percent: number | null;
   source: "provider" | "estimated";
 }
 
@@ -172,6 +171,9 @@ export class RunTranslator {
         return this.translateMessageUpdate(raw);
       case "message_end": {
         const events = this.translateMessageEnd(raw);
+        if (raw.message?.role !== "assistant") {
+          return events;
+        }
         const tokens = providerContextTokens(raw.message?.usage);
         if (tokens != null) {
           this.context.onContextTokens?.(tokens);
@@ -184,7 +186,7 @@ export class RunTranslator {
         return this.translateToolResult(raw);
       case "compaction_end":
         this.context.onContextTokens?.(null);
-        return [...this.translateCompaction(raw), ...this.contextUsageEvents(null, "provider")];
+        return [...this.translateCompaction(raw), ...this.contextUsageEvents(null, "estimated")];
       case "auto_retry_start":
         return this.translateRetry(raw);
       case "agent_settled":

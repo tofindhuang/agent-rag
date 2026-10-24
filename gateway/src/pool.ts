@@ -211,7 +211,7 @@ export class SessionPool implements GatewayPool {
     });
     applyCompactionSettings(
       settingsManager,
-      built?.model.contextWindow ?? session.model?.contextWindow,
+      session.model?.contextWindow,
       this.config.compaction,
     );
     return session;
@@ -221,6 +221,12 @@ export class SessionPool implements GatewayPool {
   beginRun(sessionId: string, identity: RunIdentity): PoolEntry | null {
     const entry = this.entries.get(sessionId);
     if (!entry || entry.activeRun) return null;
+    // pi reports null after a between-runs compaction; the previous provider
+    // count is no longer a valid description of the current context.
+    const estimate = entry.session.getContextUsage?.();
+    if (estimate && estimate.tokens === null) {
+      entry.lastContextTokens = null;
+    }
     entry.activeRun = identity;
     entry.runRef.current = identity;
     entry.lastActiveAt = Date.now();

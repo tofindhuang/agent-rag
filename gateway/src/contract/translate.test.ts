@@ -183,7 +183,7 @@ test("emits context usage after start, assistant messages and compaction", () =>
     turnId: "turn-1",
     sessionId: "session-1",
     contractVersion: "1",
-    contextUsage: () => ({ ...usage, source: "estimated" }),
+    contextUsage: () => ({ tokens: usage.tokens, contextWindow: usage.contextWindow, source: "estimated" }),
     compactionThresholdPercent: 80,
     compactionEnabled: true,
   });
@@ -237,6 +237,7 @@ test("emits context usage after start, assistant messages and compaction", () =>
   if (compaction[1]?.type === "context_usage") {
     assert.equal(compaction[1].data.tokens, null);
     assert.equal(compaction[1].data.percent, null);
+    assert.equal(compaction[1].data.source, "estimated");
   }
 });
 
@@ -250,7 +251,6 @@ test("prefers provider usage for context_usage and clears it on compaction", () 
     contextUsage: () => ({
       tokens: 100,
       contextWindow: 8_000,
-      percent: 1.25,
       source: "estimated",
     }),
     onContextTokens: (tokens) => seen.push(tokens),
@@ -282,6 +282,12 @@ test("prefers provider usage for context_usage and clears it on compaction", () 
   assert.equal(usage.data.percent, 15.425);
   assert.equal(usage.data.source, "provider");
   assert.deepEqual(seen, [1_234]);
+
+  const nonAssistant = translator.translate({
+    type: "message_end",
+    message: { role: "user", content: [{ type: "text", text: "hi" }] },
+  } as unknown as AgentSessionEvent);
+  assert.deepEqual(nonAssistant, []);
 
   translator.translate({
     type: "compaction_end",

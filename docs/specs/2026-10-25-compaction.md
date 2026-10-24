@@ -90,7 +90,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 
 ### UI
 
-- 会话头部模型/知识库旁显示小胶囊 + 细进度条：`上下文 42% · 压缩阈值 80%`。
+- 输入框/发送按钮下方显示小胶囊 + 细进度条：`上下文 42% · 压缩阈值 80%`；会话头部只保留模型/知识库。
 - 悬停显示 `tokens / contextWindow` 与数据来源（provider 统计 / pi 估算）；占比达到阈值时变色，但不改变对话行为。
 - `tokens/percent` 为 null 时显示「上下文统计中」；`compactionEnabled=false` 时显示「压缩已关闭」。
 - `compaction` 事件仍显示「上下文已压缩」；若压缩发生在 `run_settled` 之后、没有事件，UI 在 `context_usage` 明显下降（≥15 个百分点）时推断并显示持久的「已压缩」标记；模型/会话切换时重置。摘要正文查看是 P1，不做。
@@ -115,7 +115,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 - Translator 单测：有 `contextUsage` provider 时在 run 开始/`message_end`/`compaction_end` 发出 `context_usage`；provider 缺失时既有 fixture 不变。
 - 契约测试：现有 `03-compaction.json` 继续覆盖 AC2（压缩后继续文本、正常终态）。
 - Web：typecheck + build；占比组件的显示/降级逻辑通过类型检查与手动演示验证（项目暂无 web 单测框架）。
-- AC1：低窗口手工验收（`contextWindow=2000`），说明关键事实 → 聊到 3 倍窗口触发 compaction → 追问事实；记录 compaction 事件、上下文占比变化与回复。该项不进 CI（真实模型成本/波动）。
+- AC1：低窗口手工验收，说明关键事实 → 聊到 3 倍窗口触发 compaction → 追问事实；记录 compaction 事件、上下文占比变化与回复。实际使用 32k/64k 窗口（2k 会被系统 prompt + 工具定义占满，见 ticket 03）。该项不进 CI（真实模型成本/波动）。
 - 既有测试基类不受影响；无 DB schema/迁移。
 
 ## Out of Scope

@@ -63,6 +63,11 @@ test("the default session factory forwards the requested model config", async ()
         dispose: () => undefined,
         prompt: async () => undefined,
         subscribe: () => () => undefined,
+        getContextUsage: () => ({
+          tokens: null,
+          contextWindow: 8_000,
+          percent: null,
+        }),
       } as unknown as PiSession;
     }
   }
@@ -80,6 +85,18 @@ test("the default session factory forwards the requested model config", async ()
 
   await pool.ensure("capture-model", "u1", requested);
   assert.deepEqual(pool.captured, requested);
+
+  const entry = pool.get("capture-model");
+  assert.ok(entry);
+  entry.lastContextTokens = 1_234;
+  pool.beginRun("capture-model", {
+    userId: "u1",
+    sessionId: "capture-model",
+    turnId: "t",
+    runId: "r",
+    requestId: "q",
+  });
+  assert.equal(entry.lastContextTokens, null);
   await pool.disposeAll();
 });
 

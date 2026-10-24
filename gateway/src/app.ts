@@ -181,20 +181,18 @@ export function createApp({ config, pool }: AppDependencies): Express {
           running.session.getContextUsage?.()?.contextWindow ??
           0;
         if (window <= 0) return undefined;
-        if (running.lastContextTokens != null) {
+        const estimate = running.session.getContextUsage?.();
+        if (running.lastContextTokens != null && estimate?.tokens !== null) {
           return {
             tokens: running.lastContextTokens,
             contextWindow: window,
-            percent: (running.lastContextTokens / window) * 100,
             source: "provider" as const,
           };
         }
-        const estimate = running.session.getContextUsage?.();
         if (!estimate) return undefined;
         return {
           tokens: estimate.tokens,
           contextWindow: window,
-          percent: estimate.percent,
           source: "estimated" as const,
         };
       },
