@@ -11,7 +11,13 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --default-timeout=120 --retries 5 -r requirements.txt
+# Override these build args with a local mirror when the default index is slow.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=
+RUN pip install --default-timeout=300 --retries 10 \
+      --index-url "$PIP_INDEX_URL" \
+      $(if [ -n "$PIP_TRUSTED_HOST" ]; then echo "--trusted-host $PIP_TRUSTED_HOST"; fi) \
+      -r requirements.txt
 COPY app ./app
 
 EXPOSE 8000

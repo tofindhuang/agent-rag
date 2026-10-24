@@ -35,6 +35,15 @@ uvicorn app.main:app --port 8000
 
 `docker compose --profile ocr up -d ocr` 走镜像构建；模型烤进镜像，不需要联网下载。
 
+PyPI 直连较慢时用镜像源构建：
+
+```bash
+docker build \
+  --build-arg PIP_INDEX_URL=http://mirrors.aliyun.com/pypi/simple \
+  --build-arg PIP_TRUSTED_HOST=mirrors.aliyun.com \
+  -t agent-core-ocr:local ./ocr
+```
+
 ## 测试
 
 ```bash

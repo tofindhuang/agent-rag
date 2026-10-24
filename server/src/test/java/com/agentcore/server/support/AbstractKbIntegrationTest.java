@@ -75,7 +75,10 @@ public abstract class AbstractKbIntegrationTest extends AbstractIntegrationTest 
         registry.add("app.kb.embedding.path", () -> "/embeddings");
         registry.add("app.kb.embedding.dim", () -> "1024");
         registry.add("app.kb.ocr.enabled", () -> "true");
-        registry.add("app.kb.ocr.base-url", OCR::baseUrl);
+        registry.add("app.kb.ocr.base-url", () -> {
+            String external = System.getenv("OCR_IT_BASE_URL");
+            return external == null || external.isBlank() ? OCR.baseUrl() : external;
+        });
         registry.add("app.kb.ocr.max-pages", () -> "50");
         registry.add("app.kb.ocr.timeout-ms", () -> "2000");
         registry.add("app.kb.ocr.total-budget-ms", () -> "60000");
