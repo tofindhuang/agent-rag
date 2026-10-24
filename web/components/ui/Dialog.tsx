@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
 import styles from "./ui.module.css";
 
 interface DialogProps {
@@ -36,16 +38,28 @@ export function Dialog({
   const [trigger] = useState<HTMLElement | null>(() =>
     typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
   );
+  // Portaling to <body> keeps fixed positioning relative to the viewport: a
+  // sticky/backdrop-filtered ancestor would otherwise become its containing
+  // block and push the panel off-screen.
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     const panel = panelRef.current;
     const focusables = panel ? [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)] : [];
     (focusables[0] ?? panel)?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     return () => {
+      document.body.style.overflow = previousOverflow;
       if (trigger?.isConnected) trigger.focus();
     };
-  }, [trigger]);
+  }, [trigger, mounted]);
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
@@ -74,7 +88,9 @@ export function Dialog({
     }
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className={styles.overlay}
       onMouseDown={(event) => {
@@ -102,6 +118,7 @@ export function Dialog({
         {children ? <div className={styles.dialogBody}>{children}</div> : null}
         {actions ? <div className={styles.actions}>{actions}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
