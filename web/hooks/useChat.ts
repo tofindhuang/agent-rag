@@ -28,6 +28,14 @@ const SYSTEM_DEFAULT_SENTINEL = "系统默认";
 /** Which action produced the current error; each surface shows only its own. */
 type ErrorSource = "send" | "create" | "switch" | "other";
 
+function toolNameFromDetails(details: unknown): string {
+  if (details !== null && typeof details === "object" && "toolName" in details) {
+    const name = (details as { toolName?: unknown }).toolName;
+    if (typeof name === "string" && name.trim().length > 0) return name;
+  }
+  return "工具结果";
+}
+
 function newAssistant(): ChatMessage {
   return { role: "assistant", content: "", thinking: "", tools: [], status: "streaming" };
 }
@@ -42,7 +50,7 @@ function toHistoryMessages(items: HistoryItem[]): ChatMessage[] {
     if (item.role === "tool") {
       const tool: ToolActivity = {
         toolCallId: `history-${item.id}`,
-        name: "工具结果",
+        name: toolNameFromDetails(item.details),
         argsText: "",
         output: item.content ?? "",
         status: item.status === "error" ? "error" : "done",

@@ -161,7 +161,7 @@ class ChatServiceImplTest {
         org.mockito.ArgumentCaptor<String> details =
                 org.mockito.ArgumentCaptor.forClass(String.class);
         verify(projection).appendTool(
-                any(), anyInt(), eq("tool output"), details.capture());
+                any(), anyInt(), eq("tool output"), eq("kb_search"), details.capture());
         assertThat(details.getValue()).contains("\"passageId\":\"p-1\"");
     }
 

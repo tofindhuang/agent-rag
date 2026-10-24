@@ -130,8 +130,7 @@ public class SandboxServiceImpl implements SandboxService {
         sink.started(execution.execId());
         sink.phase("starting");
         if (cancellation.isCancelled()) {
-            settle(execution, "aborted", null, elapsedMs(startedNanos), false, false, false,
-                    null, null, null, null, "client disconnected");
+            settleFailure(execution, "aborted", null, elapsedMs(startedNanos), "client disconnected");
             return;
         }
         markStartedQuietly(execution.execId());
@@ -141,17 +140,11 @@ public class SandboxServiceImpl implements SandboxService {
                     sink,
                     cancellation);
             if (cancellation.isCancelled()) {
-                settle(execution, "aborted", outcome.exitCode(), outcome.durationMs(),
-                        outcome.timedOut(), outcome.truncated(), outcome.oomKilled(),
-                        outcome.peakMemoryBytes(), outcome.cpuTimeMs(), outcome.stdout(),
-                        outcome.stderr(), "client disconnected");
+                settleOutcome(execution, "aborted", outcome, "client disconnected");
                 return;
             }
             String status = terminalStatus(outcome);
-            settle(execution, status, outcome.exitCode(), outcome.durationMs(),
-                    outcome.timedOut(), outcome.truncated(), outcome.oomKilled(),
-                    outcome.peakMemoryBytes(), outcome.cpuTimeMs(), outcome.stdout(),
-                    outcome.stderr(), null);
+            settleOutcome(execution, status, outcome, null);
             sink.result(new SandboxExecResult(
                     outcome.exitCode(), outcome.durationMs(), outcome.timedOut(), outcome.truncated()));
         } catch (RuntimeException ex) {
@@ -161,12 +154,10 @@ public class SandboxServiceImpl implements SandboxService {
                     : "sandbox error: " + ex.getMessage();
             log.error("sandbox execution {} failed", execution.execId(), ex);
             if (cancellation.isCancelled()) {
-                settle(execution, "aborted", null, durationMs, false, false, false,
-                        null, null, null, null, "client disconnected");
+                settleFailure(execution, "aborted", null, durationMs, "client disconnected");
                 return;
             }
-            settle(execution, "error", -1, durationMs, false, false, false,
-                    null, null, null, null, message);
+            settleFailure(execution, "error", -1, durationMs, message);
             sink.stderr(message);
             sink.result(new SandboxExecResult(-1, durationMs, false, false));
         }
@@ -175,8 +166,7 @@ public class SandboxServiceImpl implements SandboxService {
     @Override
     public void abandon(SandboxExecution execution, String reason) {
         try {
-            settle(execution, "error", -1, 0, false, false, false,
-                    null, null, null, null, reason);
+            settleFailure(execution, "error", -1, 0, reason);
         } finally {
             execution.permit().release();
         }
@@ -190,6 +180,27 @@ public class SandboxServiceImpl implements SandboxService {
             return "failed";
         }
         return outcome.exitCode() == 0 ? "succeeded" : "failed";
+    }
+
+    private void settleOutcome(
+            SandboxExecution execution,
+            String status,
+            SandboxRunOutcome outcome,
+            String errorMessage) {
+        settle(execution, status, outcome.exitCode(), outcome.durationMs(),
+                outcome.timedOut(), outcome.truncated(), outcome.oomKilled(),
+                outcome.peakMemoryBytes(), outcome.cpuTimeMs(), outcome.stdout(),
+                outcome.stderr(), errorMessage);
+    }
+
+    private void settleFailure(
+            SandboxExecution execution,
+            String status,
+            Integer exitCode,
+            long durationMs,
+            String errorMessage) {
+        settle(execution, status, exitCode, durationMs, false, false, false,
+                null, null, null, null, errorMessage);
     }
 
     private void settle(

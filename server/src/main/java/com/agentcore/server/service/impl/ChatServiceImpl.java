@@ -447,6 +447,7 @@ public class ChatServiceImpl implements ChatService {
                             prompt.turn(),
                             state.nextOrdinal++,
                             data.path("content").asText(""),
+                            data.path("name").asText(""),
                             detailsJson(data.path("details")));
                     case "run_settled" -> {
                         JsonNode error = data.path("error");

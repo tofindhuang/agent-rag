@@ -9,6 +9,10 @@ import com.agentcore.server.domain.Run;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -29,16 +33,19 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     private final RunDao runDao;
     private final SessionDao sessionDao;
     private final MessageCache messageCache;
+    private final ObjectMapper objectMapper;
 
     public ChatProjectionServiceImpl(
             MessageDao messageDao,
             RunDao runDao,
             SessionDao sessionDao,
-            MessageCache messageCache) {
+            MessageCache messageCache,
+            ObjectMapper objectMapper) {
         this.messageDao = messageDao;
         this.runDao = runDao;
         this.sessionDao = sessionDao;
         this.messageCache = messageCache;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -99,10 +106,11 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     }
 
     @Override
-    public void appendTool(TurnKey turn, int ordinal, String content, String detailsJson) {
+    public void appendTool(
+            TurnKey turn, int ordinal, String content, String toolName, String detailsJson) {
         Message message = baseMessage(turn, ordinal, "tool");
         message.setContent(truncateUtf8(content, TOOL_CONTENT_LIMIT_BYTES));
-        message.setDetails(boundedDetails(detailsJson));
+        message.setDetails(toolDetails(detailsJson, toolName));
         messageDao.upsert(message);
         cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
     }
@@ -146,6 +154,33 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
      * details is JSON: truncation would corrupt it, so an oversized payload is
      * dropped entirely (history then degrades to the plain tool card).
      */
+    /** Keeps the tool name for history rendering without a schema change. */
+    private String toolDetails(String detailsJson, String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return boundedDetails(detailsJson);
+        }
+        ObjectNode node = null;
+        if (detailsJson != null && !detailsJson.isBlank()) {
+            try {
+                JsonNode parsed = objectMapper.readTree(detailsJson);
+                if (parsed.isObject()) {
+                    node = (ObjectNode) parsed;
+                }
+            } catch (JsonProcessingException ignored) {
+                // Malformed details from an upstream version; keep the tool name.
+            }
+        }
+        if (node == null) {
+            node = objectMapper.createObjectNode();
+        }
+        node.put("toolName", toolName);
+        try {
+            return boundedDetails(objectMapper.writeValueAsString(node));
+        } catch (JsonProcessingException ex) {
+            return boundedDetails(detailsJson);
+        }
+    }
+
     private static String boundedDetails(String detailsJson) {
         if (detailsJson == null || detailsJson.isBlank()) {
             return null;

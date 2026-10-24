@@ -52,6 +52,11 @@ interface ExecResultFrame {
   truncated: boolean;
 }
 
+// Contract v1 §8: 64 KiB result cap and a 60s execution ceiling.
+const TOOL_DEFAULT_TIMEOUT_MS = 30_000;
+const TOOL_MAX_TIMEOUT_MS = 60_000;
+const CONTRACT_MAX_OUTPUT_BYTES = 64 * 1024;
+
 interface RunCodeParams {
   language?: string;
   code: string;
@@ -157,7 +162,9 @@ export function runCodeExtension(
           language: Type.Optional(Type.String({ description: "Programming language, default 'python'" })),
           code: Type.String({ description: "Full source code to execute" }),
           timeoutMs: Type.Optional(
-            Type.Number({ description: "Execution timeout in milliseconds (default 30000, max 60000)" }),
+            Type.Number({
+              description: `Execution timeout in milliseconds (default ${TOOL_DEFAULT_TIMEOUT_MS}, max ${TOOL_MAX_TIMEOUT_MS})`,
+            }),
           ),
         }),
         async execute(_toolCallId, params, signal, onUpdate) {
@@ -254,7 +261,7 @@ async function runInSandbox(
     body: JSON.stringify({
       language: params.language ?? "python",
       code: params.code,
-      timeoutMs: Math.min(params.timeoutMs ?? 30_000, 60_000),
+      timeoutMs: Math.min(params.timeoutMs ?? TOOL_DEFAULT_TIMEOUT_MS, TOOL_MAX_TIMEOUT_MS),
     }),
     signal,
   });
@@ -267,7 +274,7 @@ async function runInSandbox(
 
   const reader = res.body.getReader();
   const parser = new SseFrameParser();
-  const output = new CappedOutput(64 * 1024);
+  const output = new CappedOutput(CONTRACT_MAX_OUTPUT_BYTES);
   let execId: string | undefined;
   let result: ExecResultFrame | undefined;
 

@@ -25,8 +25,9 @@ public interface ChatProjectionService {
             long tokensOut,
             String status);
 
-    /** Stores a tool result; detailsJson is optional structured data (bounded 8 KiB). */
-    void appendTool(TurnKey turn, int ordinal, String content, String detailsJson);
+    /** Stores a tool result; toolName and optional structured details are bounded to 8 KiB. */
+    void appendTool(
+            TurnKey turn, int ordinal, String content, String toolName, String detailsJson);
 
     /** Settles the run; any settled run means the user message reached the gateway. */
     void settleRun(
