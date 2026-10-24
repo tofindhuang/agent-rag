@@ -4,10 +4,12 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.common.sandbox.CancellationToken;
+import com.agentcore.server.common.sandbox.SandboxAdmission;
 import com.agentcore.server.common.sandbox.SandboxContainerRunner;
 import com.agentcore.server.common.sandbox.SandboxEventSink;
 import com.agentcore.server.common.sandbox.SandboxExecResult;
 import com.agentcore.server.common.sandbox.SandboxRunOutcome;
+import com.agentcore.server.common.sandbox.SandboxPermit;
 import com.agentcore.server.common.sandbox.SandboxRunSpec;
 import com.agentcore.server.common.sandbox.SandboxUnavailableException;
 import com.agentcore.server.config.SandboxProperties;
@@ -37,12 +39,17 @@ public class SandboxServiceImpl implements SandboxService {
 
     private final SandboxProperties properties;
     private final SandboxContainerRunner runner;
+    private final SandboxAdmission admission;
     private final ExecRecordDao recordDao;
 
     public SandboxServiceImpl(
-            SandboxProperties properties, SandboxContainerRunner runner, ExecRecordDao recordDao) {
+            SandboxProperties properties,
+            SandboxContainerRunner runner,
+            SandboxAdmission admission,
+            ExecRecordDao recordDao) {
         this.properties = properties;
         this.runner = runner;
+        this.admission = admission;
         this.recordDao = recordDao;
     }
 
@@ -70,6 +77,7 @@ public class SandboxServiceImpl implements SandboxService {
             throw new ApiException(ErrorCode.SANDBOX_UNAVAILABLE, ex.getMessage(), ex);
         }
 
+        SandboxPermit permit = admission.acquire(userId);
         String execId = UUID.randomUUID().toString();
         ExecRecord record = new ExecRecord();
         record.setId(execId);
@@ -87,6 +95,7 @@ public class SandboxServiceImpl implements SandboxService {
         try {
             recordDao.insert(record);
         } catch (RuntimeException ex) {
+            permit.release();
             log.error("failed to insert exec audit row for {}", execId, ex);
             throw new ApiException(ErrorCode.SANDBOX_UNAVAILABLE,
                     "sandbox audit unavailable; retry later", ex);
@@ -101,11 +110,21 @@ public class SandboxServiceImpl implements SandboxService {
                 identity.turnId(),
                 identity.runId(),
                 identity.toolCallId(),
-                identity.requestId());
+                identity.requestId(),
+                permit);
     }
 
     @Override
     public void run(
+            SandboxExecution execution, SandboxEventSink sink, CancellationToken cancellation) {
+        try {
+            runExecution(execution, sink, cancellation);
+        } finally {
+            execution.permit().release();
+        }
+    }
+
+    private void runExecution(
             SandboxExecution execution, SandboxEventSink sink, CancellationToken cancellation) {
         long startedNanos = System.nanoTime();
         sink.started(execution.execId());
@@ -150,6 +169,16 @@ public class SandboxServiceImpl implements SandboxService {
                     null, null, null, null, message);
             sink.stderr(message);
             sink.result(new SandboxExecResult(-1, durationMs, false, false));
+        }
+    }
+
+    @Override
+    public void abandon(SandboxExecution execution, String reason) {
+        try {
+            settle(execution, "error", -1, 0, false, false, false,
+                    null, null, null, null, reason);
+        } finally {
+            execution.permit().release();
         }
     }
 

@@ -16,7 +16,10 @@ public record SandboxProperties(
         Integer codeMaxBytes,
         Integer outputMaxBytes,
         Integer chunkMaxBytes,
-        Integer globalConcurrency) {
+        Integer globalConcurrency,
+        Integer perUserConcurrency,
+        Duration queueTimeout,
+        Duration permitLease) {
 
     public SandboxProperties {
         if (image == null || image.isBlank()) {
@@ -40,10 +43,20 @@ public record SandboxProperties(
         if (globalConcurrency == null || globalConcurrency <= 0) {
             globalConcurrency = 8;
         }
+        if (perUserConcurrency == null || perUserConcurrency <= 0) {
+            perUserConcurrency = 2;
+        }
+        if (queueTimeout == null) {
+            queueTimeout = Duration.ofSeconds(120);
+        }
+        if (permitLease == null) {
+            permitLease = Duration.ofSeconds(240);
+        }
     }
 
     /** Test/fallback constructor with all defaults. */
     public static SandboxProperties defaults() {
-        return new SandboxProperties(null, null, null, null, null, null, null, null);
+        return new SandboxProperties(
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 }

@@ -78,6 +78,9 @@ app:
     output-max-bytes: ${SANDBOX_OUTPUT_MAX_BYTES:65536}
     chunk-max-bytes: ${SANDBOX_CHUNK_MAX_BYTES:2048}
     global-concurrency: ${SANDBOX_GLOBAL_CONCURRENCY:8}
+    per-user-concurrency: ${SANDBOX_PER_USER_CONCURRENCY:2}
+    queue-timeout: ${SANDBOX_QUEUE_TIMEOUT:120s}
+    permit-lease: ${SANDBOX_PERMIT_LEASE:240s}
 
 # Local defaults match docker-compose.yml. Flyway owns the schema; the app
 # connects at boot and never generates DDL from entities (ADR-0009).

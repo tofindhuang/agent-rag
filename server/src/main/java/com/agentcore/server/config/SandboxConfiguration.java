@@ -7,7 +7,12 @@ import com.github.dockerjava.core.DockerClientImpl;
 import com.github.dockerjava.transport.DockerHttpClient;
 import com.github.dockerjava.zerodep.ZerodepDockerHttpClient;
 import java.time.Duration;
+import org.redisson.Redisson;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
+import org.redisson.config.SingleServerConfig;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
@@ -35,6 +40,28 @@ public class SandboxConfiguration {
                 .responseTimeout(properties.maxTimeout().plusSeconds(30))
                 .build();
         return DockerClientImpl.getInstance(config, httpClient);
+    }
+
+    @Bean(destroyMethod = "shutdown")
+    public RedissonClient sandboxRedissonClient(RedisProperties redis) {
+        Config config = new Config();
+        // A Redis outage must not block chat/KB startup (FR-3).
+        config.setLazyInitialization(true);
+        SingleServerConfig server = config.useSingleServer()
+                .setAddress("redis://" + redis.getHost() + ":" + redis.getPort())
+                .setDatabase(redis.getDatabase())
+                .setConnectionMinimumIdleSize(1)
+                .setConnectionPoolSize(8);
+        if (redis.getPassword() != null && !redis.getPassword().isBlank()) {
+            server.setPassword(redis.getPassword());
+        }
+        if (redis.getConnectTimeout() != null) {
+            server.setConnectTimeout((int) redis.getConnectTimeout().toMillis());
+        }
+        if (redis.getTimeout() != null) {
+            server.setTimeout((int) redis.getTimeout().toMillis());
+        }
+        return Redisson.create(config);
     }
 
     @Bean(name = "sandboxExecutor")

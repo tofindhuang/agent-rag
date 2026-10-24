@@ -1,5 +1,7 @@
 package com.agentcore.server.dto.sandbox;
 
+import com.agentcore.server.common.sandbox.SandboxPermit;
+
 /**
  * Validated execution admitted by the service before the SSE stream starts.
  * The controller uses this to avoid starting a stream for rejected requests.
@@ -14,4 +16,5 @@ public record SandboxExecution(
         String turnId,
         String runId,
         String toolCallId,
-        String requestId) {}
+        String requestId,
+        SandboxPermit permit) {}

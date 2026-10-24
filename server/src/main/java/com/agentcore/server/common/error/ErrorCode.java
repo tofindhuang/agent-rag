@@ -40,6 +40,7 @@ public enum ErrorCode {
     UPSTREAM_ERROR(502, false),
     UPSTREAM_UNAVAILABLE(503, true),
     SANDBOX_UNAVAILABLE(503, true),
+    SANDBOX_QUEUE_TIMEOUT(503, true),
     KB_UNAVAILABLE(503, true);
 
     private final int status;

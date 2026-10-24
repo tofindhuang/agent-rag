@@ -7,9 +7,11 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.common.sandbox.CancellationToken;
+import com.agentcore.server.common.sandbox.SandboxAdmission;
 import com.agentcore.server.common.sandbox.SandboxContainerRunner;
 import com.agentcore.server.common.sandbox.SandboxEventSink;
 import com.agentcore.server.common.sandbox.SandboxExecResult;
+import com.agentcore.server.common.sandbox.SandboxPermit;
 import com.agentcore.server.common.sandbox.SandboxRunOutcome;
 import com.agentcore.server.common.sandbox.SandboxRunSpec;
 import com.agentcore.server.common.sandbox.SandboxUnavailableException;
@@ -31,8 +33,10 @@ class SandboxServiceImplTest {
     private final InMemoryExecRecordDao records = new InMemoryExecRecordDao();
     private final RecordingSink sink = new RecordingSink();
     private final FakeRunner runner = new FakeRunner();
+    private final FakeAdmission admission = new FakeAdmission();
     private final SandboxProperties properties = SandboxProperties.defaults();
-    private final SandboxServiceImpl service = new SandboxServiceImpl(properties, runner, records);
+    private final SandboxServiceImpl service =
+            new SandboxServiceImpl(properties, runner, admission, records);
     private final ToolIdentity identity =
             new ToolIdentity("42", "session-1", "turn-1", "run-1", "call-1", "req-1");
 
@@ -52,6 +56,8 @@ class SandboxServiceImplTest {
         assertThat(row.getRunId()).isEqualTo("run-1");
         assertThat(row.getToolCallId()).isEqualTo("call-1");
         assertThat(row.getImage()).isEqualTo("agent-core-sandbox:python-3.12");
+        assertThat(admission.acquired).isEqualTo(1);
+        assertThat(admission.released).isZero();
     }
 
     @Test
@@ -75,8 +81,8 @@ class SandboxServiceImplTest {
     @Test
     void startRejectsOversizedCode() {
         SandboxProperties tiny = new SandboxProperties(
-                null, null, null, null, 4, null, null, null);
-        SandboxServiceImpl strict = new SandboxServiceImpl(tiny, runner, records);
+                null, null, null, null, 4, null, null, null, null, null, null);
+        SandboxServiceImpl strict = new SandboxServiceImpl(tiny, runner, admission, records);
 
         assertThatThrownBy(() ->
                         strict.start(new SandboxExecRequest("python", "12345", null), identity))
@@ -108,7 +114,7 @@ class SandboxServiceImplTest {
     }
 
     @Test
-    void startFailsClosedWhenAuditInsertFails() {
+    void startFailsClosedWhenAuditInsertFailsAndReleasesThePermit() {
         records.failInsert = true;
 
         assertThatThrownBy(() ->
@@ -116,6 +122,44 @@ class SandboxServiceImplTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).code())
                         .isEqualTo(ErrorCode.SANDBOX_UNAVAILABLE));
+        assertThat(admission.released).isEqualTo(1);
+    }
+
+    @Test
+    void startReturnsQueueTimeoutWithoutWritingAudit() {
+        admission.failure = new ApiException(ErrorCode.SANDBOX_QUEUE_TIMEOUT, "queue full");
+
+        assertThatThrownBy(() ->
+                        service.start(new SandboxExecRequest("python", "pass", null), identity))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).code())
+                        .isEqualTo(ErrorCode.SANDBOX_QUEUE_TIMEOUT));
+        assertThat(records.rows).isEmpty();
+    }
+
+    @Test
+    void runReleasesThePermitOnEveryPath() {
+        SandboxExecution execution = service.start(
+                new SandboxExecRequest("python", "pass", null), identity);
+        service.run(execution, sink, new CancellationToken());
+        assertThat(admission.released).isEqualTo(1);
+
+        runner.failure = new SandboxUnavailableException("docker went away");
+        SandboxExecution failed = service.start(
+                new SandboxExecRequest("python", "pass", null), identity);
+        service.run(failed, sink, new CancellationToken());
+        assertThat(admission.released).isEqualTo(2);
+    }
+
+    @Test
+    void abandonSettlesErrorAndReleasesThePermit() {
+        SandboxExecution execution = service.start(
+                new SandboxExecRequest("python", "pass", null), identity);
+
+        service.abandon(execution, "executor rejected");
+
+        assertThat(records.findById(execution.execId()).getStatus()).isEqualTo("error");
+        assertThat(admission.released).isEqualTo(1);
     }
 
     @Test
@@ -216,6 +260,22 @@ class SandboxServiceImplTest {
             Long cpuTime) {
         return new SandboxRunOutcome(
                 exitCode, 123, timedOut, truncated, oom, peakMemory, cpuTime, stdout, stderr);
+    }
+
+    private static final class FakeAdmission implements SandboxAdmission {
+
+        private int acquired;
+        private int released;
+        private RuntimeException failure;
+
+        @Override
+        public SandboxPermit acquire(long userId) {
+            if (failure != null) {
+                throw failure;
+            }
+            acquired++;
+            return () -> released++;
+        }
     }
 
     private static final class FakeRunner implements SandboxContainerRunner {

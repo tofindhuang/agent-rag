@@ -16,4 +16,7 @@ public interface SandboxService {
     SandboxExecution start(SandboxExecRequest request, ToolIdentity identity);
 
     void run(SandboxExecution execution, SandboxEventSink sink, CancellationToken cancellation);
+
+    /** Releases admission and marks the audit row when the executor rejects the task. */
+    void abandon(SandboxExecution execution, String reason);
 }

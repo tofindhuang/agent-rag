@@ -15,6 +15,7 @@ import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.common.sandbox.CancellationToken;
 import com.agentcore.server.common.sandbox.SandboxEventSink;
 import com.agentcore.server.common.sandbox.SandboxExecResult;
+import com.agentcore.server.common.sandbox.SandboxPermit;
 import com.agentcore.server.dto.sandbox.SandboxExecRequest;
 import com.agentcore.server.dto.sandbox.SandboxExecution;
 import com.agentcore.server.service.SandboxService;
@@ -128,11 +129,15 @@ class SandboxControllerTest {
                     identity.turnId(),
                     identity.runId(),
                     identity.toolCallId(),
-                    identity.requestId());
+                    identity.requestId(),
+                    SandboxPermit.noop());
         }
 
         @Override
         public void run(
                 SandboxExecution execution, SandboxEventSink sink, CancellationToken cancellation) {}
+
+        @Override
+        public void abandon(SandboxExecution execution, String reason) {}
     }
 }

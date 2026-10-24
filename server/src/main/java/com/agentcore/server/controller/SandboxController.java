@@ -87,6 +87,7 @@ public class SandboxController {
         } catch (RuntimeException ex) {
             heartbeat.cancel(false);
             cancellation.cancel();
+            sandboxService.abandon(execution, "sandbox executor rejected the request");
             emitter.completeWithError(ex);
         }
         return emitter;
