@@ -67,6 +67,17 @@ app:
     base-url: ${GATEWAY_URL:http://localhost:3001}
     # Shared token; must match the gateway's GATEWAY_API_TOKEN when set.
     api-token: ${GATEWAY_API_TOKEN:}
+  # run_code executor (FR-3). The image must exist on the Docker host;
+  # the server never builds or pulls it at runtime.
+  sandbox:
+    docker-host: ${SANDBOX_DOCKER_HOST:}
+    image: ${SANDBOX_IMAGE:agent-core-sandbox:python-3.12}
+    default-timeout: ${SANDBOX_DEFAULT_TIMEOUT:30s}
+    max-timeout: ${SANDBOX_MAX_TIMEOUT:60s}
+    code-max-bytes: ${SANDBOX_CODE_MAX_BYTES:262144}
+    output-max-bytes: ${SANDBOX_OUTPUT_MAX_BYTES:65536}
+    chunk-max-bytes: ${SANDBOX_CHUNK_MAX_BYTES:2048}
+    global-concurrency: ${SANDBOX_GLOBAL_CONCURRENCY:8}
 
 # Local defaults match docker-compose.yml. Flyway owns the schema; the app
 # connects at boot and never generates DDL from entities (ADR-0009).

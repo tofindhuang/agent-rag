@@ -25,6 +25,8 @@
     <pdfbox.version>3.0.7</pdfbox.version>
     <poi.version>5.5.1</poi.version>
     <jsoup.version>1.21.1</jsoup.version>
+    <!-- run_code executor (FR-3); exact pin per repo dependency policy. -->
+    <docker-java.version>3.4.2</docker-java.version>
     <!-- Docker Engine 29 requires API >= 1.40; Boot 3.4.2 manages 1.20.4. -->
     <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
@@ -109,6 +111,18 @@
       <groupId>com.nimbusds</groupId>
       <artifactId>nimbus-jose-jwt</artifactId>
       <version>${nimbus-jose-jwt.version}</version>
+    </dependency>
+    <!-- Docker Engine client for the run_code executor (FR-3). The zerodep
+         transport avoids dragging in Jersey/Netty alongside Spring. -->
+    <dependency>
+      <groupId>com.github.docker-java</groupId>
+      <artifactId>docker-java-core</artifactId>
+      <version>${docker-java.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.docker-java</groupId>
+      <artifactId>docker-java-transport-zerodep</artifactId>
+      <version>${docker-java.version}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

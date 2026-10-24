@@ -28,7 +28,8 @@ public class GlobalExceptionHandler {
         if (ex.code().status() >= 500
                 && ex.code() != ErrorCode.NOT_IMPLEMENTED
                 && ex.code() != ErrorCode.UPSTREAM_ERROR
-                && ex.code() != ErrorCode.UPSTREAM_UNAVAILABLE) {
+                && ex.code() != ErrorCode.UPSTREAM_UNAVAILABLE
+                && ex.code() != ErrorCode.SANDBOX_UNAVAILABLE) {
             log.error("request failed: {}", ex.code(), ex);
         } else {
             log.warn("request rejected: {} - {}", ex.code(), ex.getMessage());

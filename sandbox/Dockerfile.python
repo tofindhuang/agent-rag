@@ -1,21 +1,35 @@
 # Sandbox execution image for run_code (requirements.md FR-3).
 #
-# The executor (server/, M1) MUST launch it with these isolation flags:
+# The executor (server/, M1) launches it with these isolation flags:
 #
 #   docker run --rm \
 #     --network none \              # no network (AC: requests.get fails)
-#     --memory 512m --cpus 1 \      # resource limits (AC: runaway loop contained)
+#     --memory 512m --memory-swap 512m --cpus 1 \
 #     --pids-limit 64 \
 #     --read-only \                 # immutable rootfs; writes only to /work tmpfs
 #     --tmpfs /work:size=64m,uid=1000,gid=1000 \
 #     -u 1000:1000 \                # non-root
-#     --cap-drop ALL --security-opt no-new-privileges \
-#     agent-core-sandbox:python-3.12 python /work/main.py
+#     --cap-drop ALL --security-opt no-new-privileges --init \
+#     agent-core-sandbox:python-3.12 python -c 'import time; time.sleep(3600)'
+#
+# The executor starts this idle process, then runs the script through
+# docker exec:
+#
+#   docker exec -i <container> sh -c \
+#     'head -c <N> > /work/main.py && exec python /work/main.py < /dev/null'
+#
+# The code is written to the exec's stdin; head reads exactly N bytes (no EOF
+# needed). docker cp is rejected by the read-only rootfs, and docker-java
+# attach cannot half-close stdin, so `python -` would wait forever.
 #
 # Build:
 #   docker build -t agent-core-sandbox:python-3.12 -f Dockerfile.python .
 
 FROM python:3.12-slim
+
+# AC1 explicitly exercises requests.get; pin it so the failure is the network
+# sandbox rather than a missing module.
+RUN pip install --no-cache-dir requests==2.32.3
 
 RUN useradd --create-home --uid 1000 runner
 

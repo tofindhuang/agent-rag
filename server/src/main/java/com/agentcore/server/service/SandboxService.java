@@ -1,13 +1,19 @@
 package com.agentcore.server.service;
 
 import com.agentcore.server.common.identity.ToolIdentity;
+import com.agentcore.server.common.sandbox.CancellationToken;
+import com.agentcore.server.common.sandbox.SandboxEventSink;
 import com.agentcore.server.dto.sandbox.SandboxExecRequest;
+import com.agentcore.server.dto.sandbox.SandboxExecution;
 
 /**
- * Sandbox execution use cases. Controllers depend on this interface; the
- * implementation lives in {@code service.impl}.
+ * Sandbox execution use cases. {@link #start} validates and admits the request
+ * (errors surface as JSON before SSE); {@link #run} executes it on the sandbox
+ * executor thread and streams frames to the sink.
  */
 public interface SandboxService {
 
-    void exec(SandboxExecRequest request, ToolIdentity identity);
+    SandboxExecution start(SandboxExecRequest request, ToolIdentity identity);
+
+    void run(SandboxExecution execution, SandboxEventSink sink, CancellationToken cancellation);
 }

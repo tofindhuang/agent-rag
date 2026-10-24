@@ -89,6 +89,11 @@ _Avoid_: chunk、fragment
 在临时容器中隔离执行代码：无网络、资源受限、非 root、只读根文件系统、限时，结束即销毁。
 _Avoid_: code runner、REPL
 
+### 执行记录（Exec Record）
+
+一次沙箱执行的审计实体，记录代码、触发身份、资源消耗与终态，供追溯与排障；随会话彻底删除而删除，到期后清理。
+_Avoid_: exec log、sandbox log、audit row
+
 ### 工具（Tool）
 
 模型可主动调用的操作。首期两个：`kb_search`（知识库检索）、`run_code`（沙箱执行）。

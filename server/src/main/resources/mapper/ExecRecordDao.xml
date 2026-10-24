@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.ExecRecordDao">
+
+    <sql id="execRecordColumns">
+        id, user_id, session_id, turn_id, run_id, tool_call_id, request_id, language, code,
+        status, exit_code, duration_ms, timed_out, truncated, oom_killed, peak_memory_bytes,
+        cpu_time_ms, stdout, stderr, error_message, image, created_at, started_at, finished_at
+    </sql>
+
+    <insert id="insert">
+        INSERT INTO exec_records (
+            id, user_id, session_id, turn_id, run_id, tool_call_id, request_id, language, code,
+            status, image, created_at, started_at
+        ) VALUES (
+            #{id}, #{userId}, #{sessionId}, #{turnId}, #{runId}, #{toolCallId}, #{requestId},
+            #{language}, #{code}, #{status}, #{image}, #{createdAt}, #{startedAt}
+        )
+    </insert>
+
+    <update id="markStarted">
+        UPDATE exec_records
+        SET started_at = #{startedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="settle">
+        UPDATE exec_records
+        SET status = #{status},
+            exit_code = #{exitCode},
+            duration_ms = #{durationMs},
+            timed_out = #{timedOut},
+            truncated = #{truncated},
+            oom_killed = #{oomKilled},
+            peak_memory_bytes = #{peakMemoryBytes},
+            cpu_time_ms = #{cpuTimeMs},
+            stdout = #{stdout},
+            stderr = #{stderr},
+            error_message = #{errorMessage},
+            finished_at = #{finishedAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultType="com.agentcore.server.domain.ExecRecord">
+        SELECT <include refid="execRecordColumns"/>
+        FROM exec_records
+        WHERE id = #{id}
+    </select>
+
+</mapper>

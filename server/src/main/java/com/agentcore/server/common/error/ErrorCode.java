@@ -28,6 +28,7 @@ public enum ErrorCode {
     KB_INDEX_STALE(409, false),
     KB_UNSUPPORTED_FORMAT(400, false),
     KB_FILE_TOO_LARGE(413, false),
+    SANDBOX_CODE_TOO_LARGE(413, false),
     CONFLICT(409, false),
     RUN_IN_PROGRESS(409, false),
     NO_ACTIVE_RUN(409, false),
@@ -38,6 +39,7 @@ public enum ErrorCode {
     PROVIDER_PROBE_FAILED(502, false),
     UPSTREAM_ERROR(502, false),
     UPSTREAM_UNAVAILABLE(503, true),
+    SANDBOX_UNAVAILABLE(503, true),
     KB_UNAVAILABLE(503, true);
 
     private final int status;

@@ -47,8 +47,8 @@ class ToolCallbackAuthIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.passages").isEmpty());
 
         mockMvc.perform(execCall().header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN))
-                .andExpect(status().isNotImplemented())
-                .andExpect(jsonPath("$.error.code").value("NOT_IMPLEMENTED"));
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error.code").value("SANDBOX_UNAVAILABLE"));
     }
 
     @Test
