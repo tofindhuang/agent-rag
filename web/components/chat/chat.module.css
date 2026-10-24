@@ -553,6 +553,13 @@
   margin: 0 auto;
 }
 
+.composerFooter {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 900px;
+  margin: 6px auto 0;
+}
+
 .input {
   flex: 1;
   padding: var(--space-2) var(--space-3);

@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/Button";
+import type { ContextUsageData } from "@/types/gateway";
+import { ContextUsageMeter } from "./ContextUsageMeter";
 import styles from "./chat.module.css";
 
 interface ComposerProps {
@@ -8,9 +10,20 @@ interface ComposerProps {
   onStop: () => void;
   disabled: boolean;
   busy: boolean;
+  contextUsage: ContextUsageData | null;
+  contextCompacted: boolean;
 }
 
-export function Composer({ value, onChange, onSend, onStop, disabled, busy }: ComposerProps) {
+export function Composer({
+  value,
+  onChange,
+  onSend,
+  onStop,
+  disabled,
+  busy,
+  contextUsage,
+  contextCompacted,
+}: ComposerProps) {
   return (
     <div className={styles.composer}>
       <div className={styles.composerInner}>
@@ -35,6 +48,11 @@ export function Composer({ value, onChange, onSend, onStop, disabled, busy }: Co
           </Button>
         )}
       </div>
+      {contextUsage ? (
+        <div className={styles.composerFooter}>
+          <ContextUsageMeter usage={contextUsage} compacted={contextCompacted} />
+        </div>
+      ) : null}
     </div>
   );
 }
