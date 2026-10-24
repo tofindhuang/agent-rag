@@ -164,7 +164,11 @@ public class KbIngestionServiceImpl implements KbIngestionService {
         writePassages(passages(document, chunks));
 
         int ready = documentDao.markReady(
-                document.getId(), document.getUserId(), versionOf(document), chunks.size());
+                document.getId(),
+                document.getUserId(),
+                versionOf(document),
+                chunks.size(),
+                parsed.ocrPages());
         // A zero update means deletion or a newer version took over; that owner
         // is responsible for the derived data, so never clean up its work here.
         return ready != 0;

@@ -114,6 +114,11 @@ _Avoid_: import、indexing（重建索引是 Ingestion 的一种）
 回答所依据的具体 Passage 及其文档标题、段序号与页码的展示。
 _Avoid_: source、reference（口语可用，实体是 Citation）
 
+### OCR 识别（OCR）
+
+扫描版 PDF 没有文本层时的逐页文字识别；由独立 RapidOCR 侧车执行，识别文本进入 Passage，页图不落盘。
+_Avoid_: 图片转文字、扫描识别
+
 ### 知识库设置（KB Settings）
 
 用户自带的 embedding/rerank 端点与凭证；未配置时回落到部署默认值。生效来源标记为 `user` / `system` / `none`（rerank 另可标记 `disabled`）。

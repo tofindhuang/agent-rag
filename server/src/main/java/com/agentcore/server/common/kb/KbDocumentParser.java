@@ -1,19 +1,33 @@
 package com.agentcore.server.common.kb;
 
+import com.agentcore.server.config.KbOcrProperties;
 import com.agentcore.server.domain.KbDocument;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import javax.imageio.ImageIO;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
@@ -32,7 +46,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class KbDocumentParser {
 
+    private static final Logger log = LoggerFactory.getLogger(KbDocumentParser.class);
+
     public static final int MAX_PAGES = 500;
+
+    private final KbOcrProperties ocrProperties;
+    private final OcrRecognizer ocrRecognizer;
+
+    public KbDocumentParser(KbOcrProperties ocrProperties, OcrRecognizer ocrRecognizer) {
+        this.ocrProperties = ocrProperties;
+        this.ocrRecognizer = ocrRecognizer;
+    }
 
     /**
      * Some CJK fonts (e.g. STHeiti) map glyphs to CJK Radicals Supplement
@@ -102,7 +126,7 @@ public class KbDocumentParser {
                 KbIngestException.UNSUPPORTED_FORMAT, "unsupported document format");
     }
 
-    private static KbParsedDocument parsePdf(Path file) {
+    private KbParsedDocument parsePdf(Path file) {
         try (PDDocument pdf = Loader.loadPDF(file.toFile())) {
             int pageCount = pdf.getNumberOfPages();
             if (pageCount > MAX_PAGES) {
@@ -112,22 +136,101 @@ public class KbDocumentParser {
             }
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
+            boolean ocr = ocrProperties.configured() && ocrRecognizer != null;
+            PDFRenderer renderer = ocr ? new PDFRenderer(pdf) : null;
+            long ocrDeadline = ocr
+                    ? System.nanoTime() + ocrProperties.totalBudgetMs() * 1_000_000L
+                    : 0L;
+
             List<KbParsedDocument.Page> pages = new ArrayList<>();
+            int ocrPages = 0;
             for (int page = 1; page <= pageCount; page++) {
                 stripper.setStartPage(page);
                 stripper.setEndPage(page);
                 String text = normalizePdfText(stripper.getText(pdf));
+                if (ocr
+                        && needsOcr(text)
+                        && pageHasImage(pdf.getPage(page - 1))) {
+                    if (ocrPages >= ocrProperties.maxPages()) {
+                        throw KbIngestException.permanent(
+                                KbIngestException.OCR_PAGE_LIMIT,
+                                "PDF needs OCR on more than " + ocrProperties.maxPages()
+                                        + " pages");
+                    }
+                    String recognized = ocrPage(renderer, page - 1, ocrDeadline, page);
+                    if (recognized != null && !recognized.isBlank()) {
+                        text = normalizePdfText(recognized);
+                        ocrPages++;
+                    }
+                }
                 if (text != null && !text.isBlank()) {
                     pages.add(new KbParsedDocument.Page(page, text));
                 }
             }
-            return new KbParsedDocument(pages, pageCount);
+            return new KbParsedDocument(pages, pageCount, ocrPages);
         } catch (KbIngestException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
             throw KbIngestException.permanent(
                     KbIngestException.CORRUPT_DOCUMENT, "cannot read PDF", e);
         }
+    }
+
+    private boolean needsOcr(String text) {
+        return text == null || text.strip().length() < ocrProperties.minTextChars();
+    }
+
+    private static boolean pageHasImage(PDPage page) {
+        PDResources resources = page.getResources();
+        if (resources == null) {
+            return false;
+        }
+        try {
+            for (COSName name : resources.getXObjectNames()) {
+                PDXObject object = resources.getXObject(name);
+                if (object instanceof PDImageXObject) {
+                    return true;
+                }
+            }
+        } catch (IOException e) {
+            log.debug("cannot inspect PDF page resources: {}", e.getMessage());
+        }
+        return false;
+    }
+
+    private String ocrPage(
+            PDFRenderer renderer, int pageIndex, long ocrDeadline, int pageNumber) {
+        Duration timeout = remainingBudget(ocrDeadline);
+        try {
+            BufferedImage image = renderer.renderImageWithDPI(
+                    pageIndex, ocrProperties.dpi(), ImageType.RGB);
+            ByteArrayOutputStream png = new ByteArrayOutputStream();
+            if (!ImageIO.write(image, "png", png)) {
+                throw KbIngestException.permanent(
+                        KbIngestException.OCR_INVALID_IMAGE, "cannot encode rendered page");
+            }
+            KbOcrResult result = ocrRecognizer.recognize(png.toByteArray(), timeout);
+            log.info("OCR page {}: {} chars, confidence {}",
+                    pageNumber, result.text().length(), result.confidence());
+            return result.text();
+        } catch (IOException e) {
+            throw KbIngestException.permanent(
+                    KbIngestException.OCR_INVALID_IMAGE, "cannot render PDF page", e);
+        } catch (KbOcrException e) {
+            throw e.retryable()
+                    ? KbIngestException.retryable(e.errorCode(), e.getMessage(), e)
+                    : KbIngestException.permanent(e.errorCode(), e.getMessage(), e);
+        }
+    }
+
+    private Duration remainingBudget(long deadline) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) {
+            throw KbIngestException.retryable(
+                    KbIngestException.OCR_TIMEOUT, "OCR budget is exhausted", null);
+        }
+        long cap = ocrProperties.timeoutMs() * 1_000_000L;
+        return Duration.ofNanos(Math.min(remaining, cap));
     }
 
     private static String normalizePdfText(String text) {

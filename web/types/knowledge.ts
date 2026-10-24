@@ -19,6 +19,8 @@ export interface KbDocument {
   sizeBytes: number;
   status: KbDocumentStatus;
   chunkCount: number;
+  /** Pages recognized by OCR in the last ingestion; 0 = text layer only. */
+  ocrPages: number;
   errorCode: string | null;
   errorMessage: string | null;
   createdAt: string;

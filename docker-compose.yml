@@ -60,6 +60,26 @@ services:
       retries: 20
       start_period: 10s
 
+  # RapidOCR sidecar for scanned PDFs (ADR-0014). Opt-in profile so the default
+  # dev stack stays light: `docker compose --profile ocr up -d`.
+  ocr:
+    profiles: ["ocr"]
+    build: ./ocr
+    ports:
+      - "8000:8000"
+    environment:
+      OCR_API_TOKEN: ${OCR_API_TOKEN:-}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   # S3-compatible originals store (ADR-0013). Silo is the community-maintained
   # MinIO fork; the server talks to it through the standard S3 API.
   silo:

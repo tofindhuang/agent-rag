@@ -16,6 +16,7 @@ agent-core 是基于 [pi](https://github.com/earendil-works/pi-coding-agent) 为
 | `server/` | Java 21 / Spring Boot 3 | 认证、RAG 管线、沙箱调度、画像记忆、业务编排 |
 | `web/` | Next.js / React | 聊天 UI、知识库与记忆管理界面 |
 | `sandbox/` | Docker 镜像 | 隔离代码执行（无网络、资源受限、非 root、只读根） |
+| `ocr/` | Python 3.12 / FastAPI / RapidOCR | 扫描版 PDF 的逐页 OCR 侧车（内部 HTTP，ADR-0014） |
 | `contract/` | — | Java↔gateway 契约 v1、错误码与共享 fixture |
 | `docs/` | — | 需求文档、specs、tickets、ADRs |
 
@@ -29,6 +30,9 @@ cd gateway && npm run dev           # :3001；web 为 :3000
 # server（需 JDK 21）
 cd server && mvn -q compile
 cd server && mvn spring-boot:run    # :8080
+
+# ocr（可选；扫描版 PDF 兜底）
+cd ocr && pytest
 
 # infra
 docker compose up -d                # mysql + redis

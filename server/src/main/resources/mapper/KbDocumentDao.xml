@@ -6,7 +6,7 @@
     <sql id="documentColumns">
         id, user_id, title, source_type, source_url, original_key, original_sha256,
         mime, size_bytes, status, attempts, next_attempt_at, lease_until, enqueued_at,
-        chunk_count, error_code, error_message, version, created_at, updated_at
+        chunk_count, ocr_pages, error_code, error_message, version, created_at, updated_at
     </sql>
 
     <select id="findOwned" resultType="com.agentcore.server.domain.KbDocument">
@@ -111,6 +111,7 @@
         UPDATE kb_documents
         SET status = 'ready',
             chunk_count = #{chunkCount},
+            ocr_pages = #{ocrPages},
             attempts = 0,
             lease_until = NULL,
             next_attempt_at = NULL,
@@ -127,6 +128,7 @@
         UPDATE kb_documents
         SET status = 'failed',
             chunk_count = 0,
+            ocr_pages = 0,
             lease_until = NULL,
             next_attempt_at = NULL,
             error_code = #{errorCode},
@@ -164,6 +166,7 @@
         SET status = 'stale',
             version = version + 1,
             chunk_count = 0,
+            ocr_pages = 0,
             lease_until = NULL,
             next_attempt_at = NULL,
             enqueued_at = NULL,
@@ -186,6 +189,7 @@
             version = version + 1,
             attempts = 0,
             chunk_count = 0,
+            ocr_pages = 0,
             lease_until = NULL,
             next_attempt_at = NULL,
             enqueued_at = NULL,

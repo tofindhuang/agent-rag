@@ -12,6 +12,7 @@ public record KbDocumentView(
         long sizeBytes,
         String status,
         int chunkCount,
+        int ocrPages,
         String errorCode,
         String errorMessage,
         Instant createdAt,

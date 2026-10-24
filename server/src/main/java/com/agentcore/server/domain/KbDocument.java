@@ -39,6 +39,7 @@ public class KbDocument {
     private LocalDateTime leaseUntil;
     private LocalDateTime enqueuedAt;
     private Integer chunkCount;
+    private Integer ocrPages;
     private String errorCode;
     private String errorMessage;
     private Integer version;
@@ -163,6 +164,15 @@ public class KbDocument {
 
     public void setChunkCount(Integer chunkCount) {
         this.chunkCount = chunkCount;
+    }
+
+    /** Pages recognized by OCR in the last successful ingestion; 0 = text layer only. */
+    public Integer getOcrPages() {
+        return ocrPages;
+    }
+
+    public void setOcrPages(Integer ocrPages) {
+        this.ocrPages = ocrPages;
     }
 
     public String getErrorCode() {

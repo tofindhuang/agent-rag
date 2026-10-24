@@ -14,6 +14,9 @@ import com.agentcore.server.support.AbstractKbIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import org.apache.fontbox.ttf.TrueTypeCollection;
 import org.apache.fontbox.ttf.TrueTypeFont;
 import com.rabbitmq.client.Channel;
@@ -29,6 +32,8 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -194,6 +199,38 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     @Test
+    void ingestsAScannedPdfThroughTheOcrSidecar() throws Exception {
+        User user = newUser();
+        OCR.reset();
+        String documentId = uploadBytes(
+                user.token(), "scan.pdf", MediaType.APPLICATION_PDF_VALUE, imageOnlyPdf(2));
+
+        assertThat(awaitStatus(documentId, "ready", 30_000)).isEqualTo("ready");
+        assertThat(jdbc.queryForObject(
+                        "SELECT ocr_pages FROM kb_documents WHERE id = ?",
+                        Integer.class,
+                        documentId))
+                .isEqualTo(2);
+
+        String body = mockMvc.perform(post("/api/kb/search")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + GATEWAY_API_TOKEN)
+                        .header("X-User-Id", Long.toString(user.id()))
+                        .header("X-Session-Id", "session")
+                        .header("X-Turn-Id", "turn")
+                        .header("X-Run-Id", "run")
+                        .header("X-Tool-Call-Id", "call")
+                        .header("X-Request-Id", "request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"OCR 扫描页\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        KbSearchResponse response = objectMapper.readValue(body, KbSearchResponse.class);
+        assertThat(response.passages()).isNotEmpty()
+                .allSatisfy((passage) -> assertThat(passage.content()).contains("OCR 扫描页"));
+        assertThat(OCR.requests()).isPositive();
+    }
+
+    @Test
     void reingestAndReingestAllRebuildWithANewVersion() throws Exception {
         User user = newUser();
         String documentId = upload(user.token(), "reingest.txt", "reingest content ".repeat(50));
@@ -295,6 +332,28 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
         KbTaskMessage task = objectMapper.readValue(deadLetter.getBody(), KbTaskMessage.class);
         assertThat(task.type()).isEqualTo(KbTaskMessage.INGEST);
         assertThat(task.documentId()).isEqualTo(documentId);
+    }
+
+    private static byte[] imageOnlyPdf(int pages) throws Exception {
+        try (PDDocument pdf = new PDDocument();
+                ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            BufferedImage image = new BufferedImage(200, 200, BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = image.createGraphics();
+            graphics.setColor(Color.WHITE);
+            graphics.fillRect(0, 0, 200, 200);
+            graphics.dispose();
+            PDImageXObject pdImage = LosslessFactory.createFromImage(pdf, image);
+            for (int i = 0; i < pages; i++) {
+                PDPage page = new PDPage();
+                pdf.addPage(page);
+                try (PDPageContentStream content = new PDPageContentStream(pdf, page)) {
+                    content.drawImage(pdImage, 0, 0,
+                            page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+                }
+            }
+            pdf.save(out);
+            return out.toByteArray();
+        }
     }
 
     private static byte[] hundredPageChinesePdf(Path fontPath) throws Exception {

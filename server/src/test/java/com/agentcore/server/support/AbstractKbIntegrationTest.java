@@ -29,6 +29,7 @@ public abstract class AbstractKbIntegrationTest extends AbstractIntegrationTest 
             DockerClientFactory.instance().isDockerAvailable();
 
     protected static final FakeEmbeddingServer EMBEDDING = FakeEmbeddingServer.start(1024);
+    protected static final FakeOcrServer OCR = FakeOcrServer.start();
 
     static final GenericContainer<?> SILO =
             new GenericContainer<>("pgsty/silo:RELEASE.2026-10-18T00-00-00Z")
@@ -73,6 +74,11 @@ public abstract class AbstractKbIntegrationTest extends AbstractIntegrationTest 
         registry.add("app.kb.embedding.model", () -> "test-embedding-model");
         registry.add("app.kb.embedding.path", () -> "/embeddings");
         registry.add("app.kb.embedding.dim", () -> "1024");
+        registry.add("app.kb.ocr.enabled", () -> "true");
+        registry.add("app.kb.ocr.base-url", OCR::baseUrl);
+        registry.add("app.kb.ocr.max-pages", () -> "50");
+        registry.add("app.kb.ocr.timeout-ms", () -> "2000");
+        registry.add("app.kb.ocr.total-budget-ms", () -> "60000");
         registry.add("app.kb.qdrant.url",
                 () -> "http://" + QDRANT.getHost() + ":" + QDRANT.getMappedPort(6333));
         registry.add("app.kb.qdrant.collection-prefix", () -> "kb_it");

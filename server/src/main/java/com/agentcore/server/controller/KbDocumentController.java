@@ -142,6 +142,7 @@ public class KbDocumentController {
                 document.getSizeBytes() == null ? 0 : document.getSizeBytes(),
                 document.getStatus(),
                 document.getChunkCount() == null ? 0 : document.getChunkCount(),
+                document.getOcrPages() == null ? 0 : document.getOcrPages(),
                 document.getErrorCode(),
                 document.getErrorMessage(),
                 toInstant(document.getCreatedAt()),

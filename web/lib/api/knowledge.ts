@@ -69,6 +69,7 @@ function parseDocument(value: unknown): KbDocument {
     sizeBytes: asNumber(document.sizeBytes),
     status: asStatus(document.status),
     chunkCount: asNumber(document.chunkCount),
+    ocrPages: asNumber(document.ocrPages),
     errorCode: asNullableString(document.errorCode),
     errorMessage: asNullableString(document.errorMessage),
     createdAt: asString(document.createdAt),

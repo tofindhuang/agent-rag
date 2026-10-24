@@ -115,6 +115,9 @@ export function DocumentList({
                   <span className={`${styles.status} ${STATUS_CLASS[document.status]}`}>
                     {STATUS_LABEL[document.status]}
                   </span>
+                  {document.ocrPages > 0 ? (
+                    <span className={styles.ocrBadge}>OCR {document.ocrPages} 页</span>
+                  ) : null}
                 </div>
                 <div className={styles.docMeta}>
                   {SOURCE_LABEL[document.sourceType]} · {formatBytes(document.sizeBytes)} ·{" "}

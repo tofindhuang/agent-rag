@@ -1,7 +1,7 @@
 # 扫描件 OCR：RapidOCR 侧车与 PDF 逐页兜底
 
 日期：2026-10-24
-状态：待实现
+状态：实现中（tickets 10–12 完成；13 真实侧车验收待做）
 关联需求：FR-2（知识库 / RAG）
 关联 ADR：[0014](../adrs/0014-ocr-sidecar-rapidocr.md)
 上游 spec：[2026-10-23-knowledge-base-rag.md](2026-10-23-knowledge-base-rag.md)

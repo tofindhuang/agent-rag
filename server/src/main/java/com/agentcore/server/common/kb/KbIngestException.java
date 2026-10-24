@@ -17,6 +17,10 @@ public class KbIngestException extends RuntimeException {
     public static final String EMBEDDING_DIMENSION_MISMATCH = "EMBEDDING_DIMENSION_MISMATCH";
     public static final String EMBEDDING_RESPONSE_INVALID = "EMBEDDING_RESPONSE_INVALID";
     public static final String STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE";
+    public static final String OCR_PAGE_LIMIT = "OCR_PAGE_LIMIT";
+    public static final String OCR_UNAVAILABLE = "OCR_UNAVAILABLE";
+    public static final String OCR_TIMEOUT = "OCR_TIMEOUT";
+    public static final String OCR_INVALID_IMAGE = "OCR_INVALID_IMAGE";
     public static final String INGEST_FAILED = "INGEST_FAILED";
 
     private final String errorCode;

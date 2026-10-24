@@ -59,7 +59,8 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
             @Param("id") String id,
             @Param("userId") long userId,
             @Param("version") int version,
-            @Param("chunkCount") int chunkCount);
+            @Param("chunkCount") int chunkCount,
+            @Param("ocrPages") int ocrPages);
 
     int markFailed(
             @Param("id") String id,

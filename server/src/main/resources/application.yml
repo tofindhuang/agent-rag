@@ -43,6 +43,16 @@ app:
       path: ${RERANK_PATH:/rerank}
       candidates: ${RERANK_CANDIDATES:10}
       top-n: ${RERANK_TOP_N:5}
+    # Scanned-PDF OCR sidecar (ADR-0014). Off by default; see ocr/README.md.
+    ocr:
+      enabled: ${KB_OCR_ENABLED:false}
+      base-url: ${KB_OCR_BASE_URL:}
+      token: ${KB_OCR_TOKEN:}
+      max-pages: ${KB_OCR_MAX_PAGES:100}
+      timeout-ms: ${KB_OCR_TIMEOUT_MS:20000}
+      total-budget-ms: ${KB_OCR_TOTAL_BUDGET_MS:480000}
+      min-text-chars: ${KB_OCR_MIN_TEXT_CHARS:10}
+      dpi: ${KB_OCR_DPI:200}
   message-cache:
     ttl: 24h
     max-entries: 100
