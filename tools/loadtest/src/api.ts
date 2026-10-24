@@ -66,6 +66,22 @@ export interface KbDocumentView {
   status: string;
 }
 
+export interface MessageSummary {
+  id: number;
+  turnId: string | null;
+  ordinal: number;
+  role: string;
+  content: string;
+  status: string;
+  deliveryStatus?: string;
+}
+
+export interface MessagePage {
+  items: MessageSummary[];
+  hasMore: boolean;
+  nextBeforeId: number | null;
+}
+
 export interface ModelCatalog {
   providers: ProviderView[];
   defaultModelId: number | null;
@@ -134,8 +150,17 @@ export class LoadTestClient {
   listMessages(
     token: string,
     sessionId: string,
-  ): Promise<{ messages: unknown[] }> {
-    return this.requestJson("GET", `/api/chat/sessions/${sessionId}/messages`, token);
+    options: { beforeId?: number; limit?: number } = {},
+  ): Promise<MessagePage> {
+    const params = new URLSearchParams();
+    if (options.beforeId !== undefined) params.set("beforeId", String(options.beforeId));
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return this.requestJson(
+      "GET",
+      `/api/chat/sessions/${sessionId}/messages${query}`,
+      token,
+    );
   }
 
   createKnowledgeBase(token: string, name: string): Promise<KnowledgeBaseView> {

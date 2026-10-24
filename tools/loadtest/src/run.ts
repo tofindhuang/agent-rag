@@ -1,11 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { LoadTestClient } from "./api.js";
 import { baselineOffsets, startBaselineSampler } from "./baseline.js";
 import { configFromEnv } from "./config.js";
 import { appendJsonl } from "./metrics.js";
+import { startProcess, waitForHttp, waitForHttpDown, type ManagedProcess } from "./process-runner.js";
 import { runLoadTest, type TurnRecord } from "./scenario.js";
+import { verifySettledMessages } from "./verify.js";
 
 function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -26,6 +28,24 @@ async function main(): Promise<void> {
   await mkdir(dirname(config.metricsFile), { recursive: true });
   const client = new LoadTestClient({ baseUrl: config.baseUrl });
 
+  const root = resolve(process.cwd(), "../..");
+  const manageApp = process.env.LOADTEST_MANAGE_APP === "1";
+  const keepApp = process.env.LOADTEST_KEEP_APP === "1";
+  const restartAfterMs = intEnv("LOADTEST_RESTART_GATEWAY_AFTER_MS", 0);
+  const logDir = dirname(config.metricsFile);
+  const managed: ManagedProcess[] = [];
+  let gateway: ManagedProcess | null = null;
+  let restartPromise: Promise<void> | null = null;
+  let restartTimer: NodeJS.Timeout | null = null;
+
+  const startGateway = (): ManagedProcess =>
+    startProcess({
+      command: "bash",
+      args: [resolve(root, "tools/loadtest/scripts/run-gateway.sh")],
+      cwd: root,
+      logFile: join(logDir, "gateway.log"),
+    });
+
   const baselineEnabled = process.env.LOADTEST_BASELINE_ENABLED !== "false";
   const sampler = baselineEnabled
     ? startBaselineSampler({
@@ -36,7 +56,38 @@ async function main(): Promise<void> {
       })
     : null;
 
-  const summary = await runLoadTest({
+  try {
+    if (manageApp) {
+      const server = startProcess({
+        command: "bash",
+        args: [resolve(root, "tools/loadtest/scripts/run-server.sh")],
+        cwd: root,
+        logFile: join(logDir, "server.log"),
+      });
+      managed.push(server);
+      await waitForHttp("http://127.0.0.1:8080/api/health", 180_000);
+      gateway = startGateway();
+      managed.push(gateway);
+      await waitForHttp("http://127.0.0.1:3001/health", 60_000);
+    }
+
+    if (restartAfterMs > 0) {
+      restartTimer = setTimeout(() => {
+        restartPromise = (async () => {
+          if (!gateway) throw new Error("gateway restart requested without LOADTEST_MANAGE_APP=1");
+          console.error("[loadtest] restarting gateway");
+          await gateway.stop();
+          await waitForHttpDown("http://127.0.0.1:3001/health", 30_000);
+          gateway = startGateway();
+          managed.push(gateway);
+          await waitForHttp("http://127.0.0.1:3001/health", 60_000);
+          console.error("[loadtest] gateway restarted");
+        })();
+      }, restartAfterMs);
+    }
+
+    const records: TurnRecord[] = [];
+    const summary = await runLoadTest({
     client,
     runId,
     users,
@@ -75,24 +126,53 @@ async function main(): Promise<void> {
         },
       ],
     },
-    onRecord: (record: TurnRecord) => appendJsonl(config.metricsFile, record),
+    retryOnDisconnect: process.env.LOADTEST_RETRY_DISCONNECTS !== "false",
+    maxDisconnectRetries: intEnv("LOADTEST_MAX_DISCONNECT_RETRIES", 2),
+    retryDelayMs: intEnv("LOADTEST_RETRY_DELAY_MS", 1_500),
+    onRecord: (record: TurnRecord) => {
+      records.push(record);
+      return appendJsonl(config.metricsFile, record);
+    },
     onProgress: (message) => console.error(`[loadtest] ${message}`),
   });
 
-  const baseline = sampler ? await stopSampler(sampler) : null;
-  const output = { ...summary, baseline };
-  const summaryFile = config.metricsFile.replace(/\.jsonl$/, "") + ".summary.json";
-  await writeFile(summaryFile, `${JSON.stringify(output, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify(output, null, 2));
-  console.log(`[loadtest] records: ${config.metricsFile}`);
-  console.log(`[loadtest] summary: ${summaryFile}`);
+    if (restartTimer) clearTimeout(restartTimer);
+    if (restartPromise) await restartPromise;
 
-  const failed =
-    summary.errors.hard_error > 0 ||
-    summary.errors.disconnected > 0 ||
-    (summary.statusCounts.error ?? 0) > 0 ||
-    (summary.statusCounts.disconnected ?? 0) > 0;
-  if (failed) process.exitCode = 1;
+    const verification =
+      process.env.LOADTEST_VERIFY === "false"
+        ? null
+        : await verifySettledMessages(client, records, "loadtest-password-1");
+
+    const baseline = sampler ? await stopSampler(sampler) : null;
+    const output = { ...summary, baseline, verification };
+    const summaryFile = config.metricsFile.replace(/\.jsonl$/, "") + ".summary.json";
+    await writeFile(summaryFile, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+    console.log(JSON.stringify(output, null, 2));
+    console.log(`[loadtest] records: ${config.metricsFile}`);
+    console.log(`[loadtest] summary: ${summaryFile}`);
+
+    const verificationFailed =
+      verification !== null &&
+      (verification.missing.length > 0 ||
+        verification.duplicates.length > 0 ||
+        verification.roleMismatches.length > 0 ||
+        verification.errors.length > 0);
+    const failed =
+      summary.errors.hard_error > 0 ||
+      summary.errors.disconnected > 0 ||
+      (summary.statusCounts.error ?? 0) > 0 ||
+      (summary.statusCounts.disconnected ?? 0) > 0 ||
+      verificationFailed;
+    if (failed) process.exitCode = 1;
+  } finally {
+    if (restartTimer) clearTimeout(restartTimer);
+    if (manageApp && !keepApp) {
+      for (const processHandle of [...managed].reverse()) {
+        await processHandle.stop();
+      }
+    }
+  }
 }
 
 async function stopSampler(

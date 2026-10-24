@@ -171,16 +171,19 @@ test("sendMessage surfaces JSON errors before the stream starts", async () => {
 });
 
 test("listMessages reads the projected conversation", async () => {
-  const { client, calls } = recordingClient([
-    jsonResponse(200, { messages: [{ id: 1, role: "user", content: "hello" }] }),
-  ]);
+  const response = jsonResponse(200, {
+    items: [{ id: 1, role: "user", content: "hello", turnId: "turn-1", ordinal: 1 }],
+    hasMore: false,
+    nextBeforeId: null,
+  });
+  const { client: pageClient, calls: pageCalls } = recordingClient([response]);
 
-  const result = await client.listMessages("token-7", "session-1");
+  const result = await pageClient.listMessages("token-7", "session-1", { limit: 100 });
 
-  assert.deepEqual(result.messages, [{ id: 1, role: "user", content: "hello" }]);
-  assert.equal(calls[0].url, "http://localhost:8080/api/chat/sessions/session-1/messages");
-  assert.equal(calls[0].init.method, "GET");
-  assert.equal(headersOf(calls[0]).authorization, "Bearer token-7");
+  assert.equal(result.items[0].content, "hello");
+  assert.equal(pageCalls[0].url, "http://localhost:8080/api/chat/sessions/session-1/messages?limit=100");
+  assert.equal(pageCalls[0].init.method, "GET");
+  assert.equal(headersOf(pageCalls[0]).authorization, "Bearer token-7");
 });
 
 test("listModels returns the provider catalog used to pick a session model", async () => {

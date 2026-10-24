@@ -5,7 +5,13 @@ import { summarize, type Summary } from "./metrics.js";
 import { parseSseData, type SseFrame } from "./sse.js";
 
 export type Workload = "chat" | "run_code" | "kb_search";
-export type ErrorClass = "none" | "hard_error" | "rate_limited" | "upstream_429" | "disconnected";
+export type ErrorClass =
+  | "none"
+  | "hard_error"
+  | "rate_limited"
+  | "upstream_429"
+  | "upstream_unavailable"
+  | "disconnected";
 export type TurnStatus = "completed" | "aborted" | "error" | "disconnected";
 
 /** The subset of the HTTP client a scenario needs; tests inject a fake. */
@@ -62,6 +68,7 @@ export interface TurnRecord {
   turnMs: number;
   status: TurnStatus;
   errorClass: ErrorClass;
+  attempts: number;
   error: { code: string; message: string; retryable: boolean } | null;
   textChars: number;
   toolCalls: ToolCallRecord[];
@@ -90,6 +97,10 @@ export interface LoadTestOptions {
   kbId?: string;
   /** When set, each kb_search user seeds its own KB before the first turn. */
   kbSeed?: { documents: { filename: string; content: string }[] };
+  /** Retry turns whose stream broke (e.g. gateway restart) with the same turnId. */
+  retryOnDisconnect?: boolean;
+  maxDisconnectRetries?: number;
+  retryDelayMs?: number;
   prompts?: Partial<Record<Workload, (round: number) => string>>;
   random?: () => number;
   clock?: { now(): number };
@@ -112,6 +123,7 @@ export interface RunSummary {
   durationMs: number;
   statusCounts: Record<string, number>;
   errors: Record<ErrorClass, number>;
+  retries: number;
   firstTokenMs: Summary;
   turnMs: Summary;
   toolLatencyMs: Summary;
@@ -143,15 +155,26 @@ export function classifyFailure(error: unknown): ErrorClass {
     if (error.status === 429) {
       return error.code === "RATE_LIMITED" ? "rate_limited" : "upstream_429";
     }
+    // 5xx with retryable=true means the gateway hop was unavailable (for
+    // example during a rolling gateway restart); the turn can be resumed.
+    if (error.retryable) return "upstream_unavailable";
     return "hard_error";
   }
   if (isSettledFailure(error)) {
     const message = error.settled.error?.message ?? "";
+    const code = error.settled.error?.code ?? "";
     if (/429|rate.?limit|too many requests/i.test(message)) return "upstream_429";
+    if (code === "STREAM_INTERRUPTED" || code === "UPSTREAM_UNAVAILABLE") {
+      return "upstream_unavailable";
+    }
     return "hard_error";
   }
   // Network failures, aborted streams and missing run_settled.
   return "disconnected";
+}
+
+export function isRetryableClass(errorClass: ErrorClass): boolean {
+  return errorClass === "disconnected" || errorClass === "upstream_unavailable";
 }
 
 const DEFAULT_PROMPTS: Record<Workload, (round: number) => string> = {
@@ -173,6 +196,7 @@ interface TurnContext {
   prompt: string;
   turnId: string;
   round: number;
+  attempt: number;
 }
 
 async function runTurn(context: TurnContext): Promise<TurnRecord> {
@@ -240,6 +264,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
       sessionId: context.sessionId,
       turnId: context.turnId,
       round: context.round,
+      attempts: context.attempt,
       firstTokenMs: firstTokenAt === null ? null : Math.round(firstTokenAt - started),
       turnMs: Math.round(context.clock.now() - started),
       status:
@@ -263,6 +288,7 @@ async function runTurn(context: TurnContext): Promise<TurnRecord> {
       sessionId: context.sessionId,
       turnId: context.turnId,
       round: context.round,
+      attempts: context.attempt,
       firstTokenMs: firstTokenAt === null ? null : Math.round(firstTokenAt - started),
       turnMs: Math.round(context.clock.now() - started),
       status: errorClass === "disconnected" ? "disconnected" : "error",
@@ -341,20 +367,35 @@ async function runUser(
     });
     sessionId = session.sessionId;
 
+    const maxAttempts = options.retryOnDisconnect
+      ? 1 + Math.max(0, options.maxDisconnectRetries ?? 2)
+      : 1;
     for (let round = 1; round <= options.rounds; round += 1) {
-      const record = await runTurn({
-        client,
-        clock,
-        token: accessToken,
-        sessionId,
-        email,
-        userId,
-        scenario: workload,
-        prompt: prompts[workload](round),
-        turnId: `${runId}-u${index}-r${round}`,
-        round,
-      });
-      records.push(record);
+      const turnId = `${runId}-u${index}-r${round}`;
+      let record: TurnRecord;
+      for (let attempt = 1; ; attempt += 1) {
+        record = await runTurn({
+          client,
+          clock,
+          token: accessToken,
+          sessionId,
+          email,
+          userId,
+          scenario: workload,
+          prompt: prompts[workload](round),
+          turnId,
+          round,
+          attempt,
+        });
+        const retryable =
+          isRetryableClass(record.errorClass) || record.status === "aborted";
+        if (retryable && attempt < maxAttempts) {
+          await sleep(options.retryDelayMs ?? 1_500);
+          continue;
+        }
+        break;
+      }
+      records.push(record!);
       await options.onRecord?.(record);
       if (round < options.rounds) {
         const min = Math.min(options.thinkTimeMinMs, options.thinkTimeMaxMs);
@@ -371,6 +412,7 @@ async function runUser(
       sessionId,
       turnId: `${runId}-u${index}-setup`,
       round: 0,
+      attempts: 1,
       firstTokenMs: null,
       turnMs: 0,
       status: errorClass === "disconnected" ? "disconnected" : "error",
@@ -391,7 +433,14 @@ async function runUser(
 }
 
 function emptyErrorCounts(): Record<ErrorClass, number> {
-  return { none: 0, hard_error: 0, rate_limited: 0, upstream_429: 0, disconnected: 0 };
+  return {
+    none: 0,
+    hard_error: 0,
+    rate_limited: 0,
+    upstream_429: 0,
+    upstream_unavailable: 0,
+    disconnected: 0,
+  };
 }
 
 function aggregateWorkload(records: TurnRecord[]): WorkloadSummary {
@@ -451,6 +500,7 @@ export async function runLoadTest(options: LoadTestOptions): Promise<RunSummary>
     durationMs,
     statusCounts,
     errors,
+    retries: records.filter((record) => record.attempts > 1).length,
     firstTokenMs: summarize(
       records.flatMap((record) => (record.firstTokenMs === null ? [] : [record.firstTokenMs])),
     ),

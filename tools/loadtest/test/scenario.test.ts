@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { ApiError } from "../src/api.js";
 import {
   classifyFailure,
+  isRetryableClass,
   runLoadTest,
   type LoadTestOptions,
   type ScenarioClient,
@@ -37,6 +38,7 @@ interface FakeClientOptions {
   tickMs?: number;
   advance?: (ms: number) => void;
   failOnText?: string;
+  abortOnce?: boolean;
   settledError?: { code: string; message: string; retryable: boolean };
 }
 
@@ -103,6 +105,14 @@ function fakeClient(options: FakeClientOptions = {}): FakeClient {
       advance(tickMs);
       if (options.failOnText && input.text.includes(options.failOnText)) {
         throw new ApiError(500, "INTERNAL", "boom", false);
+      }
+      if (options.abortOnce) {
+        options.abortOnce = false;
+        yield {
+          event: "run_settled",
+          data: JSON.stringify({ status: "aborted" }),
+        };
+        return;
       }
       const frames = options.settledError
         ? [
@@ -210,6 +220,21 @@ test("one failing user does not stop the others", async () => {
 test("classifies local rate limits, upstream 429s, hard errors and disconnects", () => {
   assert.equal(classifyFailure(new ApiError(429, "RATE_LIMITED", "slow down", true)), "rate_limited");
   assert.equal(classifyFailure(new ApiError(500, "INTERNAL", "boom", false)), "hard_error");
+  assert.equal(
+    classifyFailure(new ApiError(502, "UPSTREAM_UNAVAILABLE", "gateway unreachable", true)),
+    "upstream_unavailable",
+  );
+  assert.equal(
+    classifyFailure({
+      settled: {
+        status: "error",
+        error: { code: "STREAM_INTERRUPTED", message: "连接中断，未收到终态", retryable: false },
+      },
+    }),
+    "upstream_unavailable",
+  );
+  assert.equal(isRetryableClass("upstream_unavailable"), true);
+  assert.equal(isRetryableClass("hard_error"), false);
   assert.equal(classifyFailure(new TypeError("fetch failed")), "disconnected");
   assert.equal(
     classifyFailure({
@@ -276,4 +301,120 @@ test("kb_search users seed their own knowledge base before the session starts", 
   assert.deepEqual(client.uploads, ["architecture.md", "sessions.md"]);
   assert.equal(client.sessionKbId, "kb-1");
   assert.equal(records[0].errorClass, "none");
+});
+
+test("retries a disconnected turn with the same turnId", async () => {
+  const client = fakeClient();
+  const original = client.sendMessage.bind(client);
+  let failures = 1;
+  const turnIds: string[] = [];
+  client.sendMessage = async function* (token: string, sessionId: string, input: { text: string; turnId: string }) {
+    turnIds.push(input.turnId);
+    if (failures > 0) {
+      failures -= 1;
+      throw new TypeError("fetch failed");
+    }
+    yield* original(token, sessionId, input);
+  };
+
+  const records: TurnRecord[] = [];
+  const summary = await runLoadTest(
+    baseOptions(client, {
+      users: 1,
+      composition: { chat: 1, run_code: 0, kb_search: 0 },
+      retryOnDisconnect: true,
+      retryDelayMs: 0,
+      sleep: async () => {},
+      onRecord: (record) => {
+        records.push(record);
+      },
+    }),
+  );
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].status, "completed");
+  assert.equal(records[0].attempts, 2);
+  assert.equal(new Set(turnIds).size, 1, "retries must reuse the turnId");
+  assert.equal(summary.statusCounts.completed, 1);
+});
+
+test("gives up after the disconnect retry budget", async () => {
+  const client = fakeClient();
+  client.sendMessage = async function* () {
+    throw new TypeError("fetch failed");
+  };
+
+  const records: TurnRecord[] = [];
+  const summary = await runLoadTest(
+    baseOptions(client, {
+      users: 1,
+      composition: { chat: 1, run_code: 0, kb_search: 0 },
+      retryOnDisconnect: true,
+      maxDisconnectRetries: 2,
+      retryDelayMs: 0,
+      sleep: async () => {},
+      onRecord: (record) => {
+        records.push(record);
+      },
+    }),
+  );
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].attempts, 3);
+  assert.equal(records[0].status, "disconnected");
+  assert.equal(summary.errors.disconnected, 1);
+});
+
+test("retries a turn when the gateway hop is temporarily unavailable", async () => {
+  const client = fakeClient();
+  const original = client.sendMessage.bind(client);
+  let failures = 2;
+  client.sendMessage = async function* (token: string, sessionId: string, input: { text: string; turnId: string }) {
+    if (failures > 0) {
+      failures -= 1;
+      throw new ApiError(502, "UPSTREAM_UNAVAILABLE", "gateway unreachable", true);
+    }
+    yield* original(token, sessionId, input);
+  };
+
+  const records: TurnRecord[] = [];
+  await runLoadTest(
+    baseOptions(client, {
+      users: 1,
+      composition: { chat: 1, run_code: 0, kb_search: 0 },
+      retryOnDisconnect: true,
+      maxDisconnectRetries: 3,
+      retryDelayMs: 0,
+      sleep: async () => {},
+      onRecord: (record) => {
+        records.push(record);
+      },
+    }),
+  );
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].attempts, 3);
+  assert.equal(records[0].status, "completed");
+});
+
+test("retries a turn aborted by an infrastructure restart", async () => {
+  const client = fakeClient({ abortOnce: true });
+  const records: TurnRecord[] = [];
+  const summary = await runLoadTest(
+    baseOptions(client, {
+      users: 1,
+      composition: { chat: 1, run_code: 0, kb_search: 0 },
+      retryOnDisconnect: true,
+      retryDelayMs: 0,
+      sleep: async () => {},
+      onRecord: (record) => {
+        records.push(record);
+      },
+    }),
+  );
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].attempts, 2);
+  assert.equal(records[0].status, "completed");
+  assert.equal(summary.retries, 1);
 });

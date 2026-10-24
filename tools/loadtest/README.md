@@ -39,6 +39,20 @@ LOADTEST_MODEL_API_KEY=... npm run smoke
 流程：注册 → 登录 → 建 DeepSeek provider → 按 catalog 的模型 id 建会话 →
 SSE 一轮对话 → 收到 `run_settled`，原始指标写入 `.run/metrics.jsonl`。
 
+## 托管模式 + gateway 滚动重启
+
+让 harness 自己起停 Java/gateway，并在压测中段重启 gateway 一次：
+
+```bash
+LOADTEST_MANAGE_APP=1 \
+LOADTEST_RESTART_GATEWAY_AFTER_MS=5000 \
+LOADTEST_RETRY_DELAY_MS=2000 LOADTEST_MAX_DISCONNECT_RETRIES=4 \
+LOADTEST_MODEL_API_KEY=... npm run run
+```
+
+重启期间被中断/中止的 turn 会以同一 `turnId` 重试；跑完后逐会话读取消息投影，
+校验每个 completed turn 恰好一条 user 消息、至少一条 assistant 消息（不丢不重）。
+
 ## 拆栈
 
 ```bash
