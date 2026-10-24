@@ -9,7 +9,9 @@ import { Select } from "@/components/ui/Select";
 import { TextField } from "@/components/ui/TextField";
 import uiStyles from "@/components/ui/ui.module.css";
 import { fetchKnowledgeBases } from "@/lib/api/knowledge";
+import { fetchProfileCollections } from "@/lib/api/profile";
 import type { KbKnowledgeBase } from "@/types/knowledge";
+import type { ProfileCollection } from "@/types/profile";
 import { useModelCatalog } from "@/hooks/useModelCatalog";
 import type { CreateSessionOptions } from "@/lib/api/chat";
 import { ModelOptions, SYSTEM_MODEL_VALUE, defaultModelValue } from "./ModelSelect";
@@ -30,6 +32,8 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
   const [model, setModel] = useState<string | null>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KbKnowledgeBase[]>([]);
   const [kbId, setKbId] = useState<string>("");
+  const [collections, setCollections] = useState<ProfileCollection[]>([]);
+  const [selectedCollections, setSelectedCollections] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -40,6 +44,19 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
         setKnowledgeBases(items);
         setKbId((current) =>
           current || items.find((item) => item.isDefault)?.id || items[0]?.id || "none",
+        );
+      })
+      .catch(() => undefined);
+    fetchProfileCollections()
+      .then((items) => {
+        if (!active) return;
+        setCollections(items);
+        setSelectedCollections(
+          new Set(
+            items
+              .filter((item) => item.systemKey === "general")
+              .map((item) => item.id),
+          ),
         );
       })
       .catch(() => undefined);
@@ -64,6 +81,7 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
         useSystemDefault: value === SYSTEM_MODEL_VALUE || undefined,
         kbId: kbId === "none" ? undefined : kbId || undefined,
         noKnowledgeBase: kbId === "none",
+        profileCollectionIds: [...selectedCollections],
       });
       if (ok) onClose();
     } finally {
@@ -126,6 +144,33 @@ export function NewSessionDialog({ error, errorCode, onSubmit, onClose }: NewSes
             </option>
           ))}
         </Select>
+
+        {collections.length > 0 ? (
+          <div className={uiStyles.field}>
+            <span>记忆集</span>
+            <div className={uiStyles.checkboxGroup}>
+              {collections.map((collection) => (
+                <label key={collection.id} className={uiStyles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={selectedCollections.has(collection.id)}
+                    onChange={(event) => {
+                      setSelectedCollections((previous) => {
+                        const next = new Set(previous);
+                        if (event.target.checked) next.add(collection.id);
+                        else next.delete(collection.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  {collection.name}
+                  {collection.systemKey === "inbox" ? "（默认不注入）" : ""}
+                </label>
+              ))}
+            </div>
+            <span className={uiStyles.hint}>「通用」默认启用；场景集合按需勾选。</span>
+          </div>
+        ) : null}
 
         {catalogError && catalog == null ? <Banner tone="error">{catalogError}</Banner> : null}
 

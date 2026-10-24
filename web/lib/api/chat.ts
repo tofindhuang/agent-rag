@@ -15,6 +15,8 @@ export interface CreateSessionOptions {
   /** Omitted binds the default KB; null needs noKnowledgeBase. */
   kbId?: string | null;
   noKnowledgeBase?: boolean;
+  /** Collections whose facts are injected into this session. */
+  profileCollectionIds?: string[];
 }
 
 export async function createChatSession(
@@ -39,6 +41,15 @@ export async function createChatSession(
   const data = (await response.json()) as CreateSessionResponse;
   if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
     throw new ApiError("服务响应缺少 sessionId", response.status);
+  }
+  if (options?.profileCollectionIds !== undefined) {
+    try {
+      const { setSessionCollections } = await import("./profile");
+      await setSessionCollections(data.sessionId, options.profileCollectionIds);
+    } catch {
+      // The session keeps the default (General) selection; the user can change it
+      // from the header selector after creation.
+    }
   }
   return data.sessionId;
 }

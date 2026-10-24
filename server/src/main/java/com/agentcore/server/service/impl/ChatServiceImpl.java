@@ -589,7 +589,7 @@ public class ChatServiceImpl implements ChatService {
             body.put("model", model);
         }
 
-        body.put("profileFacts", profileFactService.injectionFacts(userId));
+        body.put("profileFacts", profileFactService.injectionFacts(userId, sessionId));
         body.put("profileMemoryEnabled", profileFactService.enabled(userId));
 
         String payload;

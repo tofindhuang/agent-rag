@@ -9,6 +9,7 @@ import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { NewSessionDialog } from "./NewSessionDialog";
 import { SessionKbSelect } from "./SessionKbSelect";
+import { SessionMemorySelect } from "./SessionMemorySelect";
 import { SessionSidebar, type SessionTab } from "./SessionSidebar";
 import { SwitchModelDialog } from "./SwitchModelDialog";
 import styles from "./chat.module.css";
@@ -68,6 +69,12 @@ export function ChatPage() {
                   onChange={(kbId) =>
                     void chat.switchKnowledgeBase(chat.currentSessionId!, kbId)
                   }
+                />
+              ) : null}
+              {chat.currentSessionId ? (
+                <SessionMemorySelect
+                  sessionId={chat.currentSessionId}
+                  disabled={chat.busy}
                 />
               ) : null}
             </div>

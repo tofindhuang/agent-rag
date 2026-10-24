@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.ProfileCollectionDao">
+
+    <sql id="collectionColumns">
+        id, user_id, name, system_key, created_at, updated_at
+    </sql>
+
+    <select id="findSystem" resultType="com.agentcore.server.domain.ProfileCollection">
+        SELECT <include refid="collectionColumns"/>
+        FROM profile_collections
+        WHERE user_id = #{userId}
+          AND system_key = #{systemKey}
+    </select>
+
+    <select id="findOwned" resultType="com.agentcore.server.domain.ProfileCollection">
+        SELECT <include refid="collectionColumns"/>
+        FROM profile_collections
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="listByUser" resultType="com.agentcore.server.domain.ProfileCollection">
+        SELECT <include refid="collectionColumns"/>
+        FROM profile_collections
+        WHERE user_id = #{userId}
+        ORDER BY
+            CASE system_key WHEN 'general' THEN 0 WHEN 'inbox' THEN 1 ELSE 2 END,
+            name, id
+    </select>
+
+    <insert id="insert" parameterType="com.agentcore.server.domain.ProfileCollection">
+        INSERT INTO profile_collections (id, user_id, name, system_key, created_at, updated_at)
+        VALUES (#{id}, #{userId}, #{name}, #{systemKey}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="rename">
+        UPDATE profile_collections
+        SET name = #{name},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND system_key IS NULL
+    </update>
+
+    <delete id="delete">
+        DELETE FROM profile_collections
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND system_key IS NULL
+    </delete>
+
+    <select id="countFacts" resultType="int">
+        SELECT COUNT(*)
+        FROM profile_facts
+        WHERE user_id = #{userId}
+          AND collection_id = #{collectionId}
+          AND status = 'active'
+    </select>
+
+</mapper>

@@ -89,6 +89,11 @@ _Avoid_: memory、user habit（口语概念，落库与注入的实体是 Profil
 用户级设置；关闭后停止画像事实的提取与注入，但保留既有事实，可随时重新开启。
 _Avoid_: memory off、disable profile
 
+### 记忆集（Memory Collection）
+
+画像事实的归类容器：系统「通用」「收件箱」或用户创建的场景集合；会话按选中的集合注入事实。
+_Avoid_: folder、tag、space
+
 ### 切片（Passage）
 
 文档切分后的最小检索单元，带来源文档与序号定位，是引用溯源的粒度。

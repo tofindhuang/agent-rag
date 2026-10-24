@@ -16,8 +16,11 @@ import com.agentcore.server.dto.chat.SessionListResponse;
 import com.agentcore.server.dto.chat.SessionSummary;
 import com.agentcore.server.dto.chat.SwitchKbRequest;
 import com.agentcore.server.dto.chat.SwitchModelRequest;
+import com.agentcore.server.dto.profile.SessionCollectionsRequest;
+import com.agentcore.server.dto.profile.SessionCollectionsView;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.PromptStream;
+import com.agentcore.server.service.ProfileCollectionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +32,7 @@ import java.util.Base64;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -40,6 +44,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
@@ -58,10 +63,15 @@ public class ChatController {
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
     private final ChatService chatService;
+    private final ProfileCollectionService profileCollectionService;
     private final ObjectMapper objectMapper;
 
-    public ChatController(ChatService chatService, ObjectMapper objectMapper) {
+    public ChatController(
+            ChatService chatService,
+            ProfileCollectionService profileCollectionService,
+            ObjectMapper objectMapper) {
         this.chatService = chatService;
+        this.profileCollectionService = profileCollectionService;
         this.objectMapper = objectMapper;
     }
 
@@ -100,6 +110,24 @@ public class ChatController {
             @PathVariable String sessionId,
             @RequestBody SwitchModelRequest request) {
         chatService.switchModel(user.userId(), sessionId, request.modelId());
+    }
+
+    @GetMapping("/sessions/{sessionId}/profile-collections")
+    public SessionCollectionsView getProfileCollections(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId) {
+        return new SessionCollectionsView(
+                profileCollectionService.selectedIds(user.userId(), sessionId));
+    }
+
+    @PutMapping("/sessions/{sessionId}/profile-collections")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setProfileCollections(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId,
+            @RequestBody SessionCollectionsRequest request) {
+        profileCollectionService.setSessionCollections(
+                user.userId(), sessionId, request.collectionIds());
     }
 
     @GetMapping("/sessions")

@@ -7,7 +7,7 @@ import type { PiSession } from "./pool.js";
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract long-term user profile facts from a conversation transcript.
 Return ONLY compact JSON in this shape:
-{"facts":[{"category":"preference|project|profile|other","factKey":"lowercase.dotted.key","factValue":"normalized value","factText":"one user-facing sentence"}]}
+{"facts":[{"category":"preference|project|profile|other","factKey":"lowercase.dotted.key","factValue":"normalized value","factTitle":"short human title (max 80 chars)","factText":"one user-facing sentence"}]}
 Rules:
 - Only stable preferences, project/environment facts, or durable profile facts.
 - Exclude temporary states, assistant speculation, and anything inferred but not stated by the user.
@@ -133,6 +133,7 @@ export function parseCandidates(
   category: string;
   factKey: string;
   factValue: string;
+  factTitle: string;
   factText: string;
 }> {
   const start = text.indexOf("{");
@@ -157,6 +158,7 @@ export function parseCandidates(
     category: string;
     factKey: string;
     factValue: string;
+    factTitle: string;
     factText: string;
   }> = [];
   for (const raw of rawFacts.slice(0, maxCandidates)) {
@@ -176,6 +178,10 @@ export function parseCandidates(
       category: value.category,
       factKey: value.factKey,
       factValue: value.factValue,
+      factTitle:
+        typeof value.factTitle === "string"
+          ? value.factTitle.slice(0, 80)
+          : value.factText.slice(0, 80),
       factText: value.factText,
     });
   }

@@ -16,7 +16,9 @@ public interface ProfileFactDao {
             @Param("factKey") String factKey);
 
     List<ProfileFact> listByUser(
-            @Param("userId") long userId, @Param("status") String status);
+            @Param("userId") long userId,
+            @Param("status") String status,
+            @Param("collectionId") String collectionId);
 
     ProfileFact findOwned(@Param("id") String id, @Param("userId") long userId);
 
@@ -31,6 +33,7 @@ public interface ProfileFactDao {
             @Param("id") String id,
             @Param("userId") long userId,
             @Param("category") String category,
+            @Param("factTitle") String factTitle,
             @Param("factText") String factText,
             @Param("updatedAt") LocalDateTime updatedAt);
 
@@ -39,6 +42,26 @@ public interface ProfileFactDao {
             @Param("userId") long userId,
             @Param("updatedAt") LocalDateTime updatedAt);
 
-    List<ProfileFact> listActive(
-            @Param("userId") long userId, @Param("limit") int limit);
+    List<ProfileFact> listByCollections(
+            @Param("userId") long userId,
+            @Param("collectionIds") java.util.List<String> collectionIds,
+            @Param("limit") int limit);
+
+    int moveCollection(
+            @Param("id") String id,
+            @Param("userId") long userId,
+            @Param("collectionId") String collectionId,
+            @Param("updatedAt") LocalDateTime updatedAt);
+
+    int moveCollections(
+            @Param("ids") java.util.List<String> ids,
+            @Param("userId") long userId,
+            @Param("collectionId") String collectionId,
+            @Param("updatedAt") LocalDateTime updatedAt);
+
+    int moveAll(
+            @Param("userId") long userId,
+            @Param("fromCollectionId") String fromCollectionId,
+            @Param("toCollectionId") String toCollectionId,
+            @Param("updatedAt") LocalDateTime updatedAt);
 }

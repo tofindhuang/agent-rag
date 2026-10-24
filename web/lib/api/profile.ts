@@ -1,6 +1,11 @@
 import { ApiError, toApiError } from "./errors";
 import { authFetch } from "./http";
-import type { ProfileFact, ProfileFactStatus, ProfileSettings } from "@/types/profile";
+import type {
+  ProfileCollection,
+  ProfileFact,
+  ProfileFactStatus,
+  ProfileSettings,
+} from "@/types/profile";
 
 async function readJson(response: Response): Promise<unknown> {
   if (!response.ok) throw await toApiError(response);
@@ -22,7 +27,9 @@ function parseFact(value: unknown): ProfileFact {
     category: String(raw.category ?? ""),
     factKey: String(raw.factKey ?? ""),
     factValue: String(raw.factValue ?? ""),
+    factTitle: String(raw.factTitle ?? raw.factText ?? ""),
     factText: String(raw.factText ?? ""),
+    collectionId: String(raw.collectionId ?? ""),
     status: parseStatus(raw.status),
     supersedesId: typeof raw.supersedesId === "string" ? raw.supersedesId : null,
     sourceSessionId:
@@ -32,10 +39,25 @@ function parseFact(value: unknown): ProfileFact {
   };
 }
 
+function parseCollection(value: unknown): ProfileCollection {
+  const raw = asRecord(value);
+  const systemKey =
+    raw.systemKey === "general" || raw.systemKey === "inbox" ? raw.systemKey : null;
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? ""),
+    systemKey,
+    factCount: typeof raw.factCount === "number" ? raw.factCount : 0,
+  };
+}
+
 export async function fetchProfileFacts(
   status: "active" | "all" = "active",
+  collectionId?: string,
 ): Promise<ProfileFact[]> {
-  const response = await authFetch(`/api/profile/facts?status=${status}`);
+  const query = new URLSearchParams({ status });
+  if (collectionId) query.set("collectionId", collectionId);
+  const response = await authFetch(`/api/profile/facts?${query.toString()}`);
   const body = await readJson(response);
   if (!Array.isArray(body)) throw new ApiError("服务响应格式不正确");
   return body.map(parseFact);
@@ -43,7 +65,12 @@ export async function fetchProfileFacts(
 
 export async function updateProfileFact(
   id: string,
-  input: { factText: string; category: string },
+  input: {
+    factTitle: string;
+    factText: string;
+    category: string;
+    collectionId?: string;
+  },
 ): Promise<ProfileFact> {
   const response = await authFetch(`/api/profile/facts/${id}`, {
     method: "PATCH",
@@ -55,6 +82,70 @@ export async function updateProfileFact(
 
 export async function deleteProfileFact(id: string): Promise<void> {
   const response = await authFetch(`/api/profile/facts/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await toApiError(response);
+}
+
+export async function moveProfileFacts(
+  factIds: string[],
+  collectionId: string,
+): Promise<void> {
+  const response = await authFetch("/api/profile/facts/move", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ factIds, collectionId }),
+  });
+  if (!response.ok) throw await toApiError(response);
+}
+
+export async function fetchProfileCollections(): Promise<ProfileCollection[]> {
+  const body = await readJson(await authFetch("/api/profile/collections"));
+  if (!Array.isArray(body)) throw new ApiError("服务响应格式不正确");
+  return body.map(parseCollection);
+}
+
+export async function createProfileCollection(name: string): Promise<ProfileCollection> {
+  const response = await authFetch("/api/profile/collections", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return parseCollection(await readJson(response));
+}
+
+export async function renameProfileCollection(
+  id: string,
+  name: string,
+): Promise<ProfileCollection> {
+  const response = await authFetch(`/api/profile/collections/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  return parseCollection(await readJson(response));
+}
+
+export async function deleteProfileCollection(id: string): Promise<void> {
+  const response = await authFetch(`/api/profile/collections/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await toApiError(response);
+}
+
+export async function fetchSessionCollections(sessionId: string): Promise<string[]> {
+  const body = asRecord(
+    await readJson(await authFetch(`/api/chat/sessions/${sessionId}/profile-collections`)),
+  );
+  const ids = body.collectionIds;
+  return Array.isArray(ids) ? ids.map(String) : [];
+}
+
+export async function setSessionCollections(
+  sessionId: string,
+  collectionIds: string[],
+): Promise<void> {
+  const response = await authFetch(`/api/chat/sessions/${sessionId}/profile-collections`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ collectionIds }),
+  });
   if (!response.ok) throw await toApiError(response);
 }
 

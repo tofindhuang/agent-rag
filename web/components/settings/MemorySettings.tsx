@@ -2,37 +2,56 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  createProfileCollection,
+  deleteProfileCollection,
   deleteProfileFact,
+  fetchProfileCollections,
   fetchProfileFacts,
   fetchProfileSettings,
+  moveProfileFacts,
+  renameProfileCollection,
   updateProfileFact,
   updateProfileSettings,
 } from "@/lib/api/profile";
 import { userMessage } from "@/lib/api/errors";
-import type { ProfileFact } from "@/types/profile";
+import type { ProfileCollection, ProfileFact } from "@/types/profile";
 import styles from "./settings.module.css";
 
 const CATEGORIES = ["preference", "project", "profile", "other"];
 
+interface EditDraft {
+  id: string;
+  factTitle: string;
+  factText: string;
+  category: string;
+  collectionId: string;
+}
+
 export function MemorySettings() {
   const [enabled, setEnabled] = useState(true);
   const [facts, setFacts] = useState<ProfileFact[]>([]);
+  const [collections, setCollections] = useState<ProfileCollection[]>([]);
+  const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draftText, setDraftText] = useState("");
-  const [draftCategory, setDraftCategory] = useState("preference");
+  const [editing, setEditing] = useState<EditDraft | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveTarget, setMoveTarget] = useState("");
+  const [newCollectionName, setNewCollectionName] = useState("");
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [nextEnabled, all] = await Promise.all([
+      const [nextEnabled, nextCollections, all] = await Promise.all([
         fetchProfileSettings(),
+        fetchProfileCollections(),
         fetchProfileFacts("all"),
       ]);
       setEnabled(nextEnabled.enabled);
+      setCollections(nextCollections);
       setFacts(all);
+      setMoveTarget((current) => current || nextCollections[0]?.id || "");
     } catch (cause: unknown) {
       setError(userMessage(cause));
     } finally {
@@ -44,16 +63,25 @@ export function MemorySettings() {
     void load();
   }, []);
 
-  const active = useMemo(
-    () => facts.filter((fact) => fact.status === "active"),
-    [facts],
+  const collectionName = (id: string) =>
+    collections.find((collection) => collection.id === id)?.name ?? "未知集合";
+
+  const visible = useMemo(
+    () =>
+      facts.filter(
+        (fact) => fact.status === "active" && (filter === "all" || fact.collectionId === filter),
+      ),
+    [facts, filter],
   );
   const history = useMemo(
-    () => facts.filter((fact) => fact.status !== "active"),
-    [facts],
+    () =>
+      facts.filter(
+        (fact) => fact.status !== "active" && (filter === "all" || fact.collectionId === filter),
+      ),
+    [facts, filter],
   );
 
-  const toggle = async (next: boolean) => {
+  const toggleMemory = async (next: boolean) => {
     setEnabled(next);
     setError(null);
     try {
@@ -65,23 +93,29 @@ export function MemorySettings() {
   };
 
   const startEdit = (fact: ProfileFact) => {
-    setEditingId(fact.id);
-    setDraftText(fact.factText);
-    setDraftCategory(fact.category);
+    setEditing({
+      id: fact.id,
+      factTitle: fact.factTitle,
+      factText: fact.factText,
+      category: fact.category,
+      collectionId: fact.collectionId,
+    });
   };
 
-  const saveEdit = async (fact: ProfileFact) => {
-    if (!draftText.trim()) return;
+  const saveEdit = async () => {
+    if (!editing || !editing.factText.trim() || !editing.factTitle.trim()) return;
     setError(null);
     try {
-      const updated = await updateProfileFact(fact.id, {
-        factText: draftText.trim(),
-        category: draftCategory,
+      const updated = await updateProfileFact(editing.id, {
+        factTitle: editing.factTitle.trim(),
+        factText: editing.factText.trim(),
+        category: editing.category,
+        collectionId: editing.collectionId,
       });
       setFacts((previous) =>
         previous.map((item) => (item.id === updated.id ? updated : item)),
       );
-      setEditingId(null);
+      setEditing(null);
     } catch (cause: unknown) {
       setError(userMessage(cause));
     }
@@ -102,6 +136,66 @@ export function MemorySettings() {
     }
   };
 
+  const toggleSelected = (id: string) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const moveSelected = async () => {
+    if (selectedIds.size === 0 || !moveTarget) return;
+    setError(null);
+    try {
+      await moveProfileFacts([...selectedIds], moveTarget);
+      setSelectedIds(new Set());
+      await load();
+    } catch (cause: unknown) {
+      setError(userMessage(cause));
+    }
+  };
+
+  const addCollection = async () => {
+    const name = newCollectionName.trim();
+    if (!name) return;
+    setError(null);
+    try {
+      const created = await createProfileCollection(name);
+      setCollections((previous) => [...previous, created]);
+      setNewCollectionName("");
+    } catch (cause: unknown) {
+      setError(userMessage(cause));
+    }
+  };
+
+  const renameCollection = async (collection: ProfileCollection) => {
+    const name = window.prompt("新的集合名称", collection.name)?.trim();
+    if (!name || name === collection.name) return;
+    setError(null);
+    try {
+      const updated = await renameProfileCollection(collection.id, name);
+      setCollections((previous) =>
+        previous.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (cause: unknown) {
+      setError(userMessage(cause));
+    }
+  };
+
+  const removeCollection = async (collection: ProfileCollection) => {
+    if (!window.confirm(`删除「${collection.name}」？其中的记忆会移回收件箱。`)) return;
+    setError(null);
+    try {
+      await deleteProfileCollection(collection.id);
+      if (filter === collection.id) setFilter("all");
+      await load();
+    } catch (cause: unknown) {
+      setError(userMessage(cause));
+    }
+  };
+
   return (
     <section className={styles.section}>
       <div className={styles.sectionHeader}>
@@ -110,7 +204,7 @@ export function MemorySettings() {
           <input
             type="checkbox"
             checked={enabled}
-            onChange={(event) => void toggle(event.target.checked)}
+            onChange={(event) => void toggleMemory(event.target.checked)}
           />
           启用记忆
         </label>
@@ -121,25 +215,120 @@ export function MemorySettings() {
       {error ? <p className={styles.error}>{error}</p> : null}
       {loading ? <p className={styles.hint}>加载中…</p> : null}
 
-      {!loading && active.length === 0 ? (
-        <p className={styles.hint}>还没有长期记忆。</p>
+      <div className={styles.collectionBar}>
+        <button
+          type="button"
+          className={filter === "all" ? styles.collectionActive : styles.collectionChip}
+          onClick={() => setFilter("all")}
+        >
+          全部
+        </button>
+        {collections.map((collection) => (
+          <span key={collection.id} className={styles.collectionChipWrap}>
+            <button
+              type="button"
+              className={filter === collection.id ? styles.collectionActive : styles.collectionChip}
+              onClick={() => setFilter(collection.id)}
+            >
+              {collection.name}（{collection.factCount}）
+            </button>
+            {collection.systemKey == null ? (
+              <>
+                <button
+                  type="button"
+                  className={styles.collectionAction}
+                  onClick={() => void renameCollection(collection)}
+                  title="重命名集合"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  className={styles.collectionAction}
+                  onClick={() => void removeCollection(collection)}
+                  title="删除集合"
+                >
+                  ×
+                </button>
+              </>
+            ) : null}
+          </span>
+        ))}
+      </div>
+
+      <div className={styles.row}>
+        <input
+          className={styles.input}
+          placeholder="新建记忆集（例如：项目 A）"
+          value={newCollectionName}
+          onChange={(event) => setNewCollectionName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void addCollection();
+          }}
+        />
+        <button type="button" onClick={() => void addCollection()} disabled={!newCollectionName.trim()}>
+          新建集合
+        </button>
+      </div>
+
+      {selectedIds.size > 0 ? (
+        <div className={styles.row}>
+          <span className={styles.hint}>已选 {selectedIds.size} 条</span>
+          <select
+            className={styles.input}
+            value={moveTarget}
+            onChange={(event) => setMoveTarget(event.target.value)}
+          >
+            {collections.map((collection) => (
+              <option key={collection.id} value={collection.id}>
+                {collection.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={() => void moveSelected()}>
+            移动
+          </button>
+        </div>
+      ) : null}
+
+      {!loading && visible.length === 0 ? (
+        <p className={styles.hint}>这个集合里还没有长期记忆。</p>
       ) : null}
       <ul className={styles.memoryList}>
-        {active.map((fact) => (
+        {visible.map((fact) => (
           <li key={fact.id} className={styles.memoryItem}>
-            {editingId === fact.id ? (
+            <input
+              type="checkbox"
+              checked={selectedIds.has(fact.id)}
+              onChange={() => toggleSelected(fact.id)}
+              aria-label={`选择 ${fact.factTitle}`}
+            />
+            {editing?.id === fact.id ? (
               <div className={styles.memoryEditor}>
+                <input
+                  className={styles.input}
+                  value={editing.factTitle}
+                  maxLength={80}
+                  onChange={(event) =>
+                    setEditing({ ...editing, factTitle: event.target.value })
+                  }
+                  placeholder="标题"
+                />
                 <textarea
                   className={styles.memoryInput}
-                  value={draftText}
-                  onChange={(event) => setDraftText(event.target.value)}
+                  value={editing.factText}
+                  onChange={(event) =>
+                    setEditing({ ...editing, factText: event.target.value })
+                  }
                   rows={2}
                 />
                 <div className={styles.memoryActions}>
                   <select
                     className={styles.input}
-                    value={draftCategory}
-                    onChange={(event) => setDraftCategory(event.target.value)}
+                    value={editing.category}
+                    onChange={(event) =>
+                      setEditing({ ...editing, category: event.target.value })
+                    }
                   >
                     {CATEGORIES.map((category) => (
                       <option key={category} value={category}>
@@ -147,10 +336,23 @@ export function MemorySettings() {
                       </option>
                     ))}
                   </select>
-                  <button type="button" onClick={() => void saveEdit(fact)}>
+                  <select
+                    className={styles.input}
+                    value={editing.collectionId}
+                    onChange={(event) =>
+                      setEditing({ ...editing, collectionId: event.target.value })
+                    }
+                  >
+                    {collections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => void saveEdit()}>
                     保存
                   </button>
-                  <button type="button" onClick={() => setEditingId(null)}>
+                  <button type="button" onClick={() => setEditing(null)}>
                     取消
                   </button>
                 </div>
@@ -159,7 +361,9 @@ export function MemorySettings() {
               <>
                 <div className={styles.memoryText}>
                   <span className={styles.tag}>{fact.category}</span>
-                  <span>{fact.factText}</span>
+                  <span className={styles.memoryTitle}>{fact.factTitle}</span>
+                  <span className={styles.hint}>{fact.factText}</span>
+                  <span className={styles.hint}>· {collectionName(fact.collectionId)}</span>
                 </div>
                 <div className={styles.memoryActions}>
                   <span className={styles.hint}>
@@ -186,12 +390,11 @@ export function MemorySettings() {
               <li key={fact.id} className={styles.memoryItem}>
                 <div className={styles.memoryText}>
                   <span className={styles.tag}>{fact.status}</span>
-                  <span>{fact.factText}</span>
+                  <span className={styles.memoryTitle}>{fact.factTitle}</span>
+                  <span className={styles.hint}>{collectionName(fact.collectionId)}</span>
                 </div>
                 <span className={styles.hint}>
-                  {fact.supersedesId
-                    ? `取代 ${fact.supersedesId.slice(0, 8)} · `
-                    : ""}
+                  {fact.supersedesId ? `取代 ${fact.supersedesId.slice(0, 8)} · ` : ""}
                   {fact.updatedAt ? new Date(fact.updatedAt).toLocaleString() : ""}
                 </span>
               </li>

@@ -340,3 +340,44 @@
 .history summary {
   cursor: pointer;
 }
+
+.collectionBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+}
+
+.collectionChipWrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.collectionChip,
+.collectionActive {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.collectionActive {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.collectionAction {
+  margin-left: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.memoryTitle {
+  font-weight: 600;
+}

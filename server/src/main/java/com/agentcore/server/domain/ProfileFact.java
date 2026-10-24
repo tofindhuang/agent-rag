@@ -15,7 +15,9 @@ public class ProfileFact {
     private String category;
     private String factKey;
     private String factValue;
+    private String factTitle;
     private String factText;
+    private String collectionId;
     private String status;
     private String supersedesId;
     private String sourceSessionId;
@@ -60,6 +62,22 @@ public class ProfileFact {
 
     public void setFactValue(String factValue) {
         this.factValue = factValue;
+    }
+
+    public String getFactTitle() {
+        return factTitle;
+    }
+
+    public void setFactTitle(String factTitle) {
+        this.factTitle = factTitle;
+    }
+
+    public String getCollectionId() {
+        return collectionId;
+    }
+
+    public void setCollectionId(String collectionId) {
+        this.collectionId = collectionId;
     }
 
     public String getFactText() {

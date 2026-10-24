@@ -87,7 +87,7 @@ class ChatServiceImplTest {
         when(sessionModelService.forNewSession(anyLong(), any(), anyBoolean())).thenReturn(system);
         when(sessionModelService.forExistingSession(anyLong(), anyString())).thenReturn(system);
         when(profileFacts.enabled(anyLong())).thenReturn(true);
-        when(profileFacts.injectionFacts(anyLong())).thenReturn(List.of());
+        when(profileFacts.injectionFacts(anyLong(), anyString())).thenReturn(List.of());
         service = new ChatServiceImpl(
                 properties,
                 mapper,

@@ -7,6 +7,7 @@ import com.agentcore.server.dao.ProfileFactDao;
 import com.agentcore.server.dao.ProfileSettingsDao;
 import com.agentcore.server.domain.ProfileFact;
 import com.agentcore.server.dto.profile.ProfileFactCandidate;
+import com.agentcore.server.service.ProfileCollectionService;
 import com.agentcore.server.service.ProfileFactService;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -41,28 +42,38 @@ public class ProfileFactServiceImpl implements ProfileFactService {
     private final ProfileFactDao factDao;
     private final ProfileSettingsDao settingsDao;
     private final ProfileProperties properties;
+    private final ProfileCollectionService collections;
 
     public ProfileFactServiceImpl(
             ProfileFactDao factDao,
             ProfileSettingsDao settingsDao,
-            ProfileProperties properties) {
+            ProfileProperties properties,
+            ProfileCollectionService collections) {
         this.factDao = factDao;
         this.settingsDao = settingsDao;
         this.properties = properties;
+        this.collections = collections;
     }
 
     @Override
-    public List<ProfileFact> list(long userId, String status) {
+    public List<ProfileFact> list(long userId, String status, String collectionId) {
         String normalized = status == null || status.isBlank() ? "active" : status;
         if (!"active".equals(normalized) && !"all".equals(normalized)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "status must be active or all");
         }
-        return factDao.listByUser(userId, "all".equals(normalized) ? null : normalized);
+        return factDao.listByUser(
+                userId, "all".equals(normalized) ? null : normalized, collectionId);
     }
 
     @Override
     @Transactional
-    public ProfileFact update(long userId, String factId, String factText, String category) {
+    public ProfileFact update(
+            long userId,
+            String factId,
+            String factTitle,
+            String factText,
+            String category,
+            String collectionId) {
         ProfileFact existing = factDao.findOwned(factId, userId);
         if (existing == null || !"active".equals(existing.getStatus())) {
             throw new ApiException(ErrorCode.NOT_FOUND, "profile fact not found");
@@ -71,6 +82,11 @@ public class ProfileFactServiceImpl implements ProfileFactService {
         if (text == null || text.isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "factText is required");
         }
+        String title = normalizeTitle(
+                factTitle == null || factTitle.isBlank()
+                        ? existing.getFactTitle()
+                        : factTitle,
+                text);
         String normalizedCategory = normalizeCategory(category == null
                 ? existing.getCategory()
                 : category);
@@ -80,8 +96,15 @@ public class ProfileFactServiceImpl implements ProfileFactService {
         if (isSensitive(normalizedCategory, existing.getFactKey(), existing.getFactValue(), text)) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "fact contains sensitive data");
         }
+        String targetCollection = existing.getCollectionId();
+        if (collectionId != null && !collectionId.isBlank()) {
+            targetCollection = collections.requireOwned(userId, collectionId).getId();
+        }
         try {
-            factDao.updateText(factId, userId, normalizedCategory, text, now());
+            factDao.updateText(factId, userId, normalizedCategory, title, text, now());
+            if (!targetCollection.equals(existing.getCollectionId())) {
+                factDao.moveCollection(factId, userId, targetCollection, now());
+            }
         } catch (org.springframework.dao.DuplicateKeyException ex) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "another active fact already uses this category/key");
@@ -109,11 +132,22 @@ public class ProfileFactServiceImpl implements ProfileFactService {
     }
 
     @Override
-    public List<String> injectionFacts(long userId) {
+    public void move(long userId, List<String> factIds, String collectionId) {
+        if (factIds == null || factIds.isEmpty()) {
+            return;
+        }
+        String target = collections.requireOwned(userId, collectionId).getId();
+        factDao.moveCollections(factIds, userId, target, now());
+    }
+
+    @Override
+    public List<String> injectionFacts(long userId, String sessionId) {
         if (!enabled(userId)) {
             return List.of();
         }
-        List<ProfileFact> facts = factDao.listActive(userId, properties.maxFacts());
+        List<String> collectionIds = collections.selectedIds(userId, sessionId);
+        List<ProfileFact> facts = factDao.listByCollections(
+                userId, collectionIds, properties.maxFacts());
         List<String> selected = new ArrayList<>();
         int used = 0;
         for (ProfileFact fact : facts) {
@@ -170,7 +204,9 @@ public class ProfileFactServiceImpl implements ProfileFactService {
             fact.setCategory(candidate.category());
             fact.setFactKey(candidate.factKey());
             fact.setFactValue(candidate.factValue());
+            fact.setFactTitle(candidate.factTitle());
             fact.setFactText(candidate.factText());
+            fact.setCollectionId(collections.inboxId(userId));
             fact.setStatus("active");
             fact.setSupersedesId(supersedesId);
             fact.setSourceSessionId(sourceSessionId);
@@ -192,6 +228,7 @@ public class ProfileFactServiceImpl implements ProfileFactService {
                 : candidate.factKey().trim().toLowerCase(Locale.ROOT);
         String value = normalizeText(candidate.factValue(), 512);
         String text = normalizeText(candidate.factText(), 1024);
+        String title = normalizeTitle(candidate.factTitle(), text);
         if (category == null || !KEY.matcher(key).matches()
                 || value == null || value.isBlank()
                 || text == null || text.isBlank()) {
@@ -201,7 +238,7 @@ public class ProfileFactServiceImpl implements ProfileFactService {
             log.debug("dropping sensitive profile candidate key={}", key);
             return null;
         }
-        return new NormalizedCandidate(category, key, value, text);
+        return new NormalizedCandidate(category, key, value, title, text);
     }
 
     private static String normalizeCategory(String category) {
@@ -236,6 +273,18 @@ public class ProfileFactServiceImpl implements ProfileFactService {
         return LocalDateTime.now(ZoneOffset.UTC);
     }
 
+    private static String normalizeTitle(String value, String fallbackText) {
+        String title = value == null ? "" : value.trim();
+        if (title.isEmpty()) {
+            title = fallbackText == null ? "" : fallbackText;
+        }
+        return title.length() > 80 ? title.substring(0, 80) : title;
+    }
+
     private record NormalizedCandidate(
-            String category, String factKey, String factValue, String factText) {}
+            String category,
+            String factKey,
+            String factValue,
+            String factTitle,
+            String factText) {}
 }

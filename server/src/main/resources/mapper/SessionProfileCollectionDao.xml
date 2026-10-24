@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.SessionProfileCollectionDao">
+
+    <select id="listSelected" resultType="java.lang.String">
+        SELECT collection_id
+        FROM session_profile_collections
+        WHERE session_id = #{sessionId}
+    </select>
+
+    <delete id="deleteBySession">
+        DELETE FROM session_profile_collections
+        WHERE session_id = #{sessionId}
+    </delete>
+
+    <insert id="insert">
+        INSERT INTO session_profile_collections (session_id, collection_id)
+        VALUES (#{sessionId}, #{collectionId})
+    </insert>
+
+</mapper>

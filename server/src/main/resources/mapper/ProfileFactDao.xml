@@ -4,8 +4,8 @@
 <mapper namespace="com.agentcore.server.dao.ProfileFactDao">
 
     <sql id="profileFactColumns">
-        id, user_id, category, fact_key, fact_value, fact_text, status, supersedes_id,
-        source_session_id, created_at, updated_at
+        id, user_id, category, fact_key, fact_value, fact_title, fact_text, collection_id,
+        status, supersedes_id, source_session_id, created_at, updated_at
     </sql>
 
     <select id="findActive" resultType="com.agentcore.server.domain.ProfileFact">
@@ -25,6 +25,9 @@
         <if test="status != null">
             AND status = #{status}
         </if>
+        <if test="collectionId != null">
+            AND collection_id = #{collectionId}
+        </if>
         ORDER BY updated_at DESC, id DESC
     </select>
 
@@ -37,11 +40,11 @@
 
     <insert id="insert" parameterType="com.agentcore.server.domain.ProfileFact">
         INSERT INTO profile_facts (
-            id, user_id, category, fact_key, fact_value, fact_text, status,
-            supersedes_id, source_session_id, created_at, updated_at
+            id, user_id, category, fact_key, fact_value, fact_title, fact_text, collection_id,
+            status, supersedes_id, source_session_id, created_at, updated_at
         ) VALUES (
-            #{id}, #{userId}, #{category}, #{factKey}, #{factValue}, #{factText}, #{status},
-            #{supersedesId}, #{sourceSessionId}, #{createdAt}, #{updatedAt}
+            #{id}, #{userId}, #{category}, #{factKey}, #{factValue}, #{factTitle}, #{factText},
+            #{collectionId}, #{status}, #{supersedesId}, #{sourceSessionId}, #{createdAt}, #{updatedAt}
         )
     </insert>
 
@@ -57,6 +60,7 @@
     <update id="updateText">
         UPDATE profile_facts
         SET category = #{category},
+            fact_title = #{factTitle},
             fact_text = #{factText},
             updated_at = #{updatedAt}
         WHERE id = #{id}
@@ -73,13 +77,44 @@
           AND status &lt;&gt; 'deleted'
     </update>
 
-    <select id="listActive" resultType="com.agentcore.server.domain.ProfileFact">
+    <select id="listByCollections" resultType="com.agentcore.server.domain.ProfileFact">
         SELECT <include refid="profileFactColumns"/>
         FROM profile_facts
         WHERE user_id = #{userId}
           AND status = 'active'
+          AND collection_id IN
+          <foreach collection="collectionIds" item="collectionId" open="(" separator="," close=")">
+              #{collectionId}
+          </foreach>
         ORDER BY updated_at DESC, id DESC
         LIMIT #{limit}
     </select>
+
+    <update id="moveCollection">
+        UPDATE profile_facts
+        SET collection_id = #{collectionId},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </update>
+
+    <update id="moveCollections">
+        UPDATE profile_facts
+        SET collection_id = #{collectionId},
+            updated_at = #{updatedAt}
+        WHERE user_id = #{userId}
+          AND id IN
+          <foreach collection="ids" item="id" open="(" separator="," close=")">
+              #{id}
+          </foreach>
+    </update>
+
+    <update id="moveAll">
+        UPDATE profile_facts
+        SET collection_id = #{toCollectionId},
+            updated_at = #{updatedAt}
+        WHERE user_id = #{userId}
+          AND collection_id = #{fromCollectionId}
+    </update>
 
 </mapper>

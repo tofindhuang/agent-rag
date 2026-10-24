@@ -56,13 +56,13 @@ test("keeps only recent user/assistant text and caps characters", () => {
 test("parses only valid candidates and caps the list", () => {
   const text = "```json\n" + JSON.stringify({
     facts: [
-      { category: "preference", factKey: "reply.language", factValue: "zh", factText: "中文" },
-      { category: "preference", factKey: 7, factValue: "x", factText: "bad" },
-      { category: "project", factKey: "project.db", factValue: "mysql", factText: "MySQL" },
+      { category: "preference", factKey: "reply.language", factValue: "zh", factTitle: "中文偏好", factText: "中文" },
+      { category: "preference", factKey: 7, factValue: "x", factTitle: "bad", factText: "bad" },
+      { category: "project", factKey: "project.db", factValue: "mysql", factTitle: "项目数据库", factText: "MySQL" },
     ],
   }) + "\n```";
   assert.deepEqual(parseCandidates(text, 1), [
-    { category: "preference", factKey: "reply.language", factValue: "zh", factText: "中文" },
+    { category: "preference", factKey: "reply.language", factValue: "zh", factTitle: "中文偏好", factText: "中文" },
   ]);
   assert.deepEqual(parseCandidates("no json", 5), []);
 });

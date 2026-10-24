@@ -4,12 +4,17 @@ import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.domain.ProfileFact;
+import com.agentcore.server.dto.profile.CreateProfileCollectionRequest;
+import com.agentcore.server.dto.profile.MoveProfileFactsRequest;
 import com.agentcore.server.dto.profile.ProfileCandidatesRequest;
 import com.agentcore.server.dto.profile.ProfileCandidatesResponse;
+import com.agentcore.server.dto.profile.ProfileCollectionView;
 import com.agentcore.server.dto.profile.ProfileFactView;
 import com.agentcore.server.dto.profile.ProfileSettingsRequest;
 import com.agentcore.server.dto.profile.ProfileSettingsView;
+import com.agentcore.server.dto.profile.RenameProfileCollectionRequest;
 import com.agentcore.server.dto.profile.UpdateProfileFactRequest;
+import com.agentcore.server.service.ProfileCollectionService;
 import com.agentcore.server.service.ProfileFactService;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -34,16 +39,21 @@ import org.springframework.web.bind.annotation.PathVariable;
 public class ProfileController {
 
     private final ProfileFactService profileFactService;
+    private final ProfileCollectionService profileCollectionService;
 
-    public ProfileController(ProfileFactService profileFactService) {
+    public ProfileController(
+            ProfileFactService profileFactService,
+            ProfileCollectionService profileCollectionService) {
         this.profileFactService = profileFactService;
+        this.profileCollectionService = profileCollectionService;
     }
 
     @GetMapping("/facts")
     public List<ProfileFactView> facts(
             @AuthenticationPrincipal AuthenticatedUser user,
-            @RequestParam(defaultValue = "active") String status) {
-        return profileFactService.list(user.userId(), status).stream()
+            @RequestParam(defaultValue = "active") String status,
+            @RequestParam(required = false) String collectionId) {
+        return profileFactService.list(user.userId(), status, collectionId).stream()
                 .map(ProfileController::toView)
                 .toList();
     }
@@ -54,7 +64,12 @@ public class ProfileController {
             @PathVariable String factId,
             @RequestBody UpdateProfileFactRequest request) {
         return toView(profileFactService.update(
-                user.userId(), factId, request.factText(), request.category()));
+                user.userId(),
+                factId,
+                request.factTitle(),
+                request.factText(),
+                request.category(),
+                request.collectionId()));
     }
 
     @DeleteMapping("/facts/{factId}")
@@ -62,6 +77,44 @@ public class ProfileController {
     public void deleteFact(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable String factId) {
         profileFactService.delete(user.userId(), factId);
+    }
+
+    @PostMapping("/facts/move")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void moveFacts(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody MoveProfileFactsRequest request) {
+        profileFactService.move(user.userId(), request.factIds(), request.collectionId());
+    }
+
+    @GetMapping("/collections")
+    public List<ProfileCollectionView> collections(
+            @AuthenticationPrincipal AuthenticatedUser user) {
+        return profileCollectionService.list(user.userId());
+    }
+
+    @PostMapping("/collections")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ProfileCollectionView createCollection(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody CreateProfileCollectionRequest request) {
+        return profileCollectionService.create(user.userId(), request.name());
+    }
+
+    @PatchMapping("/collections/{collectionId}")
+    public ProfileCollectionView renameCollection(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String collectionId,
+            @RequestBody RenameProfileCollectionRequest request) {
+        return profileCollectionService.rename(user.userId(), collectionId, request.name());
+    }
+
+    @DeleteMapping("/collections/{collectionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCollection(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String collectionId) {
+        profileCollectionService.delete(user.userId(), collectionId);
     }
 
     @GetMapping("/settings")
@@ -104,7 +157,9 @@ public class ProfileController {
                 fact.getCategory(),
                 fact.getFactKey(),
                 fact.getFactValue(),
+                fact.getFactTitle(),
                 fact.getFactText(),
+                fact.getCollectionId(),
                 fact.getStatus(),
                 fact.getSupersedesId(),
                 fact.getSourceSessionId(),
