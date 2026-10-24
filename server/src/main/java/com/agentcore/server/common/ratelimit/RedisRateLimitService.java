@@ -88,8 +88,7 @@ public class RedisRateLimitService implements RateLimitService {
         }
     }
 
-    @Override
-    public boolean enabled() {
+    private boolean enabled() {
         return properties.enabled();
     }
 

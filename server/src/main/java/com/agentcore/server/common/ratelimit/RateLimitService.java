@@ -11,5 +11,4 @@ public interface RateLimitService {
 
     void addUserTokens(long userId, long tokens);
 
-    boolean enabled();
 }

@@ -125,10 +125,6 @@ class ChatServiceImplTest {
             addedTokens += tokens;
         }
 
-        @Override
-        public boolean enabled() {
-            return true;
-        }
     }
 
     private static PlatformTransactionManager transactionManager() {

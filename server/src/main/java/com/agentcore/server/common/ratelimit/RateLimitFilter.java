@@ -1,8 +1,10 @@
 package com.agentcore.server.common.ratelimit;
 
+import com.agentcore.server.common.auth.AuthPaths;
 import com.agentcore.server.common.auth.AuthenticatedUser;
-import com.agentcore.server.common.error.ApiError;
+import com.agentcore.server.common.auth.ToolTokenFilter;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.error.ErrorResponseWriter;
 import com.agentcore.server.config.RateLimitProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
@@ -11,8 +13,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Set;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -23,9 +23,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 public class RateLimitFilter extends OncePerRequestFilter {
 
-    private static final Set<String> AUTH_PATHS =
-            Set.of("/api/auth/login", "/api/auth/register", "/api/auth/refresh");
-    private static final Set<String> TOOL_PATHS = Set.of("/api/exec", "/api/kb/search");
+    private static final Set<String> AUTH_PATHS = Set.of(AuthPaths.CREDENTIAL_POST);
+    private static final Set<String> TOOL_PATHS = Set.of(ToolTokenFilter.PATTERNS);
 
     private final RateLimitService rateLimit;
     private final RateLimitProperties properties;
@@ -94,14 +93,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private void writeRateLimited(HttpServletResponse response, long retryAfterSeconds)
             throws IOException {
-        response.setStatus(ErrorCode.RATE_LIMITED.status());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
-        objectMapper.writeValue(
-                response.getOutputStream(),
-                ApiError.of(
-                        ErrorCode.RATE_LIMITED,
-                        "request rate limit exceeded; retry in " + retryAfterSeconds + "s"));
+        ErrorResponseWriter.write(
+                response,
+                objectMapper,
+                ErrorCode.RATE_LIMITED,
+                "request rate limit exceeded; retry in " + retryAfterSeconds + "s",
+                retryAfterSeconds);
     }
 }

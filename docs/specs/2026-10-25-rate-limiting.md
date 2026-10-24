@@ -79,15 +79,17 @@ Lua（单 key）：
 
 ```lua
 local count = redis.call('INCRBY', KEYS[1], ARGV[1])
-if count == tonumber(ARGV[1]) then
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl < 0 then
   redis.call('PEXPIRE', KEYS[1], ARGV[2])
+  ttl = tonumber(ARGV[2])
 end
-return {count, redis.call('PTTL', KEYS[1])}
+return {count, ttl}
 ```
 
 - RPM 请求进入时 `INCRBY 1`；失败请求同样计数。
 - TPM 预检查只读当前计数，不写；每条 `message_end` 用 `INCRBY tokens` 记账。
-- TTL 为窗口长度 + 60s 余量，避免历史 key 堆积。
+- TTL 为**窗口剩余时间**（首次写入时设置），`Retry-After` 直接取 `PTTL`；key 中带窗口序号，旧 key 自然过期，不需要额外余量。
 - `Retry-After` = `ceil(PTTL / 1000)`，最小 1 秒。
 - 固定窗口边界允许瞬时 2 倍；M1 接受，后续需要平滑再换令牌桶。
 

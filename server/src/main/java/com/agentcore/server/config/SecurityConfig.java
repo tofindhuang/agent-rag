@@ -1,10 +1,11 @@
 package com.agentcore.server.config;
 
+import com.agentcore.server.common.auth.AuthPaths;
 import com.agentcore.server.common.auth.JwtAuthenticationFilter;
 import com.agentcore.server.common.auth.JwtService;
 import com.agentcore.server.common.auth.ToolTokenFilter;
-import com.agentcore.server.common.error.ApiError;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.error.ErrorResponseWriter;
 import com.agentcore.server.common.ratelimit.RateLimitFilter;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +17,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -57,11 +57,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(HttpMethod.POST,
-                                "/api/auth/register",
-                                "/api/auth/login",
-                                "/api/auth/refresh",
-                                "/api/auth/logout").permitAll()
+                        .requestMatchers(HttpMethod.POST, AuthPaths.CREDENTIAL_POST).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health", "/actuator/prometheus").permitAll()
                         .requestMatchers(ToolTokenFilter.PATTERNS).hasAuthority("TOOL")
                         .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/logout-all",
@@ -109,9 +106,6 @@ public class SecurityConfig {
     private static void writeError(
             HttpServletResponse response, ObjectMapper objectMapper, ErrorCode code, String message)
             throws IOException {
-        response.setStatus(code.status());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        objectMapper.writeValue(response.getOutputStream(), ApiError.of(code, message));
+        ErrorResponseWriter.write(response, objectMapper, code, message);
     }
 }

@@ -24,7 +24,8 @@ import org.springframework.test.web.servlet.MockMvc;
 @TestPropertySource(properties = {
         "app.rate-limit.user-rpm=999999",
         "app.rate-limit.auth-ip-rpm=999999",
-        "app.rate-limit.user-tpm=1"
+        "app.rate-limit.user-tpm=1",
+        "app.rate-limit.window=1s"
 })
 class TpmRateLimitIntegrationTest extends AbstractIntegrationTest {
 
@@ -50,6 +51,10 @@ class TpmRateLimitIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.error.retryable").value(true));
 
         assertThat(chatService.history(userId, sessionId, null, 50).items()).hasSize(2);
+
+        Thread.sleep(1_100L);
+        mockMvc.perform(prompt(token, sessionId, "after window"))
+                .andExpect(status().isOk());
     }
 
     private String createSession(String token) throws Exception {

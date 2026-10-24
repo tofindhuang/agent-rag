@@ -107,7 +107,7 @@ class RateLimitServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(service.checkUserRpm(userId).allowed()).isTrue();
         assertThat(service.checkUserRpm(userId).allowed()).isTrue();
         assertThat(service.checkUserTpm(userId).allowed()).isTrue();
-        assertThat(redis.hasKey("rl:rpm:user:" + userId)).isFalse();
+        assertThat(redis.keys("rl:rpm:user:" + userId + ":*")).isEmpty();
     }
 
     private RateLimitService service(
