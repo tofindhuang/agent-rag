@@ -19,6 +19,7 @@ import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.ChatProjectionService;
+import com.agentcore.server.service.ProfileFactService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,6 +33,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -58,6 +60,7 @@ class ChatServiceImplTest {
     private final AtomicReference<String> lastUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
     private final TestRateLimitService rateLimit = new TestRateLimitService();
+    private final ProfileFactService profileFacts = mock(ProfileFactService.class);
 
     private HttpServer server;
     private SessionDao sessionDao;
@@ -83,6 +86,8 @@ class ChatServiceImplTest {
                 SessionModelChoice.system("系统默认");
         when(sessionModelService.forNewSession(anyLong(), any(), anyBoolean())).thenReturn(system);
         when(sessionModelService.forExistingSession(anyLong(), anyString())).thenReturn(system);
+        when(profileFacts.enabled(anyLong())).thenReturn(true);
+        when(profileFacts.injectionFacts(anyLong())).thenReturn(List.of());
         service = new ChatServiceImpl(
                 properties,
                 mapper,
@@ -97,7 +102,8 @@ class ChatServiceImplTest {
                 sessionModelService,
                 transactionManager(),
                 new GatewayClient(properties, mapper),
-                rateLimit);
+                rateLimit,
+                profileFacts);
     }
 
     private static final class TestRateLimitService implements RateLimitService {

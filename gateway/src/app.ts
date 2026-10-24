@@ -7,7 +7,7 @@ import { RunTranslator } from "./contract/translate.js";
 import type { RunIdentity } from "./identity.js";
 import { logPiEvent } from "./log.js";
 import { EndpointBlockedError, EndpointResolutionError } from "./outbound.js";
-import type { GatewayPool } from "./pool-contract.js";
+import type { GatewayPool, ProfileInput } from "./pool-contract.js";
 import { InvalidSessionIdError, SessionConflictError } from "./pool-contract.js";
 import { probeProvider, ProbeError, type ProviderApi } from "./providers.js";
 import type { SessionModelConfig } from "./pool-contract.js";
@@ -95,7 +95,8 @@ export function createApp({ config, pool }: AppDependencies): Express {
     }
 
     try {
-      const result = await pool.ensure(req.params.id, userId, parsedModel.model);
+      const result = await pool.ensure(
+        req.params.id, userId, parsedModel.model, parsedModel.profile);
       res.status(200).json({
         sessionId: req.params.id,
         created: result.created,
@@ -330,12 +331,16 @@ export function createApp({ config, pool }: AppDependencies): Express {
   return app;
 }
 
-type ParsedModel = { model?: SessionModelConfig } | { error: string };
+type ParsedModel =
+  | { model?: SessionModelConfig; profile?: ProfileInput }
+  | { error: string };
 
-/** Validates the optional per-session model pushed by Java (ADR-0010). */
+/** Validates the optional per-session model and profile pushed by Java. */
 function readSessionModel(body: Record<string, unknown>): ParsedModel {
+  const profile = readProfileInput(body);
+  if ("error" in profile) return profile;
   const raw = body.model;
-  if (raw === undefined || raw === null) return {};
+  if (raw === undefined || raw === null) return profile;
   if (typeof raw !== "object") return { error: "model must be an object" };
 
   const value = raw as Record<string, unknown>;
@@ -380,6 +385,41 @@ function readSessionModel(body: Record<string, unknown>): ParsedModel {
       contextWindow,
       reasoning: value.reasoning === true,
       vision: value.vision === true,
+    },
+    ...(profile.profile ? { profile: profile.profile } : {}),
+  };
+}
+
+function readProfileInput(
+  body: Record<string, unknown>,
+): { profile?: ProfileInput } | { error: string } {
+  const facts = body.profileFacts;
+  const enabled = body.profileMemoryEnabled;
+  if (facts === undefined && enabled === undefined) {
+    return {};
+  }
+  if (facts !== undefined) {
+    if (!Array.isArray(facts) || facts.length > 50) {
+      return { error: "profileFacts must be an array of at most 50 strings" };
+    }
+    let total = 0;
+    for (const fact of facts) {
+      if (typeof fact !== "string" || fact.length > 1_000) {
+        return { error: "profileFacts entries must be strings of at most 1000 characters" };
+      }
+      total += fact.length;
+    }
+    if (total > 8_000) {
+      return { error: "profileFacts exceeds the total character limit" };
+    }
+  }
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    return { error: "profileMemoryEnabled must be boolean" };
+  }
+  return {
+    profile: {
+      ...(facts !== undefined ? { facts: facts as string[] } : {}),
+      ...(enabled !== undefined ? { enabled: enabled as boolean } : {}),
     },
   };
 }

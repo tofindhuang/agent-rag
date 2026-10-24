@@ -26,11 +26,14 @@ import {
   type CompactionPlan,
 } from "./compaction.js";
 import { kbSearchExtension, runCodeExtension } from "./extensions.js";
+import { profileExtractionExtension, profileFactsExtension } from "./profile.js";
 import type { RunIdentity, RunRef } from "./identity.js";
 import type {
   EnsureSessionResult,
   GatewayPool,
   ModelRef,
+  ProfileInput,
+  ProfileRef,
   SessionModelConfig,
 } from "./pool-contract.js";
 import { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";
@@ -52,7 +55,8 @@ export type SessionFactory = (
   manager: SessionManager,
   runRef: RunRef,
   userId: string,
-  modelConfig?: SessionModelConfig,
+  modelConfig: SessionModelConfig | undefined,
+  profileRef: ProfileRef,
 ) => Promise<PiSession>;
 
 export interface PoolEntry {
@@ -70,6 +74,7 @@ export interface PoolEntry {
   compaction: CompactionPlan;
   /** Last provider-reported context size; null until the next assistant turn. */
   lastContextTokens: number | null;
+  profileRef: ProfileRef;
 }
 
 interface EnsureOutcome {
@@ -89,8 +94,8 @@ export class SessionPool implements GatewayPool {
     factory?: SessionFactory,
   ) {
     this.store = new SessionFileStore(process.cwd(), config.sessionDir);
-    this.factory = factory ?? ((manager, runRef, userId, modelConfig) =>
-      this.createPiSession(manager, runRef, userId, modelConfig));
+    this.factory = factory ?? ((manager, runRef, userId, modelConfig, profileRef) =>
+      this.createPiSession(manager, runRef, userId, modelConfig, profileRef));
   }
 
   get size(): number {
@@ -110,10 +115,15 @@ export class SessionPool implements GatewayPool {
     sessionId: string,
     userId: string,
     modelConfig?: SessionModelConfig,
+    profile?: ProfileInput,
   ): Promise<EnsureSessionResult> {
     const existing = this.entries.get(sessionId);
     if (existing) {
       if (existing.userId !== userId) throw new SessionConflictError(sessionId);
+      if (profile) {
+        if (profile.facts !== undefined) existing.profileRef.facts = profile.facts;
+        if (profile.enabled !== undefined) existing.profileRef.enabled = profile.enabled;
+      }
       // No incoming config means "keep the resident runtime's model": only an
       // explicit, different config justifies a rebuild.
       if (!modelConfig || sameModelConfig(existing.appliedModel, modelConfig)) {
@@ -132,7 +142,7 @@ export class SessionPool implements GatewayPool {
       return ensureResult(false, false, outcome.entry.model);
     }
 
-    const creation = this.createEntry(sessionId, userId, modelConfig).finally(() => {
+    const creation = this.createEntry(sessionId, userId, modelConfig, profile).finally(() => {
       this.pendingCreates.delete(sessionId);
     });
     this.pendingCreates.set(sessionId, creation);
@@ -145,12 +155,18 @@ export class SessionPool implements GatewayPool {
     sessionId: string,
     userId: string,
     modelConfig?: SessionModelConfig,
+    profile?: ProfileInput,
   ): Promise<EnsureOutcome> {
     if (this.entries.has(sessionId)) throw new SessionExistsError(sessionId);
 
     const lease: SessionLease = this.store.acquire(sessionId, userId);
     const runRef: RunRef = { current: null };
-    const session = await this.factory(lease.manager, runRef, userId, modelConfig);
+    const profileRef: ProfileRef = {
+      facts: profile?.facts ?? [],
+      enabled: profile?.enabled ?? true,
+      lastExtractAt: 0,
+    };
+    const session = await this.factory(lease.manager, runRef, userId, modelConfig, profileRef);
 
     const now = Date.now();
     const entry: PoolEntry = {
@@ -167,6 +183,7 @@ export class SessionPool implements GatewayPool {
       appliedModel: modelConfig,
       compaction: buildCompactionPlan(session.model?.contextWindow, this.config.compaction),
       lastContextTokens: null,
+      profileRef,
     };
     this.entries.set(sessionId, entry);
     return { entry, created: lease.created, restored: lease.restored };
@@ -176,9 +193,11 @@ export class SessionPool implements GatewayPool {
     manager: SessionManager,
     runRef: RunRef,
     userId: string,
-    modelConfig?: SessionModelConfig,
+    modelConfig: SessionModelConfig | undefined,
+    profileRef: ProfileRef,
   ): Promise<PiSession> {
     const settingsManager = SettingsManager.create(process.cwd(), getAgentDir());
+    const sessionRef: { current?: PiSession } = {};
     const loader = new DefaultResourceLoader({
       cwd: process.cwd(),
       agentDir: getAgentDir(),
@@ -191,6 +210,13 @@ export class SessionPool implements GatewayPool {
       extensionFactories: [
         kbSearchExtension(this.config, () => runRef.current),
         runCodeExtension(this.config, () => runRef.current),
+        profileFactsExtension(profileRef),
+        profileExtractionExtension(
+          this.config,
+          () => runRef.current,
+          profileRef,
+          () => sessionRef.current,
+        ),
       ],
     });
     await loader.reload();
@@ -214,6 +240,7 @@ export class SessionPool implements GatewayPool {
       session.model?.contextWindow,
       this.config.compaction,
     );
+    sessionRef.current = session;
     return session;
   }
 

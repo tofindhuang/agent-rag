@@ -23,6 +23,7 @@ import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.common.ratelimit.RateLimitService;
+import com.agentcore.server.service.ProfileFactService;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,6 +49,8 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private RateLimitService rateLimitService;
+    @Autowired
+    private ProfileFactService profileFactService;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -303,7 +306,8 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 sessionModelService,
                 transactionManager,
                 gatewayClient,
-                rateLimitService);
+                rateLimitService,
+                profileFactService);
 
         assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }

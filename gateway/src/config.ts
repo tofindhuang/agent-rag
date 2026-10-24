@@ -21,6 +21,11 @@ export interface GatewayConfig {
   allowPrivateModelEndpoints: boolean;
   /** Global compaction policy (FR-4); reserve is computed per model window. */
   compaction: CompactionConfig;
+  /** Profile extraction throttles and transcript bounds (FR-5). */
+  profileExtractMinIntervalMs: number;
+  profileExtractMaxMessages: number;
+  profileExtractMaxChars: number;
+  profileExtractMaxCandidates: number;
 }
 
 function floatEnv(name: string, fallback: number): number {
@@ -56,5 +61,21 @@ export function loadConfig(): GatewayConfig {
         intEnv("COMPACTION_KEEP_RECENT_TOKENS", 20_000),
       ),
     },
+    profileExtractMinIntervalMs: Math.max(
+      0,
+      intEnv("PROFILE_EXTRACT_MIN_INTERVAL_MS", 60_000),
+    ),
+    profileExtractMaxMessages: Math.max(
+      1,
+      intEnv("PROFILE_EXTRACT_MAX_MESSAGES", 30),
+    ),
+    profileExtractMaxChars: Math.max(
+      1,
+      intEnv("PROFILE_EXTRACT_MAX_CHARS", 6_000),
+    ),
+    profileExtractMaxCandidates: Math.max(
+      1,
+      intEnv("PROFILE_EXTRACT_MAX_CANDIDATES", 5),
+    ),
   };
 }

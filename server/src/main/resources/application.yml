@@ -60,6 +60,9 @@ app:
     user-tpm: ${RATE_LIMIT_USER_TPM:100000}
     auth-ip-rpm: ${RATE_LIMIT_AUTH_IP_RPM:10}
     window: ${RATE_LIMIT_WINDOW:60s}
+  profile:
+    max-facts: ${PROFILE_MAX_FACTS:20}
+    max-chars: ${PROFILE_MAX_CHARS:4000}
   message-cache:
     ttl: 24h
     max-entries: 100

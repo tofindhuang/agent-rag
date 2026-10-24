@@ -22,6 +22,10 @@ function config(): GatewayConfig {
     apiToken: undefined,
     allowPrivateModelEndpoints: false,
     compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
+    profileExtractMinIntervalMs: 60_000,
+    profileExtractMaxMessages: 30,
+    profileExtractMaxChars: 6_000,
+    profileExtractMaxCandidates: 5,
     sessionDir: dir,
   };
 }
@@ -83,8 +87,21 @@ test("the default session factory forwards the requested model config", async ()
     contextWindow: 8_000,
   };
 
-  await pool.ensure("capture-model", "u1", requested);
+  await pool.ensure("capture-model", "u1", requested, {
+    facts: ["[preference] 中文"],
+    enabled: true,
+  });
   assert.deepEqual(pool.captured, requested);
+  const entryBefore = pool.get("capture-model");
+  assert.deepEqual(entryBefore?.profileRef.facts, ["[preference] 中文"]);
+
+  await pool.ensure("capture-model", "u1", requested, {
+    facts: ["[project] MySQL 8"],
+    enabled: false,
+  });
+  assert.equal(pool.get("capture-model"), entryBefore);
+  assert.deepEqual(pool.get("capture-model")?.profileRef.facts, ["[project] MySQL 8"]);
+  assert.equal(pool.get("capture-model")?.profileRef.enabled, false);
 
   const entry = pool.get("capture-model");
   assert.ok(entry);

@@ -23,6 +23,7 @@ import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.common.ratelimit.RateLimitService;
+import com.agentcore.server.service.ProfileFactService;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,6 +49,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private RateLimitService rateLimitService;
+    @Autowired
+    private ProfileFactService profileFactService;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -177,7 +180,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 sessionModelService,
                 transactionManager,
                 gatewayClient,
-                rateLimitService);
+                rateLimitService,
+                profileFactService);
         List<Session> listed = fresh.listSessions(userId, "active", null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);

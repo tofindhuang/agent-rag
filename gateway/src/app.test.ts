@@ -148,6 +148,10 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     apiToken,
     allowPrivateModelEndpoints: true,
     compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
+    profileExtractMinIntervalMs: 60_000,
+    profileExtractMaxMessages: 30,
+    profileExtractMaxChars: 6_000,
+    profileExtractMaxCandidates: 5,
     sessionDir,
   };
   const app = createApp({ config, pool });

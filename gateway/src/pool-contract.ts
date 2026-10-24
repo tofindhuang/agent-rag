@@ -19,11 +19,25 @@ export interface GatewaySessionEntry {
   compaction?: CompactionPlan;
   /** Last provider-reported context size; null until the next assistant turn. */
   lastContextTokens?: number | null;
+  profileRef?: ProfileRef;
 }
 
 import type { ProviderApi } from "./providers.js";
 
 export type { ProviderApi };
+
+/** Mutable per-session profile facts supplied by Java at ensure time. */
+export interface ProfileRef {
+  facts: string[];
+  enabled: boolean;
+  /** Gateway-side debounce for extraction. */
+  lastExtractAt: number;
+}
+
+export interface ProfileInput {
+  facts?: string[];
+  enabled?: boolean;
+}
 
 /** Per-session model configuration pushed by Java at ensure time. */
 export interface SessionModelConfig {
@@ -60,6 +74,7 @@ export interface GatewayPool {
     sessionId: string,
     userId: string,
     model?: SessionModelConfig,
+    profile?: ProfileInput,
   ): Promise<EnsureSessionResult>;
   beginRun(sessionId: string, identity: RunIdentity): GatewaySessionEntry | null;
   endRun(sessionId: string, runId: string): void;

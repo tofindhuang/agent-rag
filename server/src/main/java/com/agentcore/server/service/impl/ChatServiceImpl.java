@@ -19,6 +19,7 @@ import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
+import com.agentcore.server.service.ProfileFactService;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.KbKnowledgeBaseService;
@@ -81,6 +82,7 @@ public class ChatServiceImpl implements ChatService {
     private final TransactionTemplate transactionTemplate;
     private final GatewayClient client;
     private final RateLimitService rateLimitService;
+    private final ProfileFactService profileFactService;
 
     public ChatServiceImpl(
             GatewayProperties gateway,
@@ -96,7 +98,8 @@ public class ChatServiceImpl implements ChatService {
             SessionModelService sessionModelService,
             PlatformTransactionManager transactionManager,
             GatewayClient client,
-            RateLimitService rateLimitService) {
+            RateLimitService rateLimitService,
+            ProfileFactService profileFactService) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
@@ -111,6 +114,7 @@ public class ChatServiceImpl implements ChatService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.client = client;
         this.rateLimitService = rateLimitService;
+        this.profileFactService = profileFactService;
     }
 
     @Override
@@ -584,6 +588,9 @@ public class ChatServiceImpl implements ChatService {
             model.put("vision", binding.vision());
             body.put("model", model);
         }
+
+        body.put("profileFacts", profileFactService.injectionFacts(userId));
+        body.put("profileMemoryEnabled", profileFactService.enabled(userId));
 
         String payload;
         try {

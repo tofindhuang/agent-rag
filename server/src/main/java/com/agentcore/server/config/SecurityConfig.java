@@ -63,7 +63,7 @@ public class SecurityConfig {
                         .requestMatchers(ToolTokenFilter.PATTERNS).hasAuthority("TOOL")
                         .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/logout-all",
                                 "/api/chat/**", "/api/models/**", "/api/kb/documents/**", "/api/kb/knowledge-bases/**",
-                                "/api/kb/settings/**")
+                                "/api/kb/settings/**", "/api/profile/**")
                         .hasAuthority("USER")
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling

@@ -31,7 +31,7 @@
 | 方法 | 路径 | 请求 | 成功响应 |
 |---|---|---|---|
 | `GET` | `/health` | — | `200 { ok: true, contractVersion: "1", sessions: <number> }` |
-| `PUT` | `/sessions/:id` | `X-User-Id`，可选 body `{ model }` | `200 { sessionId, created, restored, model? }` |
+| `PUT` | `/sessions/:id` | `X-User-Id`，可选 body `{ model?, profileFacts?, profileMemoryEnabled? }` | `200 { sessionId, created, restored, model? }` |
 | `POST` | `/sessions/:id/prompt` | `X-User-Id`，`{ text, turnId }` | `200` SSE |
 | `POST` | `/sessions/:id/abort` | `X-User-Id`，空 body | `202` |
 | `DELETE` | `/sessions/:id` | `X-User-Id` | `204` |
@@ -42,6 +42,7 @@
 - **ID 由 Java 生成**，gateway 不生成业务会话 ID。
 - `PUT` 幂等：不存在则创建（`created: true`）；已存在且归属相同返回 `created: false`；归属不同返回 `409 SESSION_CONFLICT`。
 - `restored` 表示本次调用是否从持久化的 pi session 恢复；已驻留内存的会话重试返回 `false`。
+- `profileFacts` 可选：Java 提供的 active 长期记忆展示文本数组；`profileMemoryEnabled` 可选：是否注入/提取。gateway 在 `before_agent_start` 追加到 system prompt；缺省时保持会话现有值（新建会话默认空/开启）。
 - `model` 可选，由 Java 按用户选择的供应商模型下发：`{ providerId?, name?, api, baseUrl, apiKey, modelId, displayName?, contextWindow?, reasoning?, vision? }`。gateway 为该会话构建隔离的模型运行时，密钥仅存内存、不进 session 文件；响应回显实际模型 `{ provider, id, name }`。未携带时使用部署默认模型；baseUrl 与探测走同一出站策略（默认公网 HTTPS，元数据地址永远拒绝），被策略拒绝时返回 `400 INVALID_REQUEST`。
 - `prompt` 的 `turnId` 由 Java 生成，必须非空；`run_started` 与 `run_settled` 回显该值。
 - **一个会话同时只允许一个 Run**：已有进行中的 Run 时，第二个 prompt 在写 SSE 头之前返回 `409 RUN_IN_PROGRESS`，不排队。
@@ -220,6 +221,25 @@ X-Request-Id: <requestId>
 - `page` 可选（PDF 才有）；`passageId` 是同一切片在 Qdrant 中的稳定点 id。
 - `kbId`/`kbName` 是引用来源的知识库快照；旧 gateway/旧数据可能缺失，消费者需容忍。
 - 空结果返回 `{ "passages": [] }`；索引不可用、未配置或超时返回错误 envelope，不降级为空。
+
+### `profile/candidates`（gateway → Java 内部回调）
+
+`POST /api/profile/candidates`
+
+Headers：`Authorization: Bearer <GATEWAY_API_TOKEN>`、`X-User-Id`（必填）、`X-Session-Id`、`X-Run-Id`。
+Body：
+
+```json
+{ "candidates": [
+  { "category": "preference", "factKey": "reply.language",
+    "factValue": "zh-CN", "factText": "用户偏好中文回复" }
+] }
+```
+
+- gateway 在 `agent_end` 后异步提取候选并回调；Java 负责敏感过滤、冲突版本化与落库。
+- `category`：`preference|project|profile|other`；`factKey`：小写点分 key。
+- 成功响应 `{ accepted, superseded, dropped }`；失败只记日志，不重试。
+- 该内部回调不消耗用户 RPM。
 
 ### `run_code`（M1 流式）
 

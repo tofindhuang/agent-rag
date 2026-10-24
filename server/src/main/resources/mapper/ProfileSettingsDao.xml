@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.ProfileSettingsDao">
+
+    <select id="findEnabled" resultType="java.lang.Boolean">
+        SELECT enabled
+        FROM profile_settings
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO profile_settings (user_id, enabled, updated_at)
+        VALUES (#{userId}, #{enabled}, #{updatedAt}) AS new
+        ON DUPLICATE KEY UPDATE
+            enabled = new.enabled,
+            updated_at = new.updated_at
+    </insert>
+
+</mapper>

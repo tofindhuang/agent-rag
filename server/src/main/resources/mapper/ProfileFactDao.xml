@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.ProfileFactDao">
+
+    <sql id="profileFactColumns">
+        id, user_id, category, fact_key, fact_value, fact_text, status, supersedes_id,
+        source_session_id, created_at, updated_at
+    </sql>
+
+    <select id="findActive" resultType="com.agentcore.server.domain.ProfileFact">
+        SELECT <include refid="profileFactColumns"/>
+        FROM profile_facts
+        WHERE user_id = #{userId}
+          AND category = #{category}
+          AND fact_key = #{factKey}
+          AND status = 'active'
+        FOR UPDATE
+    </select>
+
+    <select id="listByUser" resultType="com.agentcore.server.domain.ProfileFact">
+        SELECT <include refid="profileFactColumns"/>
+        FROM profile_facts
+        WHERE user_id = #{userId}
+        <if test="status != null">
+            AND status = #{status}
+        </if>
+        ORDER BY updated_at DESC, id DESC
+    </select>
+
+    <select id="findOwned" resultType="com.agentcore.server.domain.ProfileFact">
+        SELECT <include refid="profileFactColumns"/>
+        FROM profile_facts
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.agentcore.server.domain.ProfileFact">
+        INSERT INTO profile_facts (
+            id, user_id, category, fact_key, fact_value, fact_text, status,
+            supersedes_id, source_session_id, created_at, updated_at
+        ) VALUES (
+            #{id}, #{userId}, #{category}, #{factKey}, #{factValue}, #{factText}, #{status},
+            #{supersedesId}, #{sourceSessionId}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="supersede">
+        UPDATE profile_facts
+        SET status = 'superseded',
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </update>
+
+    <update id="updateText">
+        UPDATE profile_facts
+        SET category = #{category},
+            fact_text = #{factText},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status = 'active'
+    </update>
+
+    <update id="markDeleted">
+        UPDATE profile_facts
+        SET status = 'deleted',
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND status &lt;&gt; 'deleted'
+    </update>
+
+    <select id="listActive" resultType="com.agentcore.server.domain.ProfileFact">
+        SELECT <include refid="profileFactColumns"/>
+        FROM profile_facts
+        WHERE user_id = #{userId}
+          AND status = 'active'
+        ORDER BY updated_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

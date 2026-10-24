@@ -24,7 +24,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Set<String> AUTH_PATHS = Set.of(AuthPaths.CREDENTIAL_POST);
-    private static final Set<String> TOOL_PATHS = Set.of(ToolTokenFilter.PATTERNS);
+    // Internal service callbacks (e.g. /api/profile/candidates) are excluded.
+    private static final Set<String> TOOL_PATHS = Set.of("/api/exec", "/api/kb/search");
 
     private final RateLimitService rateLimit;
     private final RateLimitProperties properties;

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AccountSettings } from "./AccountSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { MemorySettings } from "./MemorySettings";
 import { ModelSettings } from "./ModelSettings";
 import styles from "./settings.module.css";
 
@@ -17,6 +18,7 @@ export function SettingsPage() {
       </header>
       <div className={styles.sections}>
         <ModelSettings />
+        <MemorySettings />
         <AccountSettings />
         <AppearanceSettings />
       </div>
