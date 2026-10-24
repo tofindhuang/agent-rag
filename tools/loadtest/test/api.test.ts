@@ -207,3 +207,44 @@ test("listModels returns the provider catalog used to pick a session model", asy
   assert.equal(calls[0].url, "http://localhost:8080/api/models");
   assert.equal(headersOf(calls[0]).authorization, "Bearer token-7");
 });
+
+test("createKnowledgeBase posts the name", async () => {
+  const { client, calls } = recordingClient([
+    jsonResponse(200, { id: "kb-1", name: "loadtest", isDefault: true, documentCount: 0 }),
+  ]);
+
+  const result = await client.createKnowledgeBase("token-7", "loadtest");
+
+  assert.equal(result.id, "kb-1");
+  assert.equal(calls[0].url, "http://localhost:8080/api/kb/knowledge-bases");
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), { name: "loadtest" });
+});
+
+test("uploadDocument sends multipart content with the kbId query parameter", async () => {
+  const { client, calls } = recordingClient([
+    jsonResponse(202, { id: "doc-1", status: "queued" }),
+  ]);
+
+  const result = await client.uploadDocument("token-7", "kb-1", "notes.md", "# notes");
+
+  assert.deepEqual(result, { id: "doc-1", status: "queued" });
+  assert.equal(calls[0].url, "http://localhost:8080/api/kb/documents?kbId=kb-1");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(headersOf(calls[0]).authorization, "Bearer token-7");
+  const form = calls[0].init.body as FormData;
+  assert.ok(form instanceof FormData);
+  const file = form.get("file") as File;
+  assert.equal(file.name, "notes.md");
+  assert.equal(await file.text(), "# notes");
+});
+
+test("getDocument reads the ingestion status", async () => {
+  const { client, calls } = recordingClient([
+    jsonResponse(200, { id: "doc-1", status: "ready" }),
+  ]);
+
+  const result = await client.getDocument("token-7", "doc-1");
+
+  assert.equal(result.status, "ready");
+  assert.equal(calls[0].url, "http://localhost:8080/api/kb/documents/doc-1");
+});

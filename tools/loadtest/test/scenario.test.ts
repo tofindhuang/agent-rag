@@ -40,11 +40,21 @@ interface FakeClientOptions {
   settledError?: { code: string; message: string; retryable: boolean };
 }
 
-function fakeClient(options: FakeClientOptions = {}): ScenarioClient & { turns: number } {
+interface FakeClient extends ScenarioClient {
+  turns: number;
+  kbName: string | null;
+  uploads: string[];
+  sessionKbId: string | null;
+}
+
+function fakeClient(options: FakeClientOptions = {}): FakeClient {
   const tickMs = options.tickMs ?? 100;
   const advance = options.advance ?? (() => {});
-  const client = {
+  const client: FakeClient = {
     turns: 0,
+    kbName: null,
+    uploads: [],
+    sessionKbId: null,
     async register(email: string) {
       return { userId: client.turns + 1, email };
     },
@@ -70,8 +80,23 @@ function fakeClient(options: FakeClientOptions = {}): ScenarioClient & { turns: 
         systemDefault: null,
       };
     },
-    async createSession() {
+    async createSession(_token: string, input: { kbId?: string }) {
+      client.sessionKbId = input.kbId ?? null;
       return { sessionId: "session" };
+    },
+    async createKnowledgeBase(_token: string, name: string) {
+      client.kbName = name;
+      return { id: "kb-1", name, isDefault: true, documentCount: 0 };
+    },
+    async uploadDocument(_token: string, _kbId: string, filename: string) {
+      client.uploads.push(filename);
+      return { id: `doc-${client.uploads.length}`, status: "queued" };
+    },
+    async getDocument(_token: string, id: string) {
+      return { id, status: "ready" };
+    },
+    async waitForDocumentReady(_token: string, id: string) {
+      return { id, status: "ready" };
     },
     async *sendMessage(_token: string, _sessionId: string, input: { text: string }) {
       client.turns += 1;
@@ -225,4 +250,30 @@ test("summary aggregates first-token and turn durations from the shared clock", 
   assert.equal(summary.firstTokenMs.p50, 200);
   assert.equal(summary.turnMs.count, 1);
   assert.equal(summary.turnMs.p50, 300);
+});
+
+test("kb_search users seed their own knowledge base before the session starts", async () => {
+  const client = fakeClient();
+  const records: TurnRecord[] = [];
+  const summary = await runLoadTest(
+    baseOptions(client, {
+      users: 1,
+      composition: { chat: 0, run_code: 0, kb_search: 1 },
+      kbSeed: {
+        documents: [
+          { filename: "architecture.md", content: "# Agent Core architecture" },
+          { filename: "sessions.md", content: "# Session storage" },
+        ],
+      },
+      onRecord: (record) => {
+        records.push(record);
+      },
+    }),
+  );
+
+  assert.equal(summary.turns, 1);
+  assert.equal(client.kbName, "loadtest-test-run-0");
+  assert.deepEqual(client.uploads, ["architecture.md", "sessions.md"]);
+  assert.equal(client.sessionKbId, "kb-1");
+  assert.equal(records[0].errorClass, "none");
 });

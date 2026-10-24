@@ -1,3 +1,5 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 import { parseSse, type SseFrame } from "./sse.js";
 
 export interface LoadTestClientOptions {
@@ -45,6 +47,23 @@ export interface ProviderView {
   baseUrl: string;
   apiKeyHint: string;
   models: ProviderModelView[];
+}
+
+export interface KnowledgeBaseView {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  documentCount: number;
+}
+
+export interface KbDocumentCreated {
+  id: string;
+  status: string;
+}
+
+export interface KbDocumentView {
+  id: string;
+  status: string;
 }
 
 export interface ModelCatalog {
@@ -117,6 +136,67 @@ export class LoadTestClient {
     sessionId: string,
   ): Promise<{ messages: unknown[] }> {
     return this.requestJson("GET", `/api/chat/sessions/${sessionId}/messages`, token);
+  }
+
+  createKnowledgeBase(token: string, name: string): Promise<KnowledgeBaseView> {
+    return this.requestJson("POST", "/api/kb/knowledge-bases", token, { name });
+  }
+
+  async uploadDocument(
+    token: string,
+    kbId: string,
+    filename: string,
+    content: string,
+  ): Promise<KbDocumentCreated> {
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([content], {
+        type: filename.endsWith(".txt") ? "text/plain" : "text/markdown",
+      }),
+      filename,
+    );
+    const response = await this.fetchImpl(
+      `${this.baseUrl}/api/kb/documents?kbId=${encodeURIComponent(kbId)}`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: form,
+      },
+    );
+    const text = await response.text();
+    if (!response.ok) throw this.errorFrom(response.status, text);
+    return JSON.parse(text) as KbDocumentCreated;
+  }
+
+  getDocument(token: string, documentId: string): Promise<KbDocumentView> {
+    return this.requestJson("GET", `/api/kb/documents/${documentId}`, token);
+  }
+
+  async waitForDocumentReady(
+    token: string,
+    documentId: string,
+    options: { timeoutMs?: number; intervalMs?: number } = {},
+  ): Promise<KbDocumentView> {
+    const timeoutMs = options.timeoutMs ?? 120_000;
+    const intervalMs = options.intervalMs ?? 250;
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const document = await this.getDocument(token, documentId);
+      if (document.status === "ready") return document;
+      if (document.status === "failed") {
+        throw new ApiError(500, "KB_INGEST_FAILED", `document ${documentId} failed`, false);
+      }
+      if (Date.now() > deadline) {
+        throw new ApiError(
+          504,
+          "KB_INGEST_TIMEOUT",
+          `document ${documentId} not ready after ${timeoutMs}ms`,
+          true,
+        );
+      }
+      await delay(intervalMs);
+    }
   }
 
   async *sendMessage(

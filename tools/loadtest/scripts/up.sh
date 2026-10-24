@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+source "$(dirname "$0")/stack-env.sh"
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agent-core-loadtest}"
 mkdir -p .run
 
@@ -18,7 +19,7 @@ fi
 nohup npx tsx src/fake-embedding.ts >.run/fake-embedding.log 2>&1 &
 echo $! >.run/fake-embedding.pid
 for _ in $(seq 1 100); do
-  if curl -fsS "http://127.0.0.1:${LOADTEST_EMBEDDING_PORT:-18099}/health" >/dev/null 2>&1; then
+  if curl -fsS "http://127.0.0.1:${LOADTEST_EMBEDDING_PORT}/health" >/dev/null 2>&1; then
     echo "stack ready (compose project: ${COMPOSE_PROJECT_NAME})"
     exit 0
   fi

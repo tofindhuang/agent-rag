@@ -26,6 +26,22 @@ export interface ScenarioClient {
     sessionId: string,
     input: { text: string; turnId: string },
   ): AsyncGenerator<SseFrame>;
+  createKnowledgeBase(
+    token: string,
+    name: string,
+  ): Promise<{ id: string; name: string; isDefault: boolean; documentCount: number }>;
+  uploadDocument(
+    token: string,
+    kbId: string,
+    filename: string,
+    content: string,
+  ): Promise<{ id: string; status: string }>;
+  getDocument(token: string, documentId: string): Promise<{ id: string; status: string }>;
+  waitForDocumentReady(
+    token: string,
+    documentId: string,
+    options?: { timeoutMs?: number; intervalMs?: number },
+  ): Promise<{ id: string; status: string }>;
 }
 
 export interface ToolCallRecord {
@@ -72,6 +88,8 @@ export interface LoadTestOptions {
   provider: LoadTestProvider;
   /** Per-workload knowledge base; kb_search users need a seeded KB. */
   kbId?: string;
+  /** When set, each kb_search user seeds its own KB before the first turn. */
+  kbSeed?: { documents: { filename: string; content: string }[] };
   prompts?: Partial<Record<Workload, (round: number) => string>>;
   random?: () => number;
   clock?: { now(): number };
@@ -303,11 +321,23 @@ async function runUser(
       .flatMap((provider) => provider.models)
       .find((entry) => entry.modelId === options.provider.modelId);
     if (!model) throw new Error(`model ${options.provider.modelId} missing from catalog`);
+    let kbId = workload === "kb_search" ? options.kbId : undefined;
+    if (workload === "kb_search" && options.kbSeed) {
+      const kb = await client.createKnowledgeBase(accessToken, `loadtest-${runId}-${index}`);
+      for (const document of options.kbSeed.documents) {
+        const created = await client.uploadDocument(
+          accessToken,
+          kb.id,
+          document.filename,
+          document.content,
+        );
+        await client.waitForDocumentReady(accessToken, created.id);
+      }
+      kbId = kb.id;
+    }
     const session = await client.createSession(accessToken, {
       modelId: model.id,
-      ...(workload === "kb_search" && options.kbId
-        ? { kbId: options.kbId }
-        : { noKnowledgeBase: workload !== "kb_search" }),
+      ...(kbId ? { kbId } : { noKnowledgeBase: workload !== "kb_search" }),
     });
     sessionId = session.sessionId;
 

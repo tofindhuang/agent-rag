@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { LoadTestClient } from "./api.js";
+import { baselineOffsets, startBaselineSampler } from "./baseline.js";
 import { configFromEnv } from "./config.js";
 import { appendJsonl } from "./metrics.js";
 import { runLoadTest, type TurnRecord } from "./scenario.js";
@@ -25,6 +26,16 @@ async function main(): Promise<void> {
   await mkdir(dirname(config.metricsFile), { recursive: true });
   const client = new LoadTestClient({ baseUrl: config.baseUrl });
 
+  const baselineEnabled = process.env.LOADTEST_BASELINE_ENABLED !== "false";
+  const sampler = baselineEnabled
+    ? startBaselineSampler({
+        apiKey: config.model.apiKey,
+        baseUrl: config.model.baseUrl,
+        modelId: config.model.modelId,
+        intervalMs: intEnv("LOADTEST_BASELINE_INTERVAL_MS", 5_000),
+      })
+    : null;
+
   const summary = await runLoadTest({
     client,
     runId,
@@ -42,13 +53,37 @@ async function main(): Promise<void> {
       displayName: config.model.displayName,
     },
     kbId: process.env.LOADTEST_KB_ID,
+    kbSeed: {
+      documents: [
+        {
+          filename: "architecture.md",
+          content:
+            "# Agent Core 架构\n\nAgent Core 由 gateway、Java server、web、sandbox 四个模块组成。" +
+            "gateway 托管 pi 会话并通过 SSE 透传事件；Java 负责认证、RAG、沙箱调度与业务编排。",
+        },
+        {
+          filename: "sessions.md",
+          content:
+            "# 会话存储方式\n\n会话消息双写：pi session 以 JSONL 形式落盘，MySQL 侧保留消息投影。" +
+            "服务重启时可以从持久化会话恢复，已持久化消息不会丢失。",
+        },
+        {
+          filename: "sandbox.md",
+          content:
+            "# 代码执行沙箱\n\nrun_code 工具在一次性 Docker 容器中执行 Python 代码：" +
+            "无网络、非 root、只读根文件系统、CPU 与内存受限，执行记录写入 exec_records 审计表。",
+        },
+      ],
+    },
     onRecord: (record: TurnRecord) => appendJsonl(config.metricsFile, record),
     onProgress: (message) => console.error(`[loadtest] ${message}`),
   });
 
+  const baseline = sampler ? await stopSampler(sampler) : null;
+  const output = { ...summary, baseline };
   const summaryFile = config.metricsFile.replace(/\.jsonl$/, "") + ".summary.json";
-  await writeFile(summaryFile, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify(summary, null, 2));
+  await writeFile(summaryFile, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+  console.log(JSON.stringify(output, null, 2));
   console.log(`[loadtest] records: ${config.metricsFile}`);
   console.log(`[loadtest] summary: ${summaryFile}`);
 
@@ -58,6 +93,13 @@ async function main(): Promise<void> {
     (summary.statusCounts.error ?? 0) > 0 ||
     (summary.statusCounts.disconnected ?? 0) > 0;
   if (failed) process.exitCode = 1;
+}
+
+async function stopSampler(
+  sampler: ReturnType<typeof startBaselineSampler>,
+): Promise<{ count: number; medianMs: number | null; p95Ms: number | null; errors: string[] }> {
+  await sampler.stop();
+  return { ...baselineOffsets(sampler.samples), errors: sampler.errors };
 }
 
 main().catch((error: unknown) => {
