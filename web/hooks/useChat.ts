@@ -106,6 +106,8 @@ export function useChat() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [contextUsage, setContextUsage] = useState<ContextUsageData | null>(null);
+  const [contextCompacted, setContextCompacted] = useState(false);
+  const lastContextPercent = useRef<number | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +164,8 @@ export function useChat() {
       setCurrentSessionId(sessionId);
       setMessages([]);
       setContextUsage(null);
+      setContextCompacted(false);
+      lastContextPercent.current = null;
       setHistoryHasMore(false);
       setNextBeforeId(null);
       setNotice(null);
@@ -257,6 +261,9 @@ export function useChat() {
         await switchChatSessionModel(sessionId, modelId);
         await refreshSessions();
         clearError();
+        setContextUsage(null);
+        setContextCompacted(false);
+        lastContextPercent.current = null;
         setNotice("已切换模型，重新发送消息即可使用新模型");
         return true;
       } catch (cause: unknown) {
@@ -504,10 +511,23 @@ export function useChat() {
           case "message_end":
             finalizeMessage(event.data);
             break;
-          case "context_usage":
+          case "context_usage": {
+            const previous = lastContextPercent.current;
+            const next = event.data.percent;
+            if (
+              (previous != null && next != null && previous - next >= 15) ||
+              (previous != null && next == null && previous >= event.data.compactionThresholdPercent)
+            ) {
+              // pi may compact between runs, after run_settled; the usage drop is
+              // the only event the next run sees.
+              setContextCompacted(true);
+            }
+            lastContextPercent.current = next;
             setContextUsage(event.data);
             break;
+          }
           case "compaction":
+            setContextCompacted(true);
             setNotice("上下文已压缩");
             break;
           case "retry":
@@ -620,6 +640,7 @@ export function useChat() {
     currentKbId,
     currentKbName,
     contextUsage,
+    contextCompacted,
     messages,
     input,
     setInput,

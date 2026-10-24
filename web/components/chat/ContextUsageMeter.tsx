@@ -2,7 +2,13 @@ import type { ContextUsageData } from "@/types/gateway";
 import styles from "./chat.module.css";
 
 /** Live context occupancy; hidden until the gateway sends context_usage. */
-export function ContextUsageMeter({ usage }: { usage: ContextUsageData }) {
+export function ContextUsageMeter({
+  usage,
+  compacted,
+}: {
+  usage: ContextUsageData;
+  compacted: boolean;
+}) {
   const percent = usage.percent;
   const warning =
     usage.compactionEnabled && percent != null && percent >= usage.compactionThresholdPercent;
@@ -37,7 +43,10 @@ export function ContextUsageMeter({ usage }: { usage: ContextUsageData }) {
           />
         </span>
       ) : null}
-      <span>{label}</span>
+      <span>
+        {label}
+        {compacted ? <span className={styles.contextCompacted}>已压缩</span> : null}
+      </span>
     </span>
   );
 }

@@ -63,7 +63,10 @@ export function ChatPage() {
                 </span>
               ) : null}
               {chat.contextUsage ? (
-                <ContextUsageMeter usage={chat.contextUsage} />
+                <ContextUsageMeter
+                  usage={chat.contextUsage}
+                  compacted={chat.contextCompacted}
+                />
               ) : null}
               {chat.currentSessionId ? (
                 <SessionKbSelect

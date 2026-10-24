@@ -92,7 +92,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 - 会话头部模型/知识库旁显示小胶囊 + 细进度条：`上下文 42% · 压缩阈值 80%`。
 - 悬停显示 `tokens / contextWindow`；占比达到阈值时变色（例如警示色），但不改变对话行为。
 - `tokens/percent` 为 null 时显示「上下文统计中」；`compactionEnabled=false` 时显示「压缩已关闭」。
-- `compaction` 事件仍显示「上下文已压缩」；摘要正文查看是 P1，不做。
+- `compaction` 事件仍显示「上下文已压缩」；若压缩发生在 `run_settled` 之后、没有事件，UI 在 `context_usage` 明显下降（≥15 个百分点）时推断并显示持久的「已压缩」标记；模型/会话切换时重置。摘要正文查看是 P1，不做。
 - 刷新后占位隐藏，直到下一次 run。
 
 ### 原文与配额
