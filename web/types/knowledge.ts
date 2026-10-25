@@ -160,3 +160,26 @@ export interface KbRerankProbeInput {
   model: string;
   path?: string;
 }
+
+/** One hit in the retrieval debug view; mirrors the kb_search passage shape. */
+export interface KbRetrievalPassage {
+  passageId: string;
+  documentId: string;
+  seq: number;
+  page: number | null;
+  title: string;
+  content: string;
+  score: number;
+  reranked: boolean;
+  kbId: string;
+  kbName: string;
+}
+
+/** Two orderings of one candidate pool: vector order and the effective configuration. */
+export interface KbRetrievalQueryResult {
+  query: string;
+  reranked: boolean;
+  rerankModel: string | null;
+  current: KbRetrievalPassage[];
+  vector: KbRetrievalPassage[];
+}

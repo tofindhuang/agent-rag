@@ -16,6 +16,7 @@ import {
 import { useKnowledge } from "@/hooks/useKnowledge";
 import type { KbKnowledgeBase } from "@/types/knowledge";
 import { DocumentList } from "./DocumentList";
+import { RetrievalPanel } from "./RetrievalPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { UploadPanel } from "./UploadPanel";
 import styles from "./knowledge.module.css";
@@ -183,6 +184,7 @@ export function KnowledgePage() {
           onReingestAll={knowledge.reingestAll}
           onDelete={knowledge.remove}
         />
+        <RetrievalPanel kbId={kbId} />
         <SettingsPanel />
       </div>
 

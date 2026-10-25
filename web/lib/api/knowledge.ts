@@ -12,6 +12,8 @@ import type {
   KbProbeResult,
   KbRerankProbeInput,
   KbRerankSettings,
+  KbRetrievalPassage,
+  KbRetrievalQueryResult,
   KbRetrievalTestResult,
   KbSettings,
   KbSettingsInput,
@@ -303,6 +305,45 @@ export async function probeKbRerank(
 }
 
 /** Saves rerank only; embedding settings are preserved server-side. */
+function parseRetrievalPassage(raw: unknown): KbRetrievalPassage {
+  const passage = asRecord(raw);
+  return {
+    passageId: asString(passage.passageId),
+    documentId: asString(passage.documentId),
+    seq: asNumber(passage.seq),
+    page: asNullableNumber(passage.page),
+    title: asString(passage.title),
+    content: asString(passage.content),
+    score: asNumber(passage.score),
+    reranked: passage.reranked === true,
+    kbId: asString(passage.kbId),
+    kbName: asString(passage.kbName),
+  };
+}
+
+/** Retrieval debug: one candidate pool rendered as vector order and effective order. */
+export async function queryKbRetrieval(
+  kbId: string,
+  query: string,
+): Promise<KbRetrievalQueryResult> {
+  const body = asRecord(
+    await readJson(
+      await authFetch("/api/kb/retrieval/query", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kbId, query }),
+      }),
+    ),
+  );
+  return {
+    query: asString(body.query),
+    reranked: body.reranked === true,
+    rerankModel: asNullableString(body.rerankModel),
+    current: Array.isArray(body.current) ? body.current.map(parseRetrievalPassage) : [],
+    vector: Array.isArray(body.vector) ? body.vector.map(parseRetrievalPassage) : [],
+  };
+}
+
 export async function testKbRetrieval(): Promise<KbRetrievalTestResult> {
   const response = await authFetch("/api/kb/settings/test", {
     method: "POST",
