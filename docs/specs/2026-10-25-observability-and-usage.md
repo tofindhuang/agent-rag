@@ -199,6 +199,8 @@ app:
 
 所有接口需登录；`/api/admin/**` 额外要求 `role=admin`，否则 403 `FORBIDDEN`。窗口参数 `window=7d|30d`（默认按页面），非法值 400 `INVALID_REQUEST`。
 
+`GET /api/admin/ping` 为访问冒烟接口，返回 `{"role":"admin"}`；真实看板接口见下。
+
 ### 用户自助
 
 `GET /api/usage/me?window=30d`

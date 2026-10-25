@@ -6,6 +6,9 @@ app:
     # Base64 of 32 bytes; encrypts user-supplied provider API keys (ADR-0010).
     secret-key: ${MODEL_SECRET_KEY:}
     allow-system-default: ${ALLOW_SYSTEM_DEFAULT_MODEL:true}
+  admin:
+    # Comma-separated allow-list for the read-only admin role (ADR-0023).
+    emails: ${ADMIN_EMAILS:}
   # Knowledge base / RAG (FR-2). User settings override embedding/rerank;
   # deployment values below are the fallback.
   kb:

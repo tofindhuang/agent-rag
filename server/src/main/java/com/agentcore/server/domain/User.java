@@ -13,6 +13,7 @@ public class User {
     private Long id;
     private String email;
     private String passwordHash;
+    private String role;
     private String settings;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -39,6 +40,15 @@ public class User {
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    /** {@code user} or {@code admin}; see ADR-0023. */
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 
     public String getSettings() {

@@ -1,9 +1,11 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.auth.AdminGuard;
 import com.agentcore.server.common.auth.JwtService;
 import com.agentcore.server.common.auth.RefreshTokens;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.config.AdminProperties;
 import com.agentcore.server.config.AuthProperties;
 import com.agentcore.server.dao.RefreshTokenDao;
 import com.agentcore.server.dao.UserDao;
@@ -34,18 +36,21 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthProperties authProperties;
+    private final AdminProperties adminProperties;
 
     public AuthServiceImpl(
             UserDao userDao,
             RefreshTokenDao refreshTokenDao,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            AuthProperties authProperties) {
+            AuthProperties authProperties,
+            AdminProperties adminProperties) {
         this.userDao = userDao;
         this.refreshTokenDao = refreshTokenDao;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authProperties = authProperties;
+        this.adminProperties = adminProperties;
     }
 
     @Override
@@ -59,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
         User user = new User();
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(password));
+        user.setRole(adminProperties.isAdminEmail(email) ? AdminGuard.ROLE_ADMIN : "user");
         try {
             userDao.insert(user);
         } catch (DuplicateKeyException ex) {
@@ -127,7 +133,7 @@ public class AuthServiceImpl implements AuthService {
         if (user == null) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
         }
-        return new UserProfile(user.getId(), user.getEmail());
+        return new UserProfile(user.getId(), user.getEmail(), user.getRole());
     }
 
     @Override

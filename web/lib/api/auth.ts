@@ -2,9 +2,12 @@ import { ApiError, toApiError } from "./errors";
 import { apiJson, authFetch, publicPost } from "./http";
 import { clearAccessToken, extractAccessToken, setAccessToken } from "./token";
 
+export type UserRole = "user" | "admin";
+
 export interface AuthUser {
   userId: number;
   email: string;
+  role: UserRole;
 }
 
 interface RegisterResponse {

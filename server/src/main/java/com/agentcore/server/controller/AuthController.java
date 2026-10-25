@@ -102,7 +102,7 @@ public class AuthController {
     @GetMapping("/me")
     public MeResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
         UserProfile profile = authService.profile(user.userId());
-        return new MeResponse(profile.userId(), profile.email());
+        return new MeResponse(profile.userId(), profile.email(), profile.role());
     }
 
     /** Verifies the current password, rotates it and logs every device out. */
