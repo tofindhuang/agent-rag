@@ -61,6 +61,7 @@ public class KbEvalServiceImpl implements KbEvalService {
     private static final Logger log = LoggerFactory.getLogger(KbEvalServiceImpl.class);
 
     private static final int TOP_K = KbRetrievalCore.DEFAULT_TOP_K;
+    private static final long MIN_QUERY_BUDGET_MS = 250;
     private static final int SCALE = 4;
 
     private final KbIndexGuard indexGuard;
@@ -298,7 +299,7 @@ public class KbEvalServiceImpl implements KbEvalService {
             for (int i = 0; i < runnable.size(); i++) {
                 Work entry = runnable.get(i);
                 long remainingMs = Math.max(0, deadline - System.nanoTime()) / 1_000_000L;
-                if (remainingMs <= 0) {
+                if (remainingMs <= MIN_QUERY_BUDGET_MS) {
                     futures.get(i).cancel(true);
                     outcomes.put(entry.label().getId(), skipped(entry.label()));
                     continue;
@@ -334,19 +335,19 @@ public class KbEvalServiceImpl implements KbEvalService {
             Work entry,
             long deadline) {
         Duration remaining = Duration.ofNanos(Math.max(1, deadline - System.nanoTime()));
-        Duration budget = remaining.compareTo(KbRetrievalCore.SEARCH_BUDGET) < 0
-                ? remaining
-                : KbRetrievalCore.SEARCH_BUDGET;
+        boolean clippedBudget = remaining.compareTo(KbRetrievalCore.SEARCH_BUDGET) < 0;
+        Duration budget = clippedBudget ? remaining : KbRetrievalCore.SEARCH_BUDGET;
         KbRetrievalCore.Outcome outcome;
         try {
             outcome = retrievalCore.retrieve(
                     userId, kbId, embedding, entry.label().getQuery(), TOP_K, budget);
         } catch (ApiException e) {
-            // The per-query budget can expire exactly at the run deadline; that
-            // is a skipped label, not a broken endpoint.
+            // When the run deadline has clipped the per-query budget, an
+            // endpoint timeout is a skipped label, not a broken endpoint.
             if (e.code() == ErrorCode.KB_UNAVAILABLE
-                    && e.getMessage() != null
-                    && e.getMessage().contains("budget")) {
+                    && (clippedBudget
+                            || (e.getMessage() != null
+                                    && e.getMessage().contains("budget")))) {
                 return baseItem(entry.label(), KbEvalItem.STATUS_SKIPPED);
             }
             throw e;
