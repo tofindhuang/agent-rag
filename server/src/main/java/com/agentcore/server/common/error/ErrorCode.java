@@ -26,6 +26,7 @@ public enum ErrorCode {
     KB_NOT_CONFIGURED(409, false),
     KB_QUOTA_EXCEEDED(409, false),
     KB_INDEX_STALE(409, false),
+    KB_EVAL_LABEL_LIMIT(409, false),
     KB_UNSUPPORTED_FORMAT(400, false),
     KB_FILE_TOO_LARGE(413, false),
     SANDBOX_CODE_TOO_LARGE(413, false),

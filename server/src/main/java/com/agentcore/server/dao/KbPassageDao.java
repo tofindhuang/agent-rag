@@ -15,6 +15,9 @@ public interface KbPassageDao extends BaseMapper<KbPassage> {
 
     int insertBatch(@Param("passages") List<KbPassage> passages);
 
+    KbPassage findByDocumentAndSeq(
+            @Param("documentId") String documentId, @Param("seq") int seq);
+
     List<KbPassage> listByDocument(
             @Param("documentId") String documentId, @Param("userId") long userId);
 

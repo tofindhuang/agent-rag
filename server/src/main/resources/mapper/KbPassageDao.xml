@@ -22,6 +22,13 @@
         </foreach>
     </insert>
 
+    <select id="findByDocumentAndSeq" resultType="com.agentcore.server.domain.KbPassage">
+        SELECT <include refid="passageColumns"/>
+        FROM kb_passages
+        WHERE document_id = #{documentId}
+          AND seq = #{seq}
+    </select>
+
     <select id="listPage" resultType="com.agentcore.server.domain.KbPassage">
         SELECT <include refid="passageColumns"/>
         FROM kb_passages

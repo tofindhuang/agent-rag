@@ -2,6 +2,9 @@ import { ApiError, toApiError } from "./errors";
 import { authFetch } from "./http";
 import type {
   KbDocument,
+  KbEvalLabel,
+  KbEvalLabelInput,
+  KbEvalLabelList,
   KbDocumentPage,
   KbDocumentStatus,
   KbEmbeddingSettings,
@@ -154,6 +157,51 @@ export async function fetchKnowledgeDocuments(kbId?: string): Promise<KbDocument
   );
   const items = Array.isArray(body.items) ? body.items.map(parseDocument) : [];
   return { items, usage: parseUsage(body.usage) };
+}
+
+function parseEvalLabel(raw: unknown): KbEvalLabel {
+  const label = asRecord(raw);
+  return {
+    id: asNumber(label.id),
+    query: asString(label.query),
+    documentId: asString(label.documentId),
+    seq: asNumber(label.seq),
+    title: asNullableString(label.title),
+    page: asNullableNumber(label.page),
+    state: label.state === "rotten" ? "rotten" : "ok",
+    createdAt: asString(label.createdAt),
+  };
+}
+
+export async function fetchKbEvalLabels(kbId: string): Promise<KbEvalLabelList> {
+  const params = new URLSearchParams({ kbId });
+  const body = asRecord(
+    await readJson(await authFetch(`/api/kb/retrieval/labels?${params.toString()}`)),
+  );
+  const items = Array.isArray(body.items) ? body.items.map(parseEvalLabel) : [];
+  return {
+    items,
+    total: asNumber(body.total),
+    limit: asNumber(body.limit, 100),
+  };
+}
+
+export async function createKbEvalLabel(input: KbEvalLabelInput): Promise<KbEvalLabel> {
+  const body = asRecord(
+    await readJson(
+      await authFetch("/api/kb/retrieval/labels", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    ),
+  );
+  return parseEvalLabel(body);
+}
+
+export async function deleteKbEvalLabel(id: number): Promise<void> {
+  const response = await authFetch(`/api/kb/retrieval/labels/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await toApiError(response);
 }
 
 export async function fetchKbPassages(

@@ -183,3 +183,30 @@ export interface KbRetrievalQueryResult {
   current: KbRetrievalPassage[];
   vector: KbRetrievalPassage[];
 }
+
+export type KbEvalLabelState = "ok" | "rotten";
+
+/** One "question → expected passage" label; rotten means the target changed after a rebuild. */
+export interface KbEvalLabel {
+  id: number;
+  query: string;
+  documentId: string;
+  seq: number;
+  title: string | null;
+  page: number | null;
+  state: KbEvalLabelState;
+  createdAt: string;
+}
+
+export interface KbEvalLabelList {
+  items: KbEvalLabel[];
+  total: number;
+  limit: number;
+}
+
+export interface KbEvalLabelInput {
+  kbId: string;
+  query: string;
+  documentId: string;
+  seq: number;
+}

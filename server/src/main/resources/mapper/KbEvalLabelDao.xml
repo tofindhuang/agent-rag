@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.KbEvalLabelDao">
+
+    <sql id="labelColumns">
+        id, user_id, kb_id, query, document_id, seq, passage_sha256, created_at, updated_at
+    </sql>
+
+    <select id="listByKb" resultType="com.agentcore.server.domain.KbEvalLabel">
+        SELECT <include refid="labelColumns"/>
+        FROM kb_eval_labels
+        WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+
+    <select id="findByKbAndQuery" resultType="com.agentcore.server.domain.KbEvalLabel">
+        SELECT <include refid="labelColumns"/>
+        FROM kb_eval_labels
+        WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
+          AND query = #{query}
+    </select>
+
+    <select id="countByKb" resultType="long">
+        SELECT COUNT(*)
+        FROM kb_eval_labels
+        WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO kb_eval_labels (user_id, kb_id, query, document_id, seq, passage_sha256)
+        VALUES (#{userId}, #{kbId}, #{query}, #{documentId}, #{seq}, #{passageSha256}) AS new
+        ON DUPLICATE KEY UPDATE
+            document_id = new.document_id,
+            seq = new.seq,
+            passage_sha256 = new.passage_sha256,
+            updated_at = NOW(6)
+    </insert>
+
+    <delete id="deleteOwned">
+        DELETE FROM kb_eval_labels
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </delete>
+
+</mapper>
