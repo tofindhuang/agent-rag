@@ -7,8 +7,10 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.dto.admin.AdminOverviewResponse;
 import com.agentcore.server.dto.admin.AdminPingResponse;
+import com.agentcore.server.dto.admin.AdminTraceResponse;
 import com.agentcore.server.dto.admin.AdminUserDetailResponse;
 import com.agentcore.server.dto.admin.AdminUserListResponse;
+import com.agentcore.server.service.AdminTraceService;
 import com.agentcore.server.service.UsageQueryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,10 +30,15 @@ public class AdminController {
 
     private final AdminGuard adminGuard;
     private final UsageQueryService usageQueryService;
+    private final AdminTraceService traceService;
 
-    public AdminController(AdminGuard adminGuard, UsageQueryService usageQueryService) {
+    public AdminController(
+            AdminGuard adminGuard,
+            UsageQueryService usageQueryService,
+            AdminTraceService traceService) {
         this.adminGuard = adminGuard;
         this.usageQueryService = usageQueryService;
+        this.traceService = traceService;
     }
 
     @GetMapping("/ping")
@@ -83,6 +90,28 @@ public class AdminController {
         int days = UsageWindows.days(window);
         log.info("admin read: admin={} endpoint=user target={}", user.userId(), userId);
         return usageQueryService.adminUser(userId, days, page(page), size(size));
+    }
+
+    @GetMapping("/trace")
+    public AdminTraceResponse trace(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(value = "requestId", required = false) String requestId,
+            @RequestParam(value = "turnId", required = false) String turnId,
+            @RequestParam(value = "runId", required = false) String runId) {
+        adminGuard.requireAdmin(user.userId());
+        int provided = (blank(requestId) ? 0 : 1)
+                + (blank(turnId) ? 0 : 1)
+                + (blank(runId) ? 0 : 1);
+        if (provided != 1) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "provide exactly one of requestId, turnId or runId");
+        }
+        log.info("admin read: admin={} endpoint=trace", user.userId());
+        return traceService.trace(requestId, turnId, runId);
+    }
+
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static int page(int page) {

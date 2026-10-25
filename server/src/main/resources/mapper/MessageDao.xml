@@ -48,6 +48,14 @@
         LIMIT #{limit}
     </select>
 
+    <select id="listByTurn" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+        ORDER BY ordinal ASC
+    </select>
+
     <select id="findByOrdinal" resultType="com.agentcore.server.domain.Message">
         SELECT <include refid="messageColumns"/>
         FROM messages

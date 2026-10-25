@@ -21,6 +21,10 @@ public interface MessageDao extends BaseMapper<Message> {
 
     boolean existsBefore(@Param("sessionId") String sessionId, @Param("id") Long id);
 
+    /** Ordered turn transcript for an admin trace (projection order). */
+    List<Message> listByTurn(
+            @Param("sessionId") String sessionId, @Param("turnId") String turnId);
+
     Message findByOrdinal(
             @Param("sessionId") String sessionId,
             @Param("turnId") String turnId,

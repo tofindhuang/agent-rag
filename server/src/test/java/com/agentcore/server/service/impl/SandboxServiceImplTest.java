@@ -399,6 +399,13 @@ class SandboxServiceImplTest {
         }
 
         @Override
+        public java.util.List<ExecRecord> listByRunId(String runId) {
+            return rows.values().stream()
+                    .filter((row) -> runId.equals(row.getRunId()))
+                    .toList();
+        }
+
+        @Override
         public ExecRecord findById(String id) {
             return rows.get(id);
         }

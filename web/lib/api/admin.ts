@@ -1,6 +1,7 @@
 import { apiJson } from "./http";
 import type {
   AdminOverview,
+  AdminTrace,
   AdminUserDetail,
   AdminUserList,
   AdminWindow,
@@ -44,4 +45,14 @@ export function fetchAdminUserDetail(
   return apiJson<AdminUserDetail>(
     `/api/admin/users/${userId}?${search.toString()}`,
   );
+}
+
+export function fetchAdminTrace(
+  params: { requestId?: string; turnId?: string; runId?: string },
+): Promise<AdminTrace> {
+  const search = new URLSearchParams();
+  if (params.requestId) search.set("requestId", params.requestId);
+  if (params.turnId) search.set("turnId", params.turnId);
+  if (params.runId) search.set("runId", params.runId);
+  return apiJson<AdminTrace>(`/api/admin/trace?${search.toString()}`);
 }

@@ -48,6 +48,13 @@
         WHERE id = #{id}
     </select>
 
+    <select id="listByRunId" resultType="com.agentcore.server.domain.ExecRecord">
+        SELECT <include refid="execRecordColumns"/>
+        FROM exec_records
+        WHERE run_id = #{runId}
+        ORDER BY created_at ASC
+    </select>
+
     <update id="markStaleRunning">
         UPDATE exec_records
         SET status = 'aborted',

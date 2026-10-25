@@ -149,3 +149,57 @@ export interface AdminUserDetail {
 }
 
 export type AdminUserSort = "lastActive" | "cost" | "tokens";
+
+export interface AdminTraceToolCall {
+  name: string | null;
+  toolCallId: string | null;
+}
+
+export interface AdminTraceNode {
+  type: "run_started" | "assistant" | "tool" | "run_settled";
+  at: string | null;
+  missing: boolean;
+  modelId: string | null;
+  seq: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  toolCalls: AdminTraceToolCall[];
+  name: string | null;
+  passages: number | null;
+  topScore: number | null;
+  execId: string | null;
+  status: string | null;
+  durationMs: number | null;
+  queueMs: number | null;
+  exitCode: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+export interface AdminTraceSummary {
+  requestId: string | null;
+  userId: number;
+  email: string;
+  sessionId: string;
+  turnId: string;
+  runId: string;
+  modelId: string | null;
+  status: string;
+  tokensIn: number;
+  tokensOut: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number | null;
+  startedAt: string | null;
+  settledAt: string | null;
+}
+
+export interface AdminTrace {
+  currency: string;
+  summary: AdminTraceSummary;
+  timeline: AdminTraceNode[];
+}
+
+export type AdminTraceKey = "requestId" | "turnId" | "runId";

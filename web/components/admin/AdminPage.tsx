@@ -5,6 +5,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { PageShell } from "@/components/ui/PageShell";
 import type { AdminTab } from "@/types/admin";
 import { AdminOverview } from "./AdminOverview";
+import { AdminTrace } from "./AdminTrace";
 import { AdminUsers } from "./AdminUsers";
 import styles from "./admin.module.css";
 
@@ -47,7 +48,7 @@ export function AdminPage() {
           </div>
           {tab === "overview" ? <AdminOverview /> : null}
           {tab === "users" ? <AdminUsers /> : null}
-          {tab === "trace" ? <p className={styles.hint}>trace 页签将在后续票中实现。</p> : null}
+          {tab === "trace" ? <AdminTrace /> : null}
         </>
       ) : (
         <p className={styles.denied} role="alert">

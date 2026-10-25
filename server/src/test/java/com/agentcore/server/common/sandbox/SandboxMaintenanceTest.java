@@ -168,6 +168,11 @@ class SandboxMaintenanceTest {
         }
 
         @Override
+        public java.util.List<ExecRecord> listByRunId(String runId) {
+            return java.util.List.of();
+        }
+
+        @Override
         public ExecRecord findById(String id) {
             return null;
         }

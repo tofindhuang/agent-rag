@@ -2,6 +2,7 @@ package com.agentcore.server.dao;
 
 import com.agentcore.server.domain.ExecRecord;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -29,6 +30,8 @@ public interface ExecRecordDao {
             @Param("finishedAt") LocalDateTime finishedAt);
 
     ExecRecord findById(@Param("id") String id);
+
+    List<ExecRecord> listByRunId(@Param("runId") String runId);
 
     /** Recovery: rows stuck in running after a JVM restart. */
     int markStaleRunning(
