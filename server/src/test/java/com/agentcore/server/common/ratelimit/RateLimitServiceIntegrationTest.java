@@ -42,15 +42,15 @@ class RateLimitServiceIntegrationTest extends AbstractIntegrationTest {
     @Test
     void windowResetAllowsRequestsAgain() throws Exception {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        RateLimitService service = service(registry, true, 1, 100, 10, Duration.ofSeconds(1));
+        RateLimitService service = service(registry, true, 1, 100, 10, Duration.ofSeconds(2));
         long userId = randomUserId();
 
         assertThat(service.checkUserRpm(userId).allowed()).isTrue();
         RateLimitDecision rejected = service.checkUserRpm(userId);
         assertThat(rejected.allowed()).isFalse();
-        assertThat(rejected.retryAfterSeconds()).isEqualTo(1);
+        assertThat(rejected.retryAfterSeconds()).isEqualTo(2);
 
-        Thread.sleep(1_100L);
+        Thread.sleep(2_100L);
 
         assertThat(service.checkUserRpm(userId).allowed()).isTrue();
     }

@@ -65,8 +65,13 @@ export class RedisInstanceRegistry {
   }
 
   async heartbeat(): Promise<void> {
-    await this.publish();
+    await this.publishNow();
     await this.refreshPeers();
+  }
+
+  /** Publishes the current session count immediately (not only on heartbeat). */
+  async publishNow(): Promise<void> {
+    await this.publish();
   }
 
   async markDraining(): Promise<void> {

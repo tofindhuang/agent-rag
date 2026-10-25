@@ -101,6 +101,8 @@ export interface SessionPoolOptions {
   onEvict?: (sessionId: string) => void;
   /** Override the eviction scan interval (tests and tuning). */
   evictionScanMs?: number;
+  /** Called whenever the resident session count changes. */
+  onSessionCountChange?: () => void;
   /** Java-proxied archive transport (ADR-0025). */
   archiveTransport?: ArchiveTransport;
 }
@@ -249,6 +251,7 @@ export class SessionPool implements GatewayPool {
       lock: lease.lock,
     };
     this.entries.set(sessionId, entry);
+    this.options.onSessionCountChange?.();
     return { entry, created: lease.created, restored: lease.restored };
   }
 
@@ -367,6 +370,7 @@ export class SessionPool implements GatewayPool {
     } finally {
       entry.lock.release();
     }
+    this.options.onSessionCountChange?.();
     return true;
   }
 

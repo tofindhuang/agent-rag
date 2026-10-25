@@ -5,6 +5,8 @@ import { setTimeout as delay } from "node:timers/promises";
 export interface ManagedProcess {
   readonly pid: number;
   stop(): Promise<void>;
+  /** Resolves true when the process has exited, false on timeout. */
+  waitForExit(timeoutMs: number): Promise<boolean>;
 }
 
 export interface StartProcessOptions {
@@ -30,9 +32,18 @@ export function startProcess(options: StartProcessOptions): ManagedProcess {
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   let stopped = false;
+  const exited = new Promise<boolean>((resolve) => {
+    child.once("exit", () => resolve(true));
+  });
 
   return {
     pid: child.pid ?? -1,
+    waitForExit(timeoutMs: number) {
+      return Promise.race([
+        exited,
+        delay(timeoutMs).then(() => false),
+      ]);
+    },
     async stop() {
       if (stopped) return;
       stopped = true;

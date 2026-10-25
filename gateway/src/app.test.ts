@@ -10,6 +10,7 @@ import {
   readRequireExisting,
   type GatewayLifecycle,
 } from "./app.js";
+import { DrainGate } from "./drain-gate.js";
 import type { GatewayConfig } from "./config.js";
 import type { RunIdentity } from "./identity.js";
 import type {
@@ -172,6 +173,7 @@ after(() => {
 async function startServer(
   apiToken?: string,
   lifecycle?: GatewayLifecycle,
+  gate?: DrainGate,
 ): Promise<TestServer> {
   const sessionDir = mkdtempSync(join(tmpdir(), "gateway-app-"));
   tempDirs.push(sessionDir);
@@ -199,7 +201,7 @@ async function startServer(
     lockHeartbeatMs: 60_000,
     lockStaleMs: 30_000,
   };
-  const app = createApp({ config, pool, lifecycle });
+  const app = createApp({ config, pool, lifecycle, gate });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
@@ -583,6 +585,46 @@ test("drain marks the instance and rejects new sessions and runs", async () => {
     });
     assert.equal(prompt.status, 409);
     assert.equal(((await prompt.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+  } finally {
+    await server.close();
+  }
+});
+
+test("drain rejects new admissions but lets an admitted prompt finish", async () => {
+  const gate = new DrainGate();
+  const server = await startServer(undefined, undefined, gate);
+  try {
+    await server.pool.ensure("s1", "u1");
+    server.pool.deferRuns = true;
+    const prompt = fetch(`${server.base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    await waitFor(() => server.pool.get("s1")?.activeRun !== null);
+
+    gate.beginDrain();
+
+    const rejected = await fetch(`${server.base}/sessions/s2`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(rejected.status, 409);
+    assert.equal(((await rejected.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+
+    const drained = gate.waitForZero(1_000);
+    assert.equal(
+      await Promise.race([
+        drained.then(() => "zero"),
+        new Promise((resolve) => setTimeout(() => resolve("pending"), 30)),
+      ]),
+      "pending",
+    );
+
+    server.pool.abort("s1");
+    const response = await prompt;
+    assert.equal(response.status, 200);
+    assert.equal(await drained, true);
   } finally {
     await server.close();
   }

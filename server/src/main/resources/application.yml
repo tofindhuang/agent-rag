@@ -127,6 +127,11 @@ management:
 # Local defaults match docker-compose.yml. Flyway owns the schema; the app
 # connects at boot and never generates DDL from entities (ADR-0009).
 spring:
+  mvc:
+    async:
+      # Chat/SSE turns may include 30–60s sandbox executions; the Servlet
+      # default (~30s) cuts long run_code turns mid-stream.
+      request-timeout: 10m
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/agent_core?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
     username: ${MYSQL_USER:agent_core}

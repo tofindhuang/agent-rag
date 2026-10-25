@@ -104,8 +104,11 @@ async function main(): Promise<void> {
               } catch {
                 // Already down; the restart still proceeds.
               }
-              await waitForHttpDown(`${url}/health`, 180_000);
-              await gateways[index].stop();
+              const exited = await gateways[index].waitForExit(180_000);
+              if (!exited) {
+                console.error(`[loadtest] gateway ${index} did not exit after drain; forcing`);
+                await gateways[index].stop();
+              }
               gateways[index] = startGateway(index);
               managed.push(gateways[index]);
               await waitForHttp(`${url}/health`, 60_000);

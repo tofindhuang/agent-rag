@@ -17,6 +17,7 @@ import {
 } from "./pool-contract.js";
 import { SessionBusyError } from "./session-lock.js";
 import { ArchiveError } from "./archive.js";
+import type { DrainGate } from "./drain-gate.js";
 import { probeProvider, ProbeError, type ProviderApi } from "./providers.js";
 import type { SessionModelConfig } from "./pool-contract.js";
 
@@ -49,10 +50,12 @@ export interface AppDependencies {
   config: GatewayConfig;
   pool: GatewayPool;
   lifecycle?: GatewayLifecycle;
+  /** Admission barrier; when present, drain waits for admitted requests. */
+  gate?: DrainGate;
 }
 
 /** Build the gateway HTTP app; index.ts owns process startup and shutdown. */
-export function createApp({ config, pool, lifecycle }: AppDependencies): Express {
+export function createApp({ config, pool, lifecycle, gate }: AppDependencies): Express {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "1mb" }));
@@ -62,6 +65,28 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
     if (!config.apiToken) return next();
     if (req.header("authorization") === `Bearer ${config.apiToken}`) return next();
     sendError(res, 401, "UNAUTHORIZED", "unauthorized");
+  });
+
+  // Drain barrier: requests admitted before drain may finish; after drain starts
+  // the gateway rejects new session work so Java can reroute it.
+  app.use((req, res, next) => {
+    if (!gate || !isAdmissionRequest(req.method, req.path)) {
+      next();
+      return;
+    }
+    if (!gate.tryEnter()) {
+      sendError(res, 409, "INSTANCE_DRAINING", "instance is draining", true);
+      return;
+    }
+    let left = false;
+    const leave = (): void => {
+      if (left) return;
+      left = true;
+      gate.leave();
+    };
+    res.once("finish", leave);
+    res.once("close", leave);
+    next();
   });
 
   app.post("/admin/drain", (_req, res) => {
@@ -75,7 +100,7 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
       contractVersion: CONTRACT_VERSION,
       sessions: pool.size,
       instanceId: config.instanceId,
-      draining: lifecycle?.isDraining() ?? false,
+      draining: gate?.isDraining() ?? lifecycle?.isDraining() ?? false,
       maxSessions: config.maxSessions,
     });
   });
@@ -509,6 +534,12 @@ function readSessionModel(body: Record<string, unknown>): ParsedModel {
     },
     ...(profile.profile ? { profile: profile.profile } : {}),
   };
+}
+
+function isAdmissionRequest(method: string, path: string): boolean {
+  if (method === "PUT" && /^\/sessions\/[^/]+$/.test(path)) return true;
+  if (method === "POST" && /^\/sessions\/[^/]+\/(prompt|archive)$/.test(path)) return true;
+  return false;
 }
 
 export function readRequireExisting(
