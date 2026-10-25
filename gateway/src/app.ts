@@ -34,13 +34,18 @@ export type GatewayErrorCode =
   | "MODEL_UNAVAILABLE"
   | "INTERNAL";
 
+export interface GatewayLifecycle {
+  isDraining(): boolean;
+}
+
 export interface AppDependencies {
   config: GatewayConfig;
   pool: GatewayPool;
+  lifecycle?: GatewayLifecycle;
 }
 
 /** Build the gateway HTTP app; index.ts owns process startup and shutdown. */
-export function createApp({ config, pool }: AppDependencies): Express {
+export function createApp({ config, pool, lifecycle }: AppDependencies): Express {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "1mb" }));
@@ -53,7 +58,14 @@ export function createApp({ config, pool }: AppDependencies): Express {
   });
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, contractVersion: CONTRACT_VERSION, sessions: pool.size });
+    res.json({
+      ok: true,
+      contractVersion: CONTRACT_VERSION,
+      sessions: pool.size,
+      instanceId: config.instanceId,
+      draining: lifecycle?.isDraining() ?? false,
+      maxSessions: config.maxSessions,
+    });
   });
 
   app.post("/providers/probe", async (req, res) => {

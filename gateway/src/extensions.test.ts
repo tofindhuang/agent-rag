@@ -52,6 +52,10 @@ function toolFor(url: string): CapturedTool {
     profileExtractMaxChars: 6_000,
     profileExtractMaxCandidates: 5,
     instanceId: "test-ext",
+    publicUrl: "http://127.0.0.1:0",
+    maxSessions: 60,
+    registryHeartbeatMs: 60_000,
+    registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,
     lockStaleMs: 30_000,
   };

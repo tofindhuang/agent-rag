@@ -20,6 +20,14 @@ export interface GatewayConfig {
   sessionDir: string;
   /** Stable identity of this gateway instance (ADR-0024). */
   instanceId: string;
+  /** Public address Java uses to reach this instance (ADR-0024). */
+  publicUrl: string;
+  /** Soft cap on resident sessions per instance (ADR-0024). */
+  maxSessions: number;
+  /** Redis URL for the instance registry; unset disables registration. */
+  redisUrl?: string;
+  registryHeartbeatMs: number;
+  registryTtlSeconds: number;
   /** Single-writer lock heartbeat and takeover threshold (ADR-0024). */
   lockHeartbeatMs: number;
   lockStaleMs: number;
@@ -57,6 +65,11 @@ export function loadConfig(): GatewayConfig {
     apiToken: process.env.GATEWAY_API_TOKEN,
     sessionDir: resolve(process.env.GATEWAY_SESSION_DIR ?? "data/sessions"),
     instanceId: process.env.GATEWAY_INSTANCE_ID?.trim() || `${hostname()}:${port}`,
+    publicUrl: process.env.GATEWAY_PUBLIC_URL?.trim() || `http://127.0.0.1:${port}`,
+    maxSessions: Math.max(1, intEnv("GATEWAY_MAX_SESSIONS", 60)),
+    redisUrl: process.env.REDIS_URL?.trim() || undefined,
+    registryHeartbeatMs: Math.max(10, intEnv("GATEWAY_REGISTRY_HEARTBEAT_MS", 5_000)),
+    registryTtlSeconds: Math.max(1, intEnv("GATEWAY_REGISTRY_TTL_SECONDS", 15)),
     lockHeartbeatMs: Math.max(10, intEnv("GATEWAY_LOCK_HEARTBEAT_MS", 5_000)),
     lockStaleMs: Math.max(20, intEnv("GATEWAY_LOCK_STALE_MS", 30_000)),
     allowPrivateModelEndpoints: process.env.MODEL_ALLOW_PRIVATE_ENDPOINTS === "true",

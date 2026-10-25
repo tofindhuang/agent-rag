@@ -86,6 +86,11 @@ interface EnsureOutcome {
   restored: boolean;
 }
 
+export interface SessionPoolOptions {
+  /** Registry probe used before taking over a stale session lock. */
+  isInstanceAlive?: (instanceId: string) => boolean | undefined;
+}
+
 export class SessionPool implements GatewayPool {
   private readonly entries = new Map<string, PoolEntry>();
   private readonly pendingCreates = new Map<string, Promise<EnsureOutcome>>();
@@ -95,11 +100,13 @@ export class SessionPool implements GatewayPool {
   constructor(
     private readonly config: GatewayConfig,
     factory?: SessionFactory,
+    options: SessionPoolOptions = {},
   ) {
     this.store = new SessionFileStore(process.cwd(), config.sessionDir, {
       instanceId: config.instanceId,
       lockHeartbeatMs: config.lockHeartbeatMs,
       lockStaleMs: config.lockStaleMs,
+      isInstanceAlive: options.isInstanceAlive,
     });
     this.factory = factory ?? ((manager, runRef, userId, modelConfig, profileRef) =>
       this.createPiSession(manager, runRef, userId, modelConfig, profileRef));

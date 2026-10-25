@@ -29,6 +29,10 @@ function config(): GatewayConfig {
     profileExtractMaxCandidates: 5,
     sessionDir: dir,
     instanceId: "test-pool",
+    publicUrl: "http://127.0.0.1:0",
+    maxSessions: 60,
+    registryHeartbeatMs: 60_000,
+    registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,
     lockStaleMs: 30_000,
   };

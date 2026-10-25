@@ -30,8 +30,8 @@
 
 | 方法 | 路径 | 请求 | 成功响应 |
 |---|---|---|---|
-| `GET` | `/health` | — | `200 { ok: true, contractVersion: "1", sessions: <number> }` |
-| `PUT` | `/sessions/:id` | `X-User-Id`，可选 body `{ model?, profileFacts?, profileMemoryEnabled? }` | `200 { sessionId, created, restored, model? }` |
+| `GET` | `/health` | — | `200 { ok: true, contractVersion: "1", sessions: <number>, instanceId: <string>, draining: <boolean>, maxSessions: <number> }` |
+| `PUT` | `/sessions/:id` | `X-User-Id`，可选 body `{ model?, profileFacts?, profileMemoryEnabled?, requireExisting? }` | `200 { sessionId, created, restored, model? }` |
 | `POST` | `/sessions/:id/prompt` | `X-User-Id`，`{ text, turnId }` | `200` SSE |
 | `POST` | `/sessions/:id/abort` | `X-User-Id`，空 body | `202` |
 | `DELETE` | `/sessions/:id` | `X-User-Id` | `204` |
@@ -41,6 +41,8 @@
 
 - **ID 由 Java 生成**，gateway 不生成业务会话 ID。
 - `PUT` 幂等：不存在则创建（`created: true`）；已存在且归属相同返回 `created: false`；归属不同返回 `409 SESSION_CONFLICT`。
+- `requireExisting` 可选（默认 false）：会话已有消息时 Java 传 true，gateway 在本地无文件且无归档时返回 `409 SESSION_STATE_CORRUPT`，绝不静默创建空会话。
+- 同一会话由共享目录中的单写者锁保护；锁被另一个实例持有时返回 `409 SESSION_BUSY`（retryable），错误体带 `owner.instanceId`；sidecar 缺失但 JSONL 存在同样返回 `409 SESSION_STATE_CORRUPT`，不自动重绑归属。
 - `restored` 表示本次调用是否从持久化的 pi session 恢复；已驻留内存的会话重试返回 `false`。
 - `profileFacts` 可选：Java 提供的 active 长期记忆展示文本数组；`profileMemoryEnabled` 可选：是否注入/提取。gateway 在 `before_agent_start` 追加到 system prompt；缺省时保持会话现有值（新建会话默认空/开启）。
 - `model` 可选，由 Java 按用户选择的供应商模型下发：`{ providerId?, name?, api, baseUrl, apiKey, modelId, displayName?, contextWindow?, reasoning?, vision? }`。gateway 为该会话构建隔离的模型运行时，密钥仅存内存、不进 session 文件；响应回显实际模型 `{ provider, id, name }`。未携带时使用部署默认模型；baseUrl 与探测走同一出站策略（默认公网 HTTPS，元数据地址永远拒绝），被策略拒绝时返回 `400 INVALID_REQUEST`。
@@ -144,6 +146,8 @@ HTTP 错误码：
 | `USER_MISMATCH` | 403 | false | 身份与会话归属不符 |
 | `SESSION_NOT_FOUND` | 404 | false | 会话不存在 |
 | `SESSION_CONFLICT` | 409 | false | PUT 时会话归属不同 |
+| `SESSION_BUSY` | 409 | true | 会话锁被另一个实例持有；错误体带 `owner.instanceId` |
+| `SESSION_STATE_CORRUPT` | 409 | false | sidecar 缺失/损坏，或 `requireExisting` 但引擎上下文不在 |
 | `RUN_IN_PROGRESS` | 409 | false | 同一会话已有进行中的 Run |
 | `NO_ACTIVE_RUN` | 409 | false | 空闲时调用 abort |
 | `UPSTREAM_UNAVAILABLE` | 503 | true | gateway 无法连接业务层或沙箱 |

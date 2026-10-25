@@ -172,6 +172,10 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     profileExtractMaxCandidates: 5,
     sessionDir,
     instanceId: "test-app",
+    publicUrl: "http://127.0.0.1:0",
+    maxSessions: 60,
+    registryHeartbeatMs: 60_000,
+    registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,
     lockStaleMs: 30_000,
   };
@@ -483,6 +487,25 @@ test("provider probe validates its request body", async () => {
     assert.equal(response.status, 400);
     const body = (await response.json()) as ErrorBody;
     assert.equal(body.error.code, "INVALID_REQUEST");
+  });
+});
+
+test("health exposes instance identity and capacity", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/health`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      instanceId: string;
+      draining: boolean;
+      sessions: number;
+      maxSessions: number;
+    };
+    assert.equal(body.ok, true);
+    assert.equal(body.instanceId, "test-app");
+    assert.equal(body.draining, false);
+    assert.equal(body.sessions, 0);
+    assert.equal(body.maxSessions, 60);
   });
 });
 
