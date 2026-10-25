@@ -2,6 +2,8 @@ package com.agentcore.server.service.impl;
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.kb.KbDigests;
+import com.agentcore.server.common.kb.KbRetrievalCore;
 import com.agentcore.server.dao.KbDocumentDao;
 import com.agentcore.server.dao.KbEvalLabelDao;
 import com.agentcore.server.dao.KbPassageDao;
@@ -13,13 +15,9 @@ import com.agentcore.server.dto.kb.KbEvalLabelListResponse;
 import com.agentcore.server.dto.kb.KbEvalLabelView;
 import com.agentcore.server.service.KbEvalLabelService;
 import com.agentcore.server.service.KbKnowledgeBaseService;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.HexFormat;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class KbEvalLabelServiceImpl implements KbEvalLabelService {
 
     private static final int LABEL_LIMIT = 100;
-    private static final int MAX_QUERY_CHARS = 512;
 
     private final KbEvalLabelDao labelDao;
     private final KbDocumentDao documentDao;
@@ -69,9 +66,10 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
         }
         var kb = knowledgeBaseService.requireOwned(userId, request.kbId());
         String query = request.query() == null ? "" : request.query().trim();
-        if (query.isEmpty() || query.length() > MAX_QUERY_CHARS) {
+        if (query.isEmpty() || query.length() > KbRetrievalCore.MAX_QUERY_CHARS) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "query must be between 1 and " + MAX_QUERY_CHARS + " characters");
+                    "query must be between 1 and " + KbRetrievalCore.MAX_QUERY_CHARS
+                            + " characters");
         }
         if (request.documentId() == null || request.documentId().isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "documentId is required");
@@ -97,7 +95,8 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
         }
 
         labelDao.upsert(
-                userId, kb.getId(), query, request.documentId(), seq, sha256Hex(passage.getContent()));
+                userId, kb.getId(), query, request.documentId(), seq,
+                KbDigests.sha256(passage.getContent()));
         KbEvalLabel saved = labelDao.findByKbAndQuery(userId, kb.getId(), query);
         return toView(document, passage, saved);
     }
@@ -120,7 +119,7 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
             KbDocument document, KbPassage passage, KbEvalLabel label) {
         boolean fresh = passage != null
                 && passage.getContent() != null
-                && sha256Hex(passage.getContent()).equals(label.getPassageSha256());
+                && KbDigests.sha256(passage.getContent()).equals(label.getPassageSha256());
         return new KbEvalLabelView(
                 label.getId(),
                 label.getQuery(),
@@ -130,16 +129,6 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
                 passage == null ? null : passage.getPage(),
                 fresh ? KbEvalLabelView.STATE_OK : KbEvalLabelView.STATE_ROTTEN,
                 toInstant(label.getCreatedAt()));
-    }
-
-    static String sha256Hex(String text) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(
-                    digest.digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is unavailable", e);
-        }
     }
 
     private static Instant toInstant(LocalDateTime value) {

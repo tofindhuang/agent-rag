@@ -5,7 +5,6 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.common.kb.KbIndexGuard;
 import com.agentcore.server.common.kb.KbRetrievalCore;
-import com.agentcore.server.common.kb.KbRetrievalCore.RankedHit;
 import com.agentcore.server.dao.KbKnowledgeBaseDao;
 import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.domain.KbKnowledgeBase;
@@ -57,24 +56,9 @@ public class KbServiceImpl implements KbService {
         KbRetrievalCore.Outcome outcome =
                 retrievalCore.retrieve(userId, kbId, embedding, request.query(), topK);
         List<KbSearchResponse.Passage> passages = outcome.ranked().stream()
-                .map((hit) -> toPassage(hit, kb))
+                .map((hit) -> KbPassageViews.toPassage(hit, kb))
                 .toList();
         return new KbSearchResponse(passages);
-    }
-
-    private static KbSearchResponse.Passage toPassage(RankedHit ranked, KbKnowledgeBase kb) {
-        var hit = ranked.hit();
-        return new KbSearchResponse.Passage(
-                hit.id(),
-                hit.payload().documentId(),
-                hit.payload().seq(),
-                hit.payload().page(),
-                hit.payload().title(),
-                hit.payload().text(),
-                ranked.score(),
-                ranked.reranked(),
-                kb.getId(),
-                kb.getName());
     }
 
     private static long parseUserId(ToolIdentity identity) {

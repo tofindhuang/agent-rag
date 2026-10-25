@@ -27,6 +27,7 @@ public class KbRetrievalCore {
     public static final Duration SEARCH_BUDGET = Duration.ofSeconds(20);
     public static final int DEFAULT_TOP_K = 5;
     public static final int MAX_TOP_K = 10;
+    public static final int MAX_QUERY_CHARS = 512;
 
     private final KbEmbeddingSettings embeddingSettings;
     private final KbEmbeddingClient embeddingClient;

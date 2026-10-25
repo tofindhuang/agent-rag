@@ -33,7 +33,7 @@ public final class KbEvalMetricsCalculator {
             Integer vectorRank = observation.rankVector();
             if (vectorRank != null) {
                 poolHits++;
-                if (vectorRank <= 5) {
+                if (vectorRank <= KbRetrievalCore.DEFAULT_TOP_K) {
                     baselineHits++;
                     baselineReciprocalSum += 1.0 / vectorRank;
                 }

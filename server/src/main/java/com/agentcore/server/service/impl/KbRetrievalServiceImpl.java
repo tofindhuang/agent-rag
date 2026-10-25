@@ -35,39 +35,21 @@ public class KbRetrievalServiceImpl implements KbRetrievalService {
 
     @Override
     public KbRetrievalQueryResponse query(long userId, KbRetrievalQueryRequest request) {
-        indexGuard.requireIndexUsable(userId);
         KbKnowledgeBase kb = knowledgeBaseService.requireOwned(userId, request.kbId());
+        indexGuard.requireIndexUsable(userId);
         var embedding = retrievalCore.resolveEmbedding(userId);
         indexGuard.requireFingerprint(userId, embedding);
 
         KbRetrievalCore.Outcome outcome =
                 retrievalCore.retrieve(userId, kb.getId(), embedding, request.query(), TOP_K);
         List<KbSearchResponse.Passage> current = outcome.ranked().stream()
-                .map((ranked) -> toPassage(ranked.hit(), ranked.score(), ranked.reranked(), kb))
+                .map((ranked) -> KbPassageViews.toPassage(ranked, kb))
                 .toList();
         List<KbSearchResponse.Passage> vector = outcome.pool().stream()
                 .limit(TOP_K)
-                .map((hit) -> toPassage(hit, hit.score(), false, kb))
+                .map((hit) -> KbPassageViews.toPassage(hit, hit.score(), false, kb))
                 .toList();
         return new KbRetrievalQueryResponse(
                 request.query(), outcome.reranked(), outcome.rerankModel(), current, vector);
-    }
-
-    private static KbSearchResponse.Passage toPassage(
-            com.agentcore.server.common.vector.VectorHit hit,
-            double score,
-            boolean reranked,
-            KbKnowledgeBase kb) {
-        return new KbSearchResponse.Passage(
-                hit.id(),
-                hit.payload().documentId(),
-                hit.payload().seq(),
-                hit.payload().page(),
-                hit.payload().title(),
-                hit.payload().text(),
-                score,
-                reranked,
-                kb.getId(),
-                kb.getName());
     }
 }

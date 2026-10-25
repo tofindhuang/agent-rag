@@ -2,6 +2,7 @@ package com.agentcore.server.service.impl;
 
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.kb.KbDigests;
 import com.agentcore.server.common.kb.KbEvalMetrics;
 import com.agentcore.server.common.kb.KbEvalMetricsCalculator;
 import com.agentcore.server.common.kb.KbEmbeddingConfig;
@@ -99,8 +100,8 @@ public class KbEvalServiceImpl implements KbEvalService {
     @Override
     public KbEvalRunResponse run(long userId, String kbId) {
         long started = System.nanoTime();
-        indexGuard.requireIndexUsable(userId);
         var kb = knowledgeBaseService.requireOwned(userId, kbId);
+        indexGuard.requireIndexUsable(userId);
         KbEmbeddingConfig embedding = retrievalCore.resolveEmbedding(userId);
         indexGuard.requireFingerprint(userId, embedding);
         String rerankModel = retrievalCore.resolveRerank(userId)
@@ -118,7 +119,7 @@ public class KbEvalServiceImpl implements KbEvalService {
                     label.getDocumentId(), label.getSeq());
             boolean fresh = passage != null
                     && passage.getContent() != null
-                    && KbEvalLabelServiceImpl.sha256Hex(passage.getContent())
+                    && KbDigests.sha256(passage.getContent())
                             .equals(label.getPassageSha256());
             work.add(new Work(label, passage, fresh));
         }
@@ -328,7 +329,10 @@ public class KbEvalServiceImpl implements KbEvalService {
             KbEmbeddingConfig embedding,
             Work entry,
             long deadline) {
-        Duration budget = Duration.ofNanos(Math.max(1, deadline - System.nanoTime()));
+        Duration remaining = Duration.ofNanos(Math.max(1, deadline - System.nanoTime()));
+        Duration budget = remaining.compareTo(KbRetrievalCore.SEARCH_BUDGET) < 0
+                ? remaining
+                : KbRetrievalCore.SEARCH_BUDGET;
         KbRetrievalCore.Outcome outcome = retrievalCore.retrieve(
                 userId, kbId, embedding, entry.label().getQuery(), TOP_K, budget);
         Integer rankVector = rankInPool(outcome.pool(), entry.label());

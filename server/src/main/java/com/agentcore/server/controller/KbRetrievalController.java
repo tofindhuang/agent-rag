@@ -3,6 +3,7 @@ package com.agentcore.server.controller;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.kb.KbRetrievalCore;
 import com.agentcore.server.dto.kb.KbEvalLabelCreateRequest;
 import com.agentcore.server.dto.kb.KbEvalLabelListResponse;
 import com.agentcore.server.dto.kb.KbEvalLabelView;
@@ -31,8 +32,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/kb/retrieval")
 public class KbRetrievalController {
 
-    private static final int MAX_QUERY_CHARS = 512;
-
     private final KbRetrievalService retrievalService;
     private final KbEvalLabelService labelService;
     private final KbEvalService evalService;
@@ -56,9 +55,9 @@ public class KbRetrievalController {
         if (request.query() == null || request.query().isBlank()) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "query is required");
         }
-        if (request.query().length() > MAX_QUERY_CHARS) {
+        if (request.query().length() > KbRetrievalCore.MAX_QUERY_CHARS) {
             throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "query must be at most " + MAX_QUERY_CHARS + " characters");
+                    "query must be at most " + KbRetrievalCore.MAX_QUERY_CHARS + " characters");
         }
         return retrievalService.query(user.userId(), request);
     }
