@@ -244,7 +244,7 @@ CREATE TABLE IF NOT EXISTS kb_eval_items (
 }
 ```
 
-- 无有效标注 → 409 `INVALID_REQUEST`（「没有可评测的标注」）。
+- 无有效标注 → 400 `INVALID_REQUEST`（「没有可评测的标注」）。
 - 指标只在 V 上计算；`N=0` 不会出现（已在上面拒绝）。
 - 同步预算 60s；超时后不再发起新查询，剩余标注记 `skipped`，`complete=false`。
 
@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS kb_eval_items (
 - `requireIndexUsable(userId)`：`KbAvailability.requireEnabled()` + `countStaleByUser == 0`。
 - `requireFingerprint(userId, embedding)`：`kb_documents` 中 `status <> 'deleting'` 且 `embedded_at IS NOT NULL` 的行，若 `embedding_model IS NULL` 或与当前生效 `KbEmbeddingConfig.model()/dim()` 不等 → 抛 `KB_INDEX_STALE`。
   - 错误消息沿用模块既有英文风格（与 `kb_search` 现有错误一致）：NULL → 「some documents were ingested before embedding fingerprints existed; run reingest-all before searching」；不等 → 列出旧模型与当前 `model + dim`，末尾提示 `reingest-all`。
-- 应用于：`kb_search`、`POST /retrieval/query`、三个评测读接口、`POST /eval/run`。
+- 应用于：`kb_search`、`POST /retrieval/query`、`POST /eval/run`。标注列表与评测历史只校验归属：索引损坏时仍可查看与审计旧标注/旧运行，但不能再发起检索。
 - 设置自检 `POST /settings/test` 保持现状（连通性冒烟，不做质量声明），不接闸门。
 
 错误码：
@@ -288,9 +288,9 @@ CREATE TABLE IF NOT EXISTS kb_eval_items (
 **质量评测**
 
 - 标注区：`count / 100`、列表（问题 + 目标文档/页码/seq + `ok|rotten` 徽标 + 删除）；rotten 行提示「目标 Passage 已变化，请重新标注」。
-- 运行区：「运行评测」按钮；禁用条件 = 无标注 / KB 不可用 / 有 stale；有处理中文档时警告「N 篇文档处理中，指标可能偏低」；有效标注 < 5 条警告「样本过少，仅供参考」。
+- 运行区：「运行评测」按钮；禁用条件 = 无知识库 / 无有效标注 / 有 stale；KB 被服务端禁用或配置缺失时由错误提示兜底；有处理中文档时警告「N 篇文档处理中，指标可能偏低」；有效标注 < 5 条警告「样本过少，仅供参考」。
 - 结果区：五个指标卡 + `complete` 徽标（不完整时黄条说明 skipped 数）+ rotten/skipped 列表。
-- 历史区：最近 20 次表格（时间、embedding 模型、rerank 模型、recall@5、MRR@5、候选池 recall@10、与上一条完整 run 的 delta、完整徽标）；展开行显示与「上一条完整 run」的逐条 diff（新命中 / 新丢失 / 仍丢失）。
+- 历史区：最近 20 次表格（时间、embedding 模型、rerank 模型、recall@5、MRR@5、候选池 recall@10、直搜 recall@5、与上一条完整 run 的 delta、完整徽标）；展开行显示与「上一条完整 run」的逐条变化（新命中 / 新丢失 / 仍丢失 / 过期待确认 / 未执行；「仍命中」视为无变化，只在全部无变化时提示）。
 - 保存 embedding 设置成功后，`SettingsPanel` 显示「设置已保存；建议到检索评测重跑一次」的轻提示（不自动触发）。
 - 所有错误经 `ApiError` 展示文案，不暴露堆栈或内部地址。
 
