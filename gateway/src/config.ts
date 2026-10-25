@@ -26,6 +26,8 @@ export interface GatewayConfig {
   maxSessions: number;
   /** Idle time after which a resident AgentSession is released. */
   idleEvictMs: number;
+  /** Grace period for in-flight runs during drain (ADR-0024). */
+  drainGraceMs: number;
   /** Redis URL for the instance registry; unset disables registration. */
   redisUrl?: string;
   registryHeartbeatMs: number;
@@ -70,6 +72,7 @@ export function loadConfig(): GatewayConfig {
     publicUrl: process.env.GATEWAY_PUBLIC_URL?.trim() || `http://127.0.0.1:${port}`,
     maxSessions: Math.max(1, intEnv("GATEWAY_MAX_SESSIONS", 60)),
     idleEvictMs: Math.max(0, intEnv("GATEWAY_IDLE_EVICT_MS", 900_000)),
+    drainGraceMs: Math.max(0, intEnv("GATEWAY_DRAIN_GRACE_MS", 600_000)),
     redisUrl: process.env.REDIS_URL?.trim() || undefined,
     registryHeartbeatMs: Math.max(10, intEnv("GATEWAY_REGISTRY_HEARTBEAT_MS", 5_000)),
     registryTtlSeconds: Math.max(1, intEnv("GATEWAY_REGISTRY_TTL_SECONDS", 15)),

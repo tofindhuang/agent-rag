@@ -413,9 +413,25 @@ public class ChatServiceImpl implements ChatService {
         if (response.statusCode() != 200) {
             String detail = readFully(response.body());
             String[] error = gatewayError(detail, response.statusCode());
-            projection.failBeforeStream(turn, error[0], error[1]);
-            throw new ApiException(ErrorCode.UPSTREAM_ERROR,
-                    "gateway error " + response.statusCode() + ": " + detail);
+            if (response.statusCode() == 409 && "INSTANCE_DRAINING".equals(error[0])
+                    && releaseGatewaySession(promptTarget, sessionId, userId)) {
+                log.info("moving session off draining gateway: {}", sessionId);
+                client.failoverRoute(sessionId);
+                EnsureOutcome moved = ensureGatewaySession(sessionId, userId, choice);
+                syncSnapshot(session, choice, moved.modelName());
+                promptTarget = moved.target();
+                response = client.sendStreaming(
+                        promptRequest(promptTarget, sessionId, userId, text, turnId, requestId));
+                if (response.statusCode() != 200) {
+                    detail = readFully(response.body());
+                    error = gatewayError(detail, response.statusCode());
+                }
+            }
+            if (response.statusCode() != 200) {
+                projection.failBeforeStream(turn, error[0], error[1]);
+                throw new ApiException(ErrorCode.UPSTREAM_ERROR,
+                        "gateway error " + response.statusCode() + ": " + detail);
+            }
         }
         return new PromptStream(response.body(), turn, requestId, userId);
     }
@@ -695,6 +711,11 @@ public class ChatServiceImpl implements ChatService {
                         throw new ApiException(ErrorCode.SESSION_STATE_CORRUPT,
                                 "gateway session state is corrupt");
                     }
+                    if ("INSTANCE_DRAINING".equals(code) && attempt == 0) {
+                        client.failoverRoute(sessionId);
+                        target = client.sessionTarget(sessionId);
+                        continue;
+                    }
                     throw new ApiException(ErrorCode.USER_MISMATCH,
                             "session belongs to another user");
                 }
@@ -757,6 +778,19 @@ public class ChatServiceImpl implements ChatService {
                 .POST(HttpRequest.BodyPublishers.ofString(
                         toJson(Map.of("text", text, "turnId", turnId))))
                 .build();
+    }
+
+    /** Releases an idle resident session during drain; false when a run is active. */
+    private boolean releaseGatewaySession(SessionTarget target, String sessionId, long userId) {
+        try {
+            HttpResponse<String> response = client.send(gatewaySession(
+                            target, sessionId, userId, "/release")
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build());
+            return response.statusCode() < 400;
+        } catch (ApiException ex) {
+            return false;
+        }
     }
 
     private void disposeGatewaySession(String sessionId, long userId) {

@@ -34,6 +34,8 @@
 | `PUT` | `/sessions/:id` | `X-User-Id`，可选 body `{ model?, profileFacts?, profileMemoryEnabled?, requireExisting? }` | `200 { sessionId, created, restored, model? }` |
 | `POST` | `/sessions/:id/prompt` | `X-User-Id`，`{ text, turnId }` | `200` SSE |
 | `POST` | `/sessions/:id/abort` | `X-User-Id`，空 body | `202` |
+| `POST` | `/sessions/:id/release` | `X-User-Id`，空 body | `204`；有活动 Run 时 `409 RUN_IN_PROGRESS` |
+| `POST` | `/admin/drain` | 共享 token | `202 { draining: true }` |
 | `DELETE` | `/sessions/:id` | `X-User-Id` | `204` |
 | `DELETE` | `/sessions/:id/files` | `X-User-Id` | `204` |
 
@@ -50,6 +52,7 @@
 - **一个会话同时只允许一个 Run**：已有进行中的 Run 时，第二个 prompt 在写 SSE 头之前返回 `409 RUN_IN_PROGRESS`，不排队。
 - 显式 `abort` 返回 `202`；当前 Run 以 `run_settled { status: "aborted" }` 收尾；空闲时返回 `409 NO_ACTIVE_RUN`。
 - 客户端断连仍触发 abort（ADR-0002），作为显式中断的兜底。
+- 排空（ADR-0024）：`POST /admin/drain` 或 `SIGTERM` 后实例拒绝新的 `PUT` 与 `prompt`（`409 INSTANCE_DRAINING`，retryable）；在飞 Run 继续，宽限期后 abort。Java 对空闲会话调用 `release` 后改投健康实例，并用同一 `turnId` 重试。
 - `DELETE` 幂等：不存在也返回 `204`；存在但归属不符返回 `403 USER_MISMATCH`。
 - `DELETE /sessions/:id/files` 用于用户主动彻底删除（ADR-0011）：释放内存 AgentSession（如有），删除 pi JSONL 与 sidecar；幂等（文件不存在也返回 `204`）；归属以侧车 `X-User-Id` 为准，不符返回 `403 USER_MISMATCH`；文件存在但侧车缺失时归属不可证明，同样拒绝（`403`）。普通归档只用 `DELETE /sessions/:id`，不删文件。
 - 所有会话操作的 `X-User-Id` 与会话归属不一致时返回 `403 USER_MISMATCH`；会话不存在返回 `404 SESSION_NOT_FOUND`（`DELETE` 除外）。
@@ -150,6 +153,7 @@ HTTP 错误码：
 | `SESSION_STATE_CORRUPT` | 409 | false | sidecar 缺失/损坏，或 `requireExisting` 但引擎上下文不在 |
 | `GATEWAY_CAPACITY` | 503 | true | 实例达到驻留会话上限，Java 应改投其他实例 |
 | `RUN_IN_PROGRESS` | 409 | false | 同一会话已有进行中的 Run |
+| `INSTANCE_DRAINING` | 409 | true | 实例正在排空，拒绝新会话/新 Run |
 | `NO_ACTIVE_RUN` | 409 | false | 空闲时调用 abort |
 | `UPSTREAM_UNAVAILABLE` | 503 | true | gateway 无法连接业务层或沙箱 |
 | `SANDBOX_UNAVAILABLE` | 503 | true | 沙箱 Docker daemon 或镜像不可用 |

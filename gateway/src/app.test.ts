@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { createApp, readProfileInput, readRequireExisting } from "./app.js";
+import {
+  createApp,
+  readProfileInput,
+  readRequireExisting,
+  type GatewayLifecycle,
+} from "./app.js";
 import type { GatewayConfig } from "./config.js";
 import type { RunIdentity } from "./identity.js";
 import type {
@@ -159,7 +164,10 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
 });
 
-async function startServer(apiToken?: string): Promise<TestServer> {
+async function startServer(
+  apiToken?: string,
+  lifecycle?: GatewayLifecycle,
+): Promise<TestServer> {
   const sessionDir = mkdtempSync(join(tmpdir(), "gateway-app-"));
   tempDirs.push(sessionDir);
   const pool = new FakePool();
@@ -179,12 +187,13 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     publicUrl: "http://127.0.0.1:0",
     maxSessions: 60,
     idleEvictMs: 900_000,
+    drainGraceMs: 600_000,
     registryHeartbeatMs: 60_000,
     registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,
     lockStaleMs: 30_000,
   };
-  const app = createApp({ config, pool });
+  const app = createApp({ config, pool, lifecycle });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const address = server.address();
@@ -508,6 +517,68 @@ test("provider probe validates its request body", async () => {
     assert.equal(response.status, 400);
     const body = (await response.json()) as ErrorBody;
     assert.equal(body.error.code, "INVALID_REQUEST");
+  });
+});
+
+test("drain marks the instance and rejects new sessions and runs", async () => {
+  let draining = false;
+  const lifecycle: GatewayLifecycle = {
+    isDraining: () => draining,
+    beginDrain: () => {
+      draining = true;
+    },
+  };
+  const server = await startServer(undefined, lifecycle);
+  try {
+    const drain = await fetch(`${server.base}/admin/drain`, { method: "POST" });
+    assert.equal(drain.status, 202);
+    assert.deepEqual(await drain.json(), { draining: true });
+
+    const put = await fetch(`${server.base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(put.status, 409);
+    assert.equal(((await put.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+
+    await server.pool.ensure("s1", "u1");
+    const prompt = await fetch(`${server.base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    assert.equal(prompt.status, 409);
+    assert.equal(((await prompt.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+  } finally {
+    await server.close();
+  }
+});
+
+test("release disposes an idle session and refuses an active one", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    pool.beginRun("s1", {
+      userId: "u1",
+      sessionId: "s1",
+      turnId: "t1",
+      runId: "r1",
+      requestId: "q1",
+    });
+
+    const busy = await fetch(`${base}/sessions/s1/release`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(busy.status, 409);
+    assert.equal(((await busy.json()) as ErrorBody).error.code, "RUN_IN_PROGRESS");
+
+    pool.endRun("s1", "r1");
+    const released = await fetch(`${base}/sessions/s1/release`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(released.status, 204);
+    assert.equal(pool.get("s1"), undefined);
   });
 });
 

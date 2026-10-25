@@ -27,6 +27,7 @@ export type GatewayErrorCode =
   | "SESSION_BUSY"
   | "SESSION_STATE_CORRUPT"
   | "GATEWAY_CAPACITY"
+  | "INSTANCE_DRAINING"
   | "RUN_IN_PROGRESS"
   | "NO_ACTIVE_RUN"
   | "UPSTREAM_UNAVAILABLE"
@@ -38,6 +39,7 @@ export type GatewayErrorCode =
 
 export interface GatewayLifecycle {
   isDraining(): boolean;
+  beginDrain(): void;
 }
 
 export interface AppDependencies {
@@ -57,6 +59,11 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
     if (!config.apiToken) return next();
     if (req.header("authorization") === `Bearer ${config.apiToken}`) return next();
     sendError(res, 401, "UNAUTHORIZED", "unauthorized");
+  });
+
+  app.post("/admin/drain", (_req, res) => {
+    lifecycle?.beginDrain();
+    res.status(202).json({ draining: true });
   });
 
   app.get("/health", (_req, res) => {
@@ -108,6 +115,10 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
   app.put("/sessions/:id", async (req, res) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
+    if (lifecycle?.isDraining()) {
+      sendError(res, 409, "INSTANCE_DRAINING", "instance is draining", true);
+      return;
+    }
 
     const parsedModel = readSessionModel((req.body ?? {}) as Record<string, unknown>);
     if ("error" in parsedModel) {
@@ -170,6 +181,10 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
   app.post("/sessions/:id/prompt", async (req, res) => {
     const userId = requireUserId(req, res);
     if (!userId) return;
+    if (lifecycle?.isDraining()) {
+      sendError(res, 409, "INSTANCE_DRAINING", "instance is draining", true);
+      return;
+    }
 
     const entry = pool.get(req.params.id);
     if (!entry) {
@@ -318,6 +333,29 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
       return;
     }
     res.status(202).end();
+  });
+
+  // Drain migration: release an idle resident session so another instance can
+  // take the file lock. Never aborts an active run.
+  app.post("/sessions/:id/release", async (req, res) => {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    const entry = pool.get(req.params.id);
+    if (!entry) {
+      res.status(204).end();
+      return;
+    }
+    if (entry.userId !== userId) {
+      sendError(res, 403, "USER_MISMATCH", "session belongs to another user");
+      return;
+    }
+    if (entry.activeRun) {
+      sendError(res, 409, "RUN_IN_PROGRESS", "session has an active run");
+      return;
+    }
+    await pool.dispose(req.params.id);
+    res.status(204).end();
   });
 
   app.delete("/sessions/:id", async (req, res) => {

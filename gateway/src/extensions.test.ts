@@ -55,6 +55,7 @@ function toolFor(url: string): CapturedTool {
     publicUrl: "http://127.0.0.1:0",
     maxSessions: 60,
     idleEvictMs: 900_000,
+    drainGraceMs: 600_000,
     registryHeartbeatMs: 60_000,
     registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,

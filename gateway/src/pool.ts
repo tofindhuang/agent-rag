@@ -367,6 +367,21 @@ export class SessionPool implements GatewayPool {
     return evicted;
   }
 
+  /** True while a run or a create is still in flight. */
+  hasActiveRuns(): boolean {
+    return this.pendingCreates.size > 0
+        || [...this.entries.values()].some((entry) => entry.activeRun !== null);
+  }
+
+  /** Waits for in-flight runs up to the deadline; returns false on timeout. */
+  async waitForIdle(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    while (this.hasActiveRuns() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !this.hasActiveRuns();
+  }
+
   async disposeAll(): Promise<void> {
     if (this.evictionTimer) {
       clearInterval(this.evictionTimer);
