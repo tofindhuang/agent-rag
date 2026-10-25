@@ -27,7 +27,7 @@ M1 的 gateway 是单实例：pi session 以 JSONL 落在本地 `GATEWAY_SESSION
 ### 2. 会话归属与路由
 
 - gateway 启动时把 `instanceId → {url, draining, sessions, maxSessions, heartbeatAt}` 写入 Redis，每 5 秒续约，TTL 15 秒；优雅退出时删除注册。
-- Java 为新会话选择「存活、非 draining、未达上限」中负载最低的实例，随后把 `sessionId → instanceId` 写入 Redis 路由表并钉住；后续请求优先走路由表。
+- Java 为新会话在「存活、非 draining、未达上限」的实例中按 `sessionId` 哈希放置，随后把 `sessionId → instanceId` 写入 Redis 路由表并钉住；后续请求优先走路由表。哈希放置避免注册表心跳滞后时所有并发创建堆到同一实例。
 - **文件锁是归属的最终事实源，Redis 路由表只是加速与放置提示。** 路由表过期或 Redis 故障时，Java 可以请求任意实例；实例发现锁被占用会返回 `409 SESSION_BUSY` 并带上持有者地址，Java 据此纠正路由后重试一次。
 - Redis 不可用时：已驻留会话继续工作；Java 使用本地缓存的实例列表与静态 `GATEWAY_URLS` 种子；新会话仍由文件锁保证单写者，无法确认租约时 fail-closed 为可重试错误，不静默新建。
 

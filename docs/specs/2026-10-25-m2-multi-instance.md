@@ -18,7 +18,7 @@ M1 的 gateway 是单实例：Java 只配置一个 `GATEWAY_URL`，pi session �
 ## Solution
 
 - 单台主机运行多个 gateway 实例，共享同一个 `GATEWAY_SESSION_DIR`（宿主机 bind mount）。
-- gateway 向 Redis 注册实例、心跳、容量与 draining 状态；Java 为新会话做最低负载放置，并把 `sessionId → instanceId` 钉在路由表里。
+- gateway 向 Redis 注册实例、心跳、容量与 draining 状态；Java 为新会话在未满实例中按 `sessionId` 哈希放置，并把 `sessionId → instanceId` 钉在路由表里。
 - 每个会话由共享目录里的文件锁保证单写者；锁是归属的最终事实源，Redis 路由表只是加速与放置提示。
 - 空闲会话释放内存、保留文件；单实例有软上限；超过上限返回可重试错误，由 Java 改投其他实例。
 - 滚动更新采用排空：停止接新轮次，在飞轮次跑完，10 分钟宽限后退出；空闲会话可被 Java 迁到健康实例。
@@ -81,7 +81,7 @@ M1 的 gateway 是单实例：Java 只配置一个 `GATEWAY_URL`，pi session �
 ### 3. Java 路由与降级
 
 - 新增统一的会话路由器，所有会话级 gateway 调用（ensure、prompt、abort、release、delete、files、archive）都先解析实例。
-- 放置：存活、非 draining、`sessions < maxSessions` 的实例中选负载最低；同负载用 `sessionId` 哈希打破平局。选中后写 `route:sess:{id}`（TTL 24 小时，访问时续期），后续钉住。
+- 放置：在存活、非 draining、`sessions < maxSessions` 的实例中按 `sessionId` 哈希选择；选中后写 `route:sess:{id}`（TTL 24 小时，访问时续期），后续钉住。哈希放置保证注册表计数滞后时并发创建仍然均匀。
 - 已驻留会话不因实例增减而搬家；只有排空、实例失效、驱逐后重新放置时才改路由。
 - 收到 `409 SESSION_BUSY` 且带持有者地址：更新路由，向持有者重试一次。
 - 连接失败或 `503 GATEWAY_CAPACITY`：标记该实例不可用，改投下一个；仅在尚未收到任何 SSE 字节时重试，同一 `turnId`。
@@ -208,7 +208,7 @@ server：
 
 ### 2. server 集成测试
 
-- 路由器：两个 fake gateway，验证最低负载放置、钉住、409 纠正、容量 503 改投、Redis 不可用降级。
+- 路由器：两个 fake gateway，验证哈希放置、钉住、409 纠正、容量 503 改投、Redis 不可用降级。
 - 跨用户隔离矩阵：A 对 B 的 sessionId 打 ensure/prompt/history/rename/archive/delete/files，全部 404/403；A 的上下文不含 B 的标记。
 - 归档端点：sha256 校验、幂等重试、对象缺失、账本状态迁移。
 - 永久删除：对象、本地文件、MySQL 行的顺序与失败重试。
