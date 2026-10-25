@@ -304,9 +304,13 @@ public class KbEvalServiceImpl implements KbEvalService {
                     continue;
                 }
                 try {
+                    KbEvalItem item = futures.get(i).get(remainingMs, TimeUnit.MILLISECONDS);
                     outcomes.put(
                             entry.label().getId(),
-                            new Outcome(futures.get(i).get(remainingMs, TimeUnit.MILLISECONDS), null));
+                            new Outcome(
+                                    item,
+                                    KbEvalItem.STATUS_SKIPPED.equals(item.getStatus())
+                                            ? "budget exceeded" : null));
                 } catch (TimeoutException e) {
                     futures.get(i).cancel(true);
                     outcomes.put(entry.label().getId(), skipped(entry.label()));
@@ -333,8 +337,20 @@ public class KbEvalServiceImpl implements KbEvalService {
         Duration budget = remaining.compareTo(KbRetrievalCore.SEARCH_BUDGET) < 0
                 ? remaining
                 : KbRetrievalCore.SEARCH_BUDGET;
-        KbRetrievalCore.Outcome outcome = retrievalCore.retrieve(
-                userId, kbId, embedding, entry.label().getQuery(), TOP_K, budget);
+        KbRetrievalCore.Outcome outcome;
+        try {
+            outcome = retrievalCore.retrieve(
+                    userId, kbId, embedding, entry.label().getQuery(), TOP_K, budget);
+        } catch (ApiException e) {
+            // The per-query budget can expire exactly at the run deadline; that
+            // is a skipped label, not a broken endpoint.
+            if (e.code() == ErrorCode.KB_UNAVAILABLE
+                    && e.getMessage() != null
+                    && e.getMessage().contains("budget")) {
+                return baseItem(entry.label(), KbEvalItem.STATUS_SKIPPED);
+            }
+            throw e;
+        }
         Integer rankVector = rankInPool(outcome.pool(), entry.label());
         Integer rankFinal = rankInRanked(outcome.ranked(), entry.label());
         KbEvalItem item = baseItem(
