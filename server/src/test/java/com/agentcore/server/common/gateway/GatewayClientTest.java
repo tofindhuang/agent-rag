@@ -57,6 +57,6 @@ class GatewayClientTest {
     }
 
     private static GatewayClient client(String baseUrl, String token) {
-        return new GatewayClient(new GatewayProperties(baseUrl, token), new ObjectMapper());
+        return new GatewayClient(new GatewayProperties(baseUrl, token, null), new ObjectMapper());
     }
 }

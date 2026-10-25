@@ -85,6 +85,8 @@ app:
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
   gateway:
     base-url: ${GATEWAY_URL:http://localhost:3001}
+    # Static seed list for multi-instance routing (ADR-0024); comma separated.
+    urls: ${GATEWAY_URLS:}
     # Shared token; must match the gateway's GATEWAY_API_TOKEN when set.
     api-token: ${GATEWAY_API_TOKEN:}
   # run_code executor (FR-3). The image must exist on the Docker host;

@@ -37,7 +37,7 @@ class GatewayContractVerifierTest {
 
     @Test
     void skipsCheckWhenGatewayIsUnreachable() {
-        GatewayProperties properties = new GatewayProperties("http://127.0.0.1:1", null);
+        GatewayProperties properties = new GatewayProperties("http://127.0.0.1:1", null, null);
         GatewayContractVerifier verifier = new GatewayContractVerifier(new GatewayClient(properties, new ObjectMapper()), new ObjectMapper());
 
         assertDoesNotThrow(() -> verifier.run(null));
@@ -54,7 +54,7 @@ class GatewayContractVerifierTest {
         });
         server.start();
         GatewayProperties properties = new GatewayProperties(
-                "http://127.0.0.1:" + server.getAddress().getPort(), null);
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null);
         return new GatewayContractVerifier(new GatewayClient(properties, new ObjectMapper()), new ObjectMapper());
     }
 }

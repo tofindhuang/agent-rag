@@ -12,6 +12,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,23 +30,61 @@ public class GatewayClient {
 
     private final GatewayProperties properties;
     private final ObjectMapper objectMapper;
+    private final GatewayRouter router;
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .build();
 
+    /** Production constructor: session-level calls go through the router. */
+    @Autowired
+    public GatewayClient(
+            GatewayProperties properties, ObjectMapper objectMapper, GatewayRouter router) {
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.router = router;
+    }
+
+    /** Test/single-instance constructor: all calls use the configured base URL. */
     public GatewayClient(GatewayProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.router = null;
     }
 
     public String baseUrl() {
         return properties.baseUrl();
     }
 
+    /** Resolves the gateway instance for one session (ADR-0024). */
+    public SessionTarget sessionTarget(String sessionId) {
+        return router == null
+                ? new SessionTarget("default", properties.baseUrl())
+                : router.resolve(sessionId);
+    }
+
+    public void correctRoute(String sessionId, String instanceId) {
+        if (router != null) router.correct(sessionId, instanceId);
+    }
+
+    public void failoverRoute(String sessionId) {
+        if (router != null) router.failover(sessionId);
+    }
+
+    public void forgetRoute(String sessionId) {
+        if (router != null) router.forget(sessionId);
+    }
+
+    public void markRouteUnavailable(String instanceId) {
+        if (router != null) router.markUnavailable(instanceId);
+    }
+
     /** Builder with the base URL and shared token already applied. */
     public HttpRequest.Builder request(String path) {
-        HttpRequest.Builder builder =
-                HttpRequest.newBuilder(URI.create(properties.baseUrl() + path));
+        return request(properties.baseUrl(), path);
+    }
+
+    public HttpRequest.Builder request(String baseUrl, String path) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path));
         if (properties.hasToken()) {
             builder.header("authorization", "Bearer " + properties.apiToken());
         }

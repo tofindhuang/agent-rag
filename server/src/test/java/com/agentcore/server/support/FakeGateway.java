@@ -26,6 +26,7 @@ public final class FakeGateway {
     private final AtomicReference<String> lastPromptRequestId = new AtomicReference<>();
     private final AtomicReference<String> promptMode = new AtomicReference<>("complete");
     private final AtomicInteger putCount = new AtomicInteger();
+    private final AtomicReference<Boolean> lastRequireExisting = new AtomicReference<>();
     private final AtomicReference<String> probeMode = new AtomicReference<>("ok");
     private final AtomicReference<String> lastProbeApiKey = new AtomicReference<>();
     private final AtomicReference<String> lastProbeApi = new AtomicReference<>();
@@ -69,6 +70,10 @@ public final class FakeGateway {
 
     public int putCount() {
         return putCount.get();
+    }
+
+    public Boolean lastRequireExisting() {
+        return lastRequireExisting.get();
     }
 
     public void resetPutCount() {
@@ -141,7 +146,10 @@ public final class FakeGateway {
                 putCount.incrementAndGet();
                 lastCreateSessionUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
                 String raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-                JsonNode model = raw.isBlank() ? null : MAPPER.readTree(raw).path("model");
+                JsonNode body = raw.isBlank() ? null : MAPPER.readTree(raw);
+                lastRequireExisting.set(
+                        body != null && body.path("requireExisting").asBoolean(false));
+                JsonNode model = body == null ? null : body.path("model");
                 if (model != null && !model.isMissingNode()) {
                     String modelId = model.path("modelId").asText("");
                     lastModelId.set(modelId);

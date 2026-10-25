@@ -62,7 +62,7 @@ class ToolTokenFilterTest {
     void refusesToStartWithoutTokenInProd() {
         MockEnvironment prod = new MockEnvironment().withProperty("spring.profiles.active", "prod");
         org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> new ToolTokenFilter(new GatewayProperties("http://unused", null), prod))
+                        () -> new ToolTokenFilter(new GatewayProperties("http://unused", null, null), prod))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("GATEWAY_API_TOKEN");
     }
@@ -78,7 +78,7 @@ class ToolTokenFilterTest {
     }
 
     private static ToolTokenFilter filter(String token) {
-        return new ToolTokenFilter(new GatewayProperties("http://unused", token), new MockEnvironment());
+        return new ToolTokenFilter(new GatewayProperties("http://unused", token, null), new MockEnvironment());
     }
 
     private static MockHttpServletRequest kbRequest() {

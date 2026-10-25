@@ -3,6 +3,7 @@ package com.agentcore.server.service.impl;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.gateway.GatewayClient;
+import com.agentcore.server.common.gateway.SessionTarget;
 import com.agentcore.server.common.ratelimit.RateLimitDecision;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.common.sse.SseFrame;
@@ -148,7 +149,8 @@ public class ChatServiceImpl implements ChatService {
         // DB first: if the gateway rejects the session, compensate by removing
         // the row instead of leaving an unreachable AgentSession behind.
         try {
-            String actualName = ensureGatewaySession(sessionId, userId, choice);
+            EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice);
+            String actualName = ensured.modelName();
             if ("system".equals(choice.source()) && actualName != null && !actualName.isBlank()) {
                 sessionModelDao.upsert(sessionId, null, actualName, "system");
             }
@@ -190,7 +192,8 @@ public class ChatServiceImpl implements ChatService {
         // The gateway keeps the model of a resident AgentSession; dispose it so
         // the next ensure rebuilds the runtime from the pi file with the new model.
         disposeGatewaySession(sessionId, userId);
-        String actualName = ensureGatewaySession(sessionId, userId, choice);
+        EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice);
+        String actualName = ensured.modelName();
         sessionModelDao.upsert(
                 sessionId, choice.providerModelId(), labelFor(choice, actualName), choice.source());
     }
@@ -260,9 +263,19 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private void deleteGatewayFiles(String sessionId, long userId) {
+        SessionTarget target = client.sessionTarget(sessionId);
         HttpResponse<String> response;
         try {
-            response = client.send(gatewaySession(sessionId, userId, "/files").DELETE().build());
+            response = deleteSessionFiles(target, sessionId, userId);
+            if (response.statusCode() == 409
+                    && "SESSION_BUSY".equals(gatewayErrorCode(response.body()))) {
+                String owner = gatewayErrorOwner(response.body());
+                if (owner != null && !owner.isBlank()) {
+                    client.correctRoute(sessionId, owner);
+                    target = client.sessionTarget(sessionId);
+                    response = deleteSessionFiles(target, sessionId, userId);
+                }
+            }
         } catch (ApiException ex) {
             // Transport failure: rows stay, the user retries.
             throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
@@ -274,10 +287,21 @@ public class ChatServiceImpl implements ChatService {
             throw new ApiException(ErrorCode.SESSION_PURGE_BLOCKED,
                     "session files cannot be attributed to this user");
         }
+        if (response.statusCode() == 409
+                && "SESSION_STATE_CORRUPT".equals(gatewayErrorCode(response.body()))) {
+            throw new ApiException(ErrorCode.SESSION_PURGE_BLOCKED,
+                    "session files cannot be attributed to this user");
+        }
         if (response.statusCode() >= 400) {
             throw new ApiException(ErrorCode.SESSION_PURGE_FAILED,
                     "failed to delete session files; retry later");
         }
+        client.forgetRoute(sessionId);
+    }
+
+    private HttpResponse<String> deleteSessionFiles(
+            SessionTarget target, String sessionId, long userId) {
+        return client.send(gatewaySession(target, sessionId, userId, "/files").DELETE().build());
     }
 
     @Override
@@ -289,8 +313,9 @@ public class ChatServiceImpl implements ChatService {
         // The gateway is allowed to forget the AgentSession; a restart already
         // means it has nothing to dispose, so this stays best-effort.
         try {
+            SessionTarget target = client.sessionTarget(sessionId);
             HttpResponse<String> response =
-                    client.send(gatewaySession(sessionId, userId, "").DELETE().build());
+                    client.send(gatewaySession(target, sessionId, userId, "").DELETE().build());
             if (response.statusCode() >= 400 && response.statusCode() != 404) {
                 log.warn("gateway dispose returned {} for archived session {}",
                         response.statusCode(), sessionId);
@@ -354,27 +379,36 @@ public class ChatServiceImpl implements ChatService {
 
         // Cold start (ADR-0008): restore the file-backed AgentSession with its
         // model before every prompt; PUT is idempotent and cheap.
+        SessionTarget promptTarget;
         try {
-            String actualName = ensureGatewaySession(sessionId, userId, choice);
-            syncSnapshot(session, choice, actualName);
+            EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice);
+            syncSnapshot(session, choice, ensured.modelName());
+            promptTarget = ensured.target();
         } catch (ApiException ex) {
             projection.failBeforeStream(turn, ex.code().name(), ex.getMessage());
             throw ex;
         }
 
-        HttpRequest.Builder builder = gatewaySession(sessionId, userId, "/prompt")
-                .header("content-type", "application/json")
-                .header("accept", "text/event-stream")
-                .header("X-Request-Id", requestId)
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        toJson(Map.of("text", text, "turnId", turnId))));
-
         HttpResponse<InputStream> response;
         try {
-            response = client.sendStreaming(builder.build());
+            response = client.sendStreaming(
+                    promptRequest(promptTarget, sessionId, userId, text, turnId, requestId));
         } catch (ApiException e) {
-            projection.failBeforeStream(turn, ErrorCode.UPSTREAM_UNAVAILABLE.name(), e.getMessage());
-            throw e;
+            // No SSE bytes were received: the turn did not start downstream.
+            // Re-ensure on another instance and retry once with the same turnId.
+            try {
+                client.markRouteUnavailable(promptTarget.instanceId());
+                client.failoverRoute(sessionId);
+                EnsureOutcome retried = ensureGatewaySession(sessionId, userId, choice);
+                syncSnapshot(session, choice, retried.modelName());
+                promptTarget = retried.target();
+                response = client.sendStreaming(
+                        promptRequest(promptTarget, sessionId, userId, text, turnId, requestId));
+            } catch (ApiException retryFailure) {
+                projection.failBeforeStream(
+                        turn, retryFailure.code().name(), retryFailure.getMessage());
+                throw retryFailure;
+            }
         }
         if (response.statusCode() != 200) {
             String detail = readFully(response.body());
@@ -592,7 +626,24 @@ public class ChatServiceImpl implements ChatService {
         return new String[] {code, message};
     }
 
-    private String ensureGatewaySession(
+    private String gatewayErrorCode(String detail) {
+        return client.errorBody(detail).code();
+    }
+
+    /** Owner instance id from a SESSION_BUSY envelope; null when absent. */
+    private String gatewayErrorOwner(String detail) {
+        try {
+            JsonNode owner = objectMapper.readTree(detail)
+                    .path("error").path("owner").path("instanceId");
+            return owner.isMissingNode() || owner.isNull() ? null : owner.asText(null);
+        } catch (IOException ex) {
+            return null;
+        }
+    }
+
+    private record EnsureOutcome(SessionTarget target, String modelName) {}
+
+    private EnsureOutcome ensureGatewaySession(
             String sessionId, long userId, SessionModelChoice choice) {
         Map<String, Object> body = new LinkedHashMap<>();
         SessionModelChoice.Binding binding = choice.binding();
@@ -613,6 +664,7 @@ public class ChatServiceImpl implements ChatService {
 
         body.put("profileFacts", profileFactService.injectionFacts(userId, sessionId));
         body.put("profileMemoryEnabled", profileFactService.enabled(userId));
+        body.put("requireExisting", messageDao.existsBySession(sessionId));
 
         String payload;
         try {
@@ -621,24 +673,63 @@ public class ChatServiceImpl implements ChatService {
             throw new ApiException(ErrorCode.INTERNAL, "failed to serialize session model", ex);
         }
 
-        HttpRequest request = gatewaySession(sessionId, userId, "")
-                .header("content-type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofString(payload))
-                .build();
-        HttpResponse<String> response = client.send(request);
-        if (response.statusCode() == 409) {
-            throw new ApiException(ErrorCode.USER_MISMATCH, "session belongs to another user");
-        }
-        if (response.statusCode() >= 400) {
-            if (response.statusCode() == 400) {
-                String[] error = gatewayError(response.body(), 400);
-                throw new ApiException(ErrorCode.MODEL_UNAVAILABLE,
-                        error[1] == null || error[1].isBlank()
-                                ? "model configuration rejected" : error[1]);
+        SessionTarget target = client.sessionTarget(sessionId);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            HttpRequest request = gatewaySession(target, sessionId, userId, "")
+                    .header("content-type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString(payload))
+                    .build();
+            try {
+                HttpResponse<String> response = client.send(request);
+                if (response.statusCode() == 409) {
+                    String code = gatewayErrorCode(response.body());
+                    if ("SESSION_BUSY".equals(code) && attempt == 0) {
+                        String owner = gatewayErrorOwner(response.body());
+                        if (owner != null && !owner.isBlank()) {
+                            client.correctRoute(sessionId, owner);
+                            target = client.sessionTarget(sessionId);
+                            continue;
+                        }
+                    }
+                    if ("SESSION_STATE_CORRUPT".equals(code)) {
+                        throw new ApiException(ErrorCode.SESSION_STATE_CORRUPT,
+                                "gateway session state is corrupt");
+                    }
+                    throw new ApiException(ErrorCode.USER_MISMATCH,
+                            "session belongs to another user");
+                }
+                if (response.statusCode() == 503
+                        && "GATEWAY_CAPACITY".equals(gatewayErrorCode(response.body()))) {
+                    if (attempt == 0) {
+                        client.failoverRoute(sessionId);
+                        target = client.sessionTarget(sessionId);
+                        continue;
+                    }
+                    throw new ApiException(ErrorCode.GATEWAY_CAPACITY,
+                            "no gateway instance has capacity");
+                }
+                if (response.statusCode() >= 400) {
+                    if (response.statusCode() == 400) {
+                        String[] error = gatewayError(response.body(), 400);
+                        throw new ApiException(ErrorCode.MODEL_UNAVAILABLE,
+                                error[1] == null || error[1].isBlank()
+                                        ? "model configuration rejected" : error[1]);
+                    }
+                    throw upstreamError("ensure session", response);
+                }
+                return new EnsureOutcome(target, readModelName(response.body()));
+            } catch (ApiException ex) {
+                if (ex.code() == ErrorCode.UPSTREAM_UNAVAILABLE && attempt == 0) {
+                    client.markRouteUnavailable(target.instanceId());
+                    client.failoverRoute(sessionId);
+                    target = client.sessionTarget(sessionId);
+                    continue;
+                }
+                throw ex;
             }
-            throw upstreamError("ensure session", response);
         }
-        return readModelName(response.body());
+        throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE,
+                "gateway ensure retry exhausted");
     }
 
     private String readModelName(String body) {
@@ -652,16 +743,47 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    private HttpRequest promptRequest(
+            SessionTarget target,
+            String sessionId,
+            long userId,
+            String text,
+            String turnId,
+            String requestId) {
+        return gatewaySession(target, sessionId, userId, "/prompt")
+                .header("content-type", "application/json")
+                .header("accept", "text/event-stream")
+                .header("X-Request-Id", requestId)
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        toJson(Map.of("text", text, "turnId", turnId))))
+                .build();
+    }
+
     private void disposeGatewaySession(String sessionId, long userId) {
-        HttpRequest request = gatewaySession(sessionId, userId, "").DELETE().build();
-        HttpResponse<String> response = client.send(request);
+        SessionTarget target = client.sessionTarget(sessionId);
+        HttpResponse<String> response = disposeSession(target, sessionId, userId);
+        if (response.statusCode() == 409
+                && "SESSION_BUSY".equals(gatewayErrorCode(response.body()))) {
+            String owner = gatewayErrorOwner(response.body());
+            if (owner != null && !owner.isBlank()) {
+                client.correctRoute(sessionId, owner);
+                target = client.sessionTarget(sessionId);
+                response = disposeSession(target, sessionId, userId);
+            }
+        }
         if (response.statusCode() >= 400 && response.statusCode() != 404) {
             throw upstreamError("dispose session", response);
         }
     }
 
-    private HttpRequest.Builder gatewaySession(String sessionId, long userId, String suffix) {
-        return client.request("/sessions/" + urlEncode(sessionId) + suffix)
+    private HttpResponse<String> disposeSession(
+            SessionTarget target, String sessionId, long userId) {
+        return client.send(gatewaySession(target, sessionId, userId, "").DELETE().build());
+    }
+
+    private HttpRequest.Builder gatewaySession(
+            SessionTarget target, String sessionId, long userId, String suffix) {
+        return client.request(target.baseUrl(), "/sessions/" + urlEncode(sessionId) + suffix)
                 .header("X-User-Id", Long.toString(userId));
     }
 

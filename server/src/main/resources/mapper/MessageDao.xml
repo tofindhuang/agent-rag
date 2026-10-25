@@ -80,6 +80,13 @@
           AND role = 'user'
     </update>
 
+    <select id="existsBySession" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM messages
+            WHERE session_id = #{sessionId}
+        )
+    </select>
+
     <delete id="deleteBySession">
         DELETE FROM messages
         WHERE session_id = #{sessionId}

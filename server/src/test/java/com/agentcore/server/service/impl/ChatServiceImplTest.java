@@ -59,11 +59,13 @@ class ChatServiceImplTest {
     private final AtomicReference<String> lastMethod = new AtomicReference<>();
     private final AtomicReference<String> lastUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
+    private final AtomicReference<Boolean> lastRequireExisting = new AtomicReference<>();
     private final TestRateLimitService rateLimit = new TestRateLimitService();
     private final ProfileFactService profileFacts = mock(ProfileFactService.class);
 
     private HttpServer server;
     private SessionDao sessionDao;
+    private MessageDao messageDao;
     private ChatProjectionService projection;
     private SessionModelService sessionModelService;
     private ChatServiceImpl service;
@@ -74,8 +76,9 @@ class ChatServiceImplTest {
         server.createContext("/", this::handle);
         server.start();
         GatewayProperties properties = new GatewayProperties(
-                "http://127.0.0.1:" + server.getAddress().getPort(), null);
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null);
         sessionDao = mock(SessionDao.class);
+        messageDao = mock(MessageDao.class);
         when(sessionDao.findActiveOwned(anyString(), anyLong())).thenReturn(new Session());
         when(sessionDao.archive(anyString(), anyLong(), any())).thenReturn(1);
         projection = mock(ChatProjectionService.class);
@@ -95,7 +98,7 @@ class ChatServiceImplTest {
                 mock(KbSessionKnowledgeBaseDao.class),
                 knowledgeBaseService,
                 mock(SessionModelDao.class),
-                mock(MessageDao.class),
+                messageDao,
                 mock(RunDao.class),
                 mock(MessageCache.class),
                 projection,
@@ -150,6 +153,15 @@ class ChatServiceImplTest {
 
         assertNotNull(sessionId);
         assertEquals("1", lastUserId.get());
+    }
+
+    @Test
+    void marksExistingSessionsAsRequireExisting() {
+        when(messageDao.existsBySession(anyString())).thenReturn(true);
+
+        openPrompt("complete");
+
+        assertEquals(Boolean.TRUE, lastRequireExisting.get());
     }
 
     @Test
@@ -264,6 +276,9 @@ class ChatServiceImplTest {
 
         if ("PUT".equals(method) && path.startsWith("/sessions/")) {
             lastUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            lastRequireExisting.set(
+                    body.isBlank() || mapper.readTree(body).path("requireExisting").asBoolean(false));
             respond(exchange, 200, "{\"sessionId\":\"s\",\"created\":true,\"restored\":false}");
             return;
         }

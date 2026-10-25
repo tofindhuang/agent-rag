@@ -30,7 +30,7 @@ class ModelProviderServiceImplTest {
                 new ApiKeyCipher(modelProperties),
                 modelProperties,
                 new GatewayClient(
-                        new GatewayProperties("http://127.0.0.1:1", null), new ObjectMapper()),
+                        new GatewayProperties("http://127.0.0.1:1", null, null), new ObjectMapper()),
                 new ObjectMapper());
 
         assertThatThrownBy(() -> service.probe(1L, new ProbeCommand(
