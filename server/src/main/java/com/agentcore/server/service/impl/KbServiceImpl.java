@@ -3,12 +3,12 @@ package com.agentcore.server.service.impl;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.identity.ToolIdentity;
-import com.agentcore.server.common.kb.KbAvailability;
 import com.agentcore.server.common.kb.KbDimensionMismatchException;
 import com.agentcore.server.common.kb.KbEmbeddingClient;
 import com.agentcore.server.common.kb.KbEmbeddingConfig;
 import com.agentcore.server.common.kb.KbEmbeddingSettings;
 import com.agentcore.server.common.kb.KbIngestException;
+import com.agentcore.server.common.kb.KbIndexGuard;
 import com.agentcore.server.common.kb.KbRerankClient;
 import com.agentcore.server.common.kb.KbRerankConfig;
 import com.agentcore.server.common.kb.KbRerankException;
@@ -20,7 +20,6 @@ import com.agentcore.server.common.vector.VectorHit;
 import com.agentcore.server.common.vector.VectorStore;
 import com.agentcore.server.domain.KbKnowledgeBase;
 import com.agentcore.server.config.KbProperties;
-import com.agentcore.server.dao.KbDocumentDao;
 import com.agentcore.server.dao.KbKnowledgeBaseDao;
 import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dto.kb.KbSearchRequest;
@@ -49,8 +48,7 @@ public class KbServiceImpl implements KbService {
     private static final int DEFAULT_TOP_K = 5;
     private static final int MAX_TOP_K = 10;
 
-    private final KbAvailability availability;
-    private final KbDocumentDao documentDao;
+    private final KbIndexGuard indexGuard;
     private final KbSessionKnowledgeBaseDao sessionKbDao;
     private final KbKnowledgeBaseDao knowledgeBaseDao;
     private final KbEmbeddingSettings embeddingSettings;
@@ -61,8 +59,7 @@ public class KbServiceImpl implements KbService {
     private final KbProperties properties;
 
     public KbServiceImpl(
-            KbAvailability availability,
-            KbDocumentDao documentDao,
+            KbIndexGuard indexGuard,
             KbSessionKnowledgeBaseDao sessionKbDao,
             KbKnowledgeBaseDao knowledgeBaseDao,
             KbEmbeddingSettings embeddingSettings,
@@ -71,8 +68,7 @@ public class KbServiceImpl implements KbService {
             KbRerankClient rerankClient,
             VectorStore vectorStore,
             KbProperties properties) {
-        this.availability = availability;
-        this.documentDao = documentDao;
+        this.indexGuard = indexGuard;
         this.sessionKbDao = sessionKbDao;
         this.knowledgeBaseDao = knowledgeBaseDao;
         this.embeddingSettings = embeddingSettings;
@@ -85,13 +81,8 @@ public class KbServiceImpl implements KbService {
 
     @Override
     public KbSearchResponse search(KbSearchRequest request, ToolIdentity identity) {
-        availability.requireEnabled();
         long userId = parseUserId(identity);
-        if (documentDao.countStaleByUser(userId) > 0) {
-            throw new ApiException(ErrorCode.KB_INDEX_STALE,
-                    "the embedding model or dimension changed; rebuild the knowledge base"
-                            + " with reingest-all before searching");
-        }
+        indexGuard.requireIndexUsable(userId);
         String kbId = sessionKbDao.findKbId(identity.sessionId());
         KbKnowledgeBase kb = kbId == null ? null : knowledgeBaseDao.findOwned(kbId, userId);
         if (kb == null) {
@@ -103,6 +94,7 @@ public class KbServiceImpl implements KbService {
         String query = request.query();
 
         KbEmbeddingConfig embedding = resolveEmbedding(userId);
+        indexGuard.requireFingerprint(userId, embedding);
         List<float[]> vectors;
         try {
             vectors = embeddingClient.embed(embedding, List.of(query), remaining(deadline));

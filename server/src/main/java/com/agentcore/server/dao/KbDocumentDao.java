@@ -62,7 +62,9 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
             @Param("userId") long userId,
             @Param("version") int version,
             @Param("chunkCount") int chunkCount,
-            @Param("ocrPages") int ocrPages);
+            @Param("ocrPages") int ocrPages,
+            @Param("embeddingModel") String embeddingModel,
+            @Param("embeddingDim") int embeddingDim);
 
     int markFailed(
             @Param("id") String id,
@@ -88,6 +90,18 @@ public interface KbDocumentDao extends BaseMapper<KbDocument> {
 
     /** Retrieval guard: a partially stale index must not answer with old vectors. */
     long countStaleByUser(@Param("userId") long userId);
+
+    /**
+     * Documents that may have vectors but cannot prove which model produced
+     * them (rows ingested before fingerprints existed).
+     */
+    long countUnknownFingerprintByUser(@Param("userId") long userId);
+
+    /** Distinct models of ingested documents whose fingerprint differs from the current config. */
+    List<String> findMismatchedModelsByUser(
+            @Param("userId") long userId,
+            @Param("model") String model,
+            @Param("dim") int dim);
 
     /** Reingest: increments version, clears the old attempt/lease state. */
     int requeue(@Param("id") String id, @Param("userId") long userId);

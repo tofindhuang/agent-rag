@@ -40,6 +40,9 @@ public class KbDocument {
     private LocalDateTime leaseUntil;
     private LocalDateTime enqueuedAt;
     private Integer chunkCount;
+    private String embeddingModel;
+    private Integer embeddingDim;
+    private LocalDateTime embeddedAt;
     private Integer ocrPages;
     private String errorCode;
     private String errorMessage;
@@ -169,6 +172,35 @@ public class KbDocument {
 
     public void setChunkCount(Integer chunkCount) {
         this.chunkCount = chunkCount;
+    }
+
+    /**
+     * Embedding model and dimension of the vectors produced by the last
+     * successful ingestion; NULL means the fingerprint is unknown.
+     */
+    public String getEmbeddingModel() {
+        return embeddingModel;
+    }
+
+    public void setEmbeddingModel(String embeddingModel) {
+        this.embeddingModel = embeddingModel;
+    }
+
+    public Integer getEmbeddingDim() {
+        return embeddingDim;
+    }
+
+    public void setEmbeddingDim(Integer embeddingDim) {
+        this.embeddingDim = embeddingDim;
+    }
+
+    /** Non-null when this document may have vectors in Qdrant. */
+    public LocalDateTime getEmbeddedAt() {
+        return embeddedAt;
+    }
+
+    public void setEmbeddedAt(LocalDateTime embeddedAt) {
+        this.embeddedAt = embeddedAt;
     }
 
     /** Pages recognized by OCR in the last successful ingestion; 0 = text layer only. */

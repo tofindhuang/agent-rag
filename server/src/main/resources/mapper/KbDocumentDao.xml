@@ -6,7 +6,8 @@
     <sql id="documentColumns">
         id, user_id, kb_id, title, source_type, source_url, original_key, original_sha256,
         mime, size_bytes, status, attempts, next_attempt_at, lease_until, enqueued_at,
-        chunk_count, ocr_pages, error_code, error_message, version, created_at, updated_at
+        chunk_count, embedding_model, embedding_dim, embedded_at, ocr_pages,
+        error_code, error_message, version, created_at, updated_at
     </sql>
 
     <select id="findOwned" resultType="com.agentcore.server.domain.KbDocument">
@@ -118,6 +119,9 @@
         UPDATE kb_documents
         SET status = 'ready',
             chunk_count = #{chunkCount},
+            embedding_model = #{embeddingModel},
+            embedding_dim = #{embeddingDim},
+            embedded_at = NOW(6),
             ocr_pages = #{ocrPages},
             attempts = 0,
             lease_until = NULL,
@@ -189,6 +193,28 @@
         FROM kb_documents
         WHERE user_id = #{userId}
           AND status = 'stale'
+    </select>
+
+    <select id="countUnknownFingerprintByUser" resultType="long">
+        SELECT COUNT(*)
+        FROM kb_documents
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'deleting'
+          AND embedded_at IS NOT NULL
+          AND embedding_model IS NULL
+    </select>
+
+    <select id="findMismatchedModelsByUser" resultType="string">
+        SELECT DISTINCT embedding_model
+        FROM kb_documents
+        WHERE user_id = #{userId}
+          AND status &lt;&gt; 'deleting'
+          AND embedded_at IS NOT NULL
+          AND embedding_model IS NOT NULL
+          AND (embedding_model &lt;&gt; #{model}
+               OR embedding_dim IS NULL
+               OR embedding_dim &lt;&gt; #{dim})
+        ORDER BY embedding_model
     </select>
 
     <update id="requeue">

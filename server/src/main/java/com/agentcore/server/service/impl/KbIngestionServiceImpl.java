@@ -168,7 +168,9 @@ public class KbIngestionServiceImpl implements KbIngestionService {
                 document.getUserId(),
                 versionOf(document),
                 chunks.size(),
-                parsed.ocrPages());
+                parsed.ocrPages(),
+                config.model(),
+                config.dimension());
         // A zero update means deletion or a newer version took over; that owner
         // is responsible for the derived data, so never clean up its work here.
         return ready != 0;

@@ -92,11 +92,16 @@ class KbIngestionIntegrationTest extends AbstractKbIntegrationTest {
 
         assertThat(awaitStatus(documentId, "ready", 25_000)).isEqualTo("ready");
         Map<String, Object> row = jdbc.queryForMap(
-                "SELECT user_id, chunk_count, version FROM kb_documents WHERE id = ?", documentId);
+                "SELECT user_id, chunk_count, version, embedding_model, embedding_dim,"
+                        + " embedded_at FROM kb_documents WHERE id = ?",
+                documentId);
         int chunkCount = ((Number) row.get("chunk_count")).intValue();
         long userId = ((Number) row.get("user_id")).longValue();
         assertThat(chunkCount).isPositive();
         assertThat(row.get("version")).isEqualTo(0);
+        assertThat(row.get("embedding_model")).isEqualTo("test-embedding-model");
+        assertThat(((Number) row.get("embedding_dim")).intValue()).isEqualTo(1024);
+        assertThat(row.get("embedded_at")).isNotNull();
         assertThat(jdbc.queryForObject(
                         "SELECT COUNT(*) FROM kb_passages WHERE document_id = ?",
                         Integer.class,
