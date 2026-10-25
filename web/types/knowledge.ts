@@ -210,3 +210,68 @@ export interface KbEvalLabelInput {
   documentId: string;
   seq: number;
 }
+
+export interface KbEvalMetrics {
+  recall5: number;
+  mrr5: number;
+  poolRecall10: number;
+  baselineRecall5: number;
+  baselineMrr5: number;
+}
+
+export type KbEvalItemStatus = "hit" | "miss" | "rotten" | "skipped";
+
+export interface KbEvalItem {
+  labelId: number;
+  query: string;
+  documentId: string;
+  seq: number;
+  title: string | null;
+  page: number | null;
+  status: KbEvalItemStatus;
+  rankFinal: number | null;
+  rankVector: number | null;
+  scoreFinal: number | null;
+}
+
+export interface KbEvalIssue {
+  labelId: number;
+  query: string;
+  reason: string;
+}
+
+export interface KbEvalRun {
+  runId: number;
+  complete: boolean;
+  labelCount: number;
+  executedCount: number;
+  rottenCount: number;
+  skippedCount: number;
+  embeddingModel: string;
+  embeddingDim: number;
+  rerankModel: string | null;
+  durationMs: number;
+  metrics: KbEvalMetrics;
+  items: KbEvalItem[];
+  rotten: KbEvalIssue[];
+  skipped: KbEvalIssue[];
+}
+
+export interface KbEvalRunSummary {
+  runId: number;
+  createdAt: string;
+  complete: boolean;
+  labelCount: number;
+  executedCount: number;
+  rottenCount: number;
+  skippedCount: number;
+  embeddingModel: string;
+  embeddingDim: number;
+  rerankModel: string | null;
+  durationMs: number;
+  metrics: KbEvalMetrics;
+}
+
+export interface KbEvalRunList {
+  items: KbEvalRunSummary[];
+}

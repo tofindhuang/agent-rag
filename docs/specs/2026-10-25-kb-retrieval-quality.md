@@ -310,7 +310,7 @@ CREATE TABLE IF NOT EXISTS kb_eval_items (
 6. 预算：mock 慢端点使总耗时超 60s → `complete=false`，未执行标注列在 `skipped`，指标基于已执行集。
 7. 历史：连续运行两次 → 列表两条，第二条显示与第一条的 delta；`complete=false` 的 run 不作为基线；第 21 次插入后最旧一条被裁剪且明细级联删除。
 8. KB 删除后其标注与 run 全部级联消失；跨用户访问返回 404。
-9. `mvn -q test`、`npm run typecheck`、web lint 通过；新增单元/集成测试覆盖指标计算、指纹腐化、闸门、上限与预算。
+9. `mvn -q test`、`npm run typecheck`、`npm run build` 通过；新增单元/集成测试覆盖指标计算、指纹腐化、闸门、上限与预算。
 
 ## 测试计划（TDD 缝）
 
@@ -322,7 +322,7 @@ CREATE TABLE IF NOT EXISTS kb_eval_items (
 | 集成 | 评测端点 | 用 `FakeEmbeddingServer` + `FakeRerankServer`（已有支持类）构造固定排序，断言五项指标与明细排名 |
 | 集成 | 标注端点 | 上限、覆盖语义、跨 KB 文档拒绝、跨用户 404 |
 | 集成 | 历史 | 保留 20 次、裁剪级联、complete 基线规则 |
-| 前端 | 类型检查 + 组件测试（现有模式） | 双列渲染、rerank 关闭单列、指标 delta、错误态 |
+| 前端 | `npm run typecheck` + `npm run build` | 双列渲染、rerank 关闭单列、指标 delta、错误态（web 暂无组件测试框架，以构建与手工验收兜底） |
 
 ## 后续（不在本期）
 

@@ -184,7 +184,19 @@ export function KnowledgePage() {
           onReingestAll={knowledge.reingestAll}
           onDelete={knowledge.remove}
         />
-        <RetrievalPanel kbId={kbId} />
+        <RetrievalPanel
+          kbId={kbId}
+          processingCount={
+            knowledge.documents.filter(
+              (document) =>
+                document.status === "queued" || document.status === "processing",
+            ).length
+          }
+          staleCount={
+            knowledge.documents.filter((document) => document.status === "stale")
+              .length
+          }
+        />
         <SettingsPanel />
       </div>
 

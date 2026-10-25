@@ -387,8 +387,8 @@ export function SettingsPanel() {
             setError(null);
             setNotice(
               changedEmbedding
-                ? "设置已保存。embedding 变化会把现有文档标记为需重建，请在文档列表执行「全部重建」。"
-                : "设置已保存。",
+                ? "设置已保存。embedding 变化会把现有文档标记为需重建，请在文档列表执行「全部重建」，完成后到检索调试重跑评测。"
+                : "设置已保存。建议到检索调试重跑一次评测，确认质量没有回退。",
             );
           }}
         />

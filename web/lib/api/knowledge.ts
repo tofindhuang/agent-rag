@@ -2,9 +2,15 @@ import { ApiError, toApiError } from "./errors";
 import { authFetch } from "./http";
 import type {
   KbDocument,
+  KbEvalItem,
+  KbEvalItemStatus,
   KbEvalLabel,
   KbEvalLabelInput,
   KbEvalLabelList,
+  KbEvalMetrics,
+  KbEvalRun,
+  KbEvalRunList,
+  KbEvalRunSummary,
   KbDocumentPage,
   KbDocumentStatus,
   KbEmbeddingSettings,
@@ -202,6 +208,115 @@ export async function createKbEvalLabel(input: KbEvalLabelInput): Promise<KbEval
 export async function deleteKbEvalLabel(id: number): Promise<void> {
   const response = await authFetch(`/api/kb/retrieval/labels/${id}`, { method: "DELETE" });
   if (!response.ok) throw await toApiError(response);
+}
+
+function parseEvalMetrics(raw: unknown): KbEvalMetrics {
+  const metrics = asRecord(raw);
+  return {
+    recall5: asNumber(metrics.recall5),
+    mrr5: asNumber(metrics.mrr5),
+    poolRecall10: asNumber(metrics.poolRecall10),
+    baselineRecall5: asNumber(metrics.baselineRecall5),
+    baselineMrr5: asNumber(metrics.baselineMrr5),
+  };
+}
+
+const EVAL_ITEM_STATUSES: KbEvalItemStatus[] = ["hit", "miss", "rotten", "skipped"];
+
+function parseEvalItem(raw: unknown): KbEvalItem {
+  const item = asRecord(raw);
+  const status = EVAL_ITEM_STATUSES.includes(item.status as KbEvalItemStatus)
+    ? (item.status as KbEvalItemStatus)
+    : "miss";
+  return {
+    labelId: asNumber(item.labelId),
+    query: asString(item.query),
+    documentId: asString(item.documentId),
+    seq: asNumber(item.seq),
+    title: asNullableString(item.title),
+    page: asNullableNumber(item.page),
+    status,
+    rankFinal: asNullableNumber(item.rankFinal),
+    rankVector: asNullableNumber(item.rankVector),
+    scoreFinal: asNullableNumber(item.scoreFinal),
+  };
+}
+
+function parseEvalIssue(raw: unknown) {
+  const issue = asRecord(raw);
+  return {
+    labelId: asNumber(issue.labelId),
+    query: asString(issue.query),
+    reason: asString(issue.reason),
+  };
+}
+
+function parseEvalRun(raw: unknown): KbEvalRun {
+  const run = asRecord(raw);
+  return {
+    runId: asNumber(run.runId),
+    complete: run.complete === true,
+    labelCount: asNumber(run.labelCount),
+    executedCount: asNumber(run.executedCount),
+    rottenCount: asNumber(run.rottenCount),
+    skippedCount: asNumber(run.skippedCount),
+    embeddingModel: asString(run.embeddingModel),
+    embeddingDim: asNumber(run.embeddingDim),
+    rerankModel: asNullableString(run.rerankModel),
+    durationMs: asNumber(run.durationMs),
+    metrics: parseEvalMetrics(run.metrics),
+    items: Array.isArray(run.items) ? run.items.map(parseEvalItem) : [],
+    rotten: Array.isArray(run.rotten) ? run.rotten.map(parseEvalIssue) : [],
+    skipped: Array.isArray(run.skipped) ? run.skipped.map(parseEvalIssue) : [],
+  };
+}
+
+function parseEvalRunSummary(raw: unknown): KbEvalRunSummary {
+  const run = asRecord(raw);
+  return {
+    runId: asNumber(run.runId),
+    createdAt: asString(run.createdAt),
+    complete: run.complete === true,
+    labelCount: asNumber(run.labelCount),
+    executedCount: asNumber(run.executedCount),
+    rottenCount: asNumber(run.rottenCount),
+    skippedCount: asNumber(run.skippedCount),
+    embeddingModel: asString(run.embeddingModel),
+    embeddingDim: asNumber(run.embeddingDim),
+    rerankModel: asNullableString(run.rerankModel),
+    durationMs: asNumber(run.durationMs),
+    metrics: parseEvalMetrics(run.metrics),
+  };
+}
+
+export async function runKbEval(kbId: string): Promise<KbEvalRun> {
+  const body = asRecord(
+    await readJson(
+      await authFetch("/api/kb/retrieval/eval/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kbId }),
+      }),
+    ),
+  );
+  return parseEvalRun(body);
+}
+
+export async function fetchKbEvalRuns(kbId: string): Promise<KbEvalRunList> {
+  const params = new URLSearchParams({ kbId });
+  const body = asRecord(
+    await readJson(await authFetch(`/api/kb/retrieval/eval/runs?${params.toString()}`)),
+  );
+  return {
+    items: Array.isArray(body.items) ? body.items.map(parseEvalRunSummary) : [],
+  };
+}
+
+export async function fetchKbEvalRun(runId: number): Promise<KbEvalRun> {
+  const body = asRecord(
+    await readJson(await authFetch(`/api/kb/retrieval/eval/runs/${runId}`)),
+  );
+  return parseEvalRun(body);
 }
 
 export async function fetchKbPassages(
