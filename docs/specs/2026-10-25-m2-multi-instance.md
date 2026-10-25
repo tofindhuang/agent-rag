@@ -110,7 +110,8 @@ M1 的 gateway 是单实例：Java 只配置一个 `GATEWAY_URL`，pi session �
 ### 6. 排空与滚动更新
 
 - `POST /admin/drain` 或 `SIGTERM` 触发；接口需要共享 token，返回 202。
-- drain 开始后：注册表 `draining=true`；拒绝新的会话放置；拒绝新的 Run。
+- drain 开始后：先关闭准入闸门，再写注册表 `draining=true`；新 ensure/prompt 立即返回可重试的 `INSTANCE_DRAINING`。
+- 准入闸门对已接纳请求计数；drain 等 `inflight=0` 且活动 Run 结束，再关闭监听并等待 `server.close` 回调。
 - 已在执行的轮次继续，SSE 不断；宽限 `GATEWAY_DRAIN_GRACE_MS` 默认 10 分钟，超时后 abort 剩余轮次并按既有语义落成 `partial`。
 - 排空期间收到空闲会话的新 prompt：返回 `409 INSTANCE_DRAINING`；Java 调 `POST /sessions/:id/release`（有活动 Run 时返回 409），释放成功后删路由、改投健康实例、用同一 `turnId` 重试。
 - 宽限期结束：`disposeAll()`、关闭监听、退出；新实例启动后重新注册并参与放置。

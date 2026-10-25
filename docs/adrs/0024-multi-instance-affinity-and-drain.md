@@ -49,10 +49,11 @@ M1 的 gateway 是单实例：pi session 以 JSONL 落在本地 `GATEWAY_SESSION
 
 ### 5. 排空与滚动更新
 
-- 收到 `SIGTERM` 或显式 drain 请求后，实例在注册表标记 `draining`，拒绝新的会话放置与新的 Run。
+- 收到 `SIGTERM` 或显式 drain 请求后，实例先关闭准入闸门，再在注册表标记 `draining`；此后新的 ensure/prompt 立即失败为可重试的 `INSTANCE_DRAINING`。
 - 已在执行的轮次继续跑，SSE 不断；宽限期 `GATEWAY_DRAIN_GRACE_MS`（默认 10 分钟），超时后 abort 剩余轮次并按既有语义落成 `partial`。
 - 排空期间收到空闲会话的新 prompt：返回 `409 INSTANCE_DRAINING`，Java 调 `POST /sessions/:id/release` 释放内存与文件锁，删除路由，改投健康实例后用同一 `turnId` 重试。
-- 宽限期结束后 `disposeAll()`、关闭监听并退出；新实例注册后重新参与放置。
+- 准入闸门记录在途请求；drain 等 `inflight=0` 且活动 Run 结束，再关闭监听，并等待 `server.close` 回调后才退出。宽限期只覆盖异常长尾，正常滚动不应触发强制 abort。
+- 新实例注册后重新参与放置。
 - 进程崩溃、`kill -9`、主机掉电不在「不断流」承诺内：在飞轮次仍是 `partial`，锁在 30 秒后可被接管，会话文件按已落盘的轮次恢复。
 
 ### 6. 契约与错误码
