@@ -214,17 +214,50 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void recordsRequestModelAndCacheTokensForTheRun() throws Exception {
+        String token = newUserToken();
+        String sessionId = createSession(token);
+        GATEWAY.setPromptMode("cache");
+
+        send(token, sessionId, "记录缓存用量");
+
+        var run = jdbc.queryForMap(
+                "SELECT request_id, model_id, tokens_in, tokens_out, cache_read_tokens,"
+                        + " cache_write_tokens FROM runs WHERE session_id = ?"
+                        + " ORDER BY started_at DESC LIMIT 1",
+                sessionId);
+        assertThat(run.get("request_id")).isEqualTo(GATEWAY.lastPromptRequestId());
+        assertThat(run.get("model_id")).isEqualTo("system");
+        assertThat(((Number) run.get("tokens_in")).longValue()).isEqualTo(100);
+        assertThat(((Number) run.get("tokens_out")).longValue()).isEqualTo(20);
+        assertThat(((Number) run.get("cache_read_tokens")).longValue()).isEqualTo(700);
+        assertThat(((Number) run.get("cache_write_tokens")).longValue()).isEqualTo(200);
+
+        var message = jdbc.queryForMap(
+                "SELECT tokens_in, tokens_out, cache_read_tokens, cache_write_tokens"
+                        + " FROM messages WHERE session_id = ? AND role = 'assistant'"
+                        + " ORDER BY ordinal DESC LIMIT 1",
+                sessionId);
+        assertThat(((Number) message.get("tokens_in")).longValue()).isEqualTo(100);
+        assertThat(((Number) message.get("tokens_out")).longValue()).isEqualTo(20);
+        assertThat(((Number) message.get("cache_read_tokens")).longValue()).isEqualTo(700);
+        assertThat(((Number) message.get("cache_write_tokens")).longValue()).isEqualTo(200);
+    }
+
+    @Test
     void duplicateProjectionWritesAreIdempotent() throws Exception {
         String token = newUserToken();
         String sessionId = createSession(token);
 
         TurnKey first = new TurnKey(sessionId, "turn-dup", "run-a");
         TurnKey retry = new TurnKey(sessionId, "turn-dup", "run-b");
-        projection.startTurn(first, "hello");
+        projection.startTurn(first, "hello", "req-a", "model-x");
         projection.failBeforeStream(first, "UPSTREAM_UNAVAILABLE", "gateway down");
-        projection.startTurn(retry, "hello retry");
-        projection.appendAssistant(retry, 1, "answer", "", null, 1, 1L, 1L, "complete");
-        projection.appendAssistant(retry, 1, "answer", "", null, 1, 1L, 1L, "complete");
+        projection.startTurn(retry, "hello retry", "req-b", "model-x");
+        projection.appendAssistant(
+                retry, 1, "answer", "", null, 1, 1L, 1L, 0L, 0L, "complete");
+        projection.appendAssistant(
+                retry, 1, "answer", "", null, 1, 1L, 1L, 0L, 0L, "complete");
 
         Integer messages = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM messages WHERE session_id = ? AND turn_id = 'turn-dup'",

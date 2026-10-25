@@ -14,11 +14,15 @@ public class Run {
     private String sessionId;
     private String turnId;
     private String gatewayRunId;
+    private String requestId;
+    private String modelId;
     private String status;
     private String errorCode;
     private String errorMessage;
     private Long tokensIn;
     private Long tokensOut;
+    private Long cacheReadTokens;
+    private Long cacheWriteTokens;
     private LocalDateTime startedAt;
     private LocalDateTime settledAt;
 
@@ -52,6 +56,39 @@ public class Run {
 
     public void setGatewayRunId(String gatewayRunId) {
         this.gatewayRunId = gatewayRunId;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
+
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
+
+    /** Model identifier snapshot taken when the run starts (ADR-0023). */
+    public String getModelId() {
+        return modelId;
+    }
+
+    public void setModelId(String modelId) {
+        this.modelId = modelId;
+    }
+
+    public Long getCacheReadTokens() {
+        return cacheReadTokens;
+    }
+
+    public void setCacheReadTokens(Long cacheReadTokens) {
+        this.cacheReadTokens = cacheReadTokens;
+    }
+
+    public Long getCacheWriteTokens() {
+        return cacheWriteTokens;
+    }
+
+    public void setCacheWriteTokens(Long cacheWriteTokens) {
+        this.cacheWriteTokens = cacheWriteTokens;
     }
 
     public String getStatus() {

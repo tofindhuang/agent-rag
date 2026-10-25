@@ -25,6 +25,8 @@ public class Message {
     private Integer assistantSeqInTurn;
     private Long tokensIn;
     private Long tokensOut;
+    private Long cacheReadTokens;
+    private Long cacheWriteTokens;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -130,6 +132,22 @@ public class Message {
 
     public void setAssistantSeqInTurn(Integer assistantSeqInTurn) {
         this.assistantSeqInTurn = assistantSeqInTurn;
+    }
+
+    public Long getCacheReadTokens() {
+        return cacheReadTokens;
+    }
+
+    public void setCacheReadTokens(Long cacheReadTokens) {
+        this.cacheReadTokens = cacheReadTokens;
+    }
+
+    public Long getCacheWriteTokens() {
+        return cacheWriteTokens;
+    }
+
+    public void setCacheWriteTokens(Long cacheWriteTokens) {
+        this.cacheWriteTokens = cacheWriteTokens;
     }
 
     public Long getTokensIn() {

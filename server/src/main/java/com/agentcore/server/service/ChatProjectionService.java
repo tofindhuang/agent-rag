@@ -9,7 +9,7 @@ import com.agentcore.server.domain.TurnKey;
 public interface ChatProjectionService {
 
     /** Creates the run ledger row, pending user message, title and activity bump. */
-    void startTurn(TurnKey turn, String userText);
+    void startTurn(TurnKey turn, String userText, String requestId, String modelId);
 
     /** Records the gateway-generated run id echoed by {@code run_started}. */
     void gatewayAccepted(String runRowId, String gatewayRunId);
@@ -23,6 +23,8 @@ public interface ChatProjectionService {
             Integer seqInTurn,
             long tokensIn,
             long tokensOut,
+            long cacheReadTokens,
+            long cacheWriteTokens,
             String status);
 
     /** Stores a tool result; toolName and optional structured details are bounded to 8 KiB. */
@@ -36,7 +38,9 @@ public interface ChatProjectionService {
             String errorCode,
             String errorMessage,
             long tokensIn,
-            long tokensOut);
+            long tokensOut,
+            long cacheReadTokens,
+            long cacheWriteTokens);
 
     /** The gateway rejected or was unreachable before a run existed. */
     void failBeforeStream(TurnKey turn, String errorCode, String errorMessage);

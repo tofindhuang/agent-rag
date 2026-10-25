@@ -6,18 +6,20 @@
     <sql id="messageColumns">
         id, session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
         status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
-        created_at
+        cache_read_tokens, cache_write_tokens, created_at
     </sql>
 
     <!-- Idempotent projection write (ADR-0006); MySQL 8 alias form. -->
     <insert id="upsert">
         INSERT INTO messages (
             session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
-            status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out
+            status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
+            cache_read_tokens, cache_write_tokens
         ) VALUES (
             #{sessionId}, #{turnId}, #{ordinal}, #{role}, #{content}, #{thinking}, #{toolCalls},
             #{details},
-            #{status}, #{deliveryStatus}, #{runId}, #{assistantSeqInTurn}, #{tokensIn}, #{tokensOut}
+            #{status}, #{deliveryStatus}, #{runId}, #{assistantSeqInTurn}, #{tokensIn}, #{tokensOut},
+            #{cacheReadTokens}, #{cacheWriteTokens}
         ) AS new
         ON DUPLICATE KEY UPDATE
             role = new.role,
@@ -30,7 +32,9 @@
             run_id = new.run_id,
             assistant_seq_in_turn = new.assistant_seq_in_turn,
             tokens_in = new.tokens_in,
-            tokens_out = new.tokens_out
+            tokens_out = new.tokens_out,
+            cache_read_tokens = new.cache_read_tokens,
+            cache_write_tokens = new.cache_write_tokens
     </insert>
 
     <select id="listPage" resultType="com.agentcore.server.domain.Message">

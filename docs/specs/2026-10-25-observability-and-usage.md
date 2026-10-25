@@ -105,7 +105,7 @@ ALTER TABLE runs
 ```
 
 - `request_id`：发起 prompt 时生成，和发给 gateway 的 header 一致。
-- `model_id`：prompt 开始时快照当前会话的模型标识（用户模型取 `provider_models.model_id`；系统默认取配置的模型 ID）；用于价格表匹配。
+- `model_id`：prompt 开始时快照当前会话的模型标识（用户模型取 `provider_models.model_id`；部署系统默认记为固定哨兵 `system`，价格表可用该键）；用于价格表匹配。
 - 旧行两列为 NULL：trace 只覆盖新 run，成本对旧 run 显示「—」。
 
 ### 执行排队

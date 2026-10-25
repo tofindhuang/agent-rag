@@ -214,7 +214,7 @@ class ChatServiceImplTest {
         assertThat(error.code()).isEqualTo(com.agentcore.server.common.error.ErrorCode.RATE_LIMITED);
         assertThat(error.getMessage()).contains("retry in 7s");
         verify(projection, org.mockito.Mockito.never())
-                .startTurn(any(), anyString());
+                .startTurn(any(), anyString(), anyString(), anyString());
     }
 
     @Test

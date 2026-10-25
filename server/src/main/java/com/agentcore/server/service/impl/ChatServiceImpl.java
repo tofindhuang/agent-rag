@@ -349,7 +349,8 @@ public class ChatServiceImpl implements ChatService {
                 : requestTurnId;
         TurnKey turn = new TurnKey(sessionId, turnId, UUID.randomUUID().toString());
         String requestId = UUID.randomUUID().toString();
-        projection.startTurn(turn, text);
+        String modelId = choice.usesUserProvider() ? choice.binding().modelId() : "system";
+        projection.startTurn(turn, text, requestId, modelId);
 
         // Cold start (ADR-0008): restore the file-backed AgentSession with its
         // model before every prompt; PUT is idempotent and cheap.
@@ -439,8 +440,12 @@ public class ChatServiceImpl implements ChatService {
                     case "message_end" -> {
                         long tokensIn = data.path("usage").path("input").asLong(0);
                         long tokensOut = data.path("usage").path("output").asLong(0);
+                        long cacheRead = data.path("usage").path("cacheRead").asLong(0);
+                        long cacheWrite = data.path("usage").path("cacheWrite").asLong(0);
                         state.tokensIn += tokensIn;
                         state.tokensOut += tokensOut;
+                        state.cacheReadTokens += cacheRead;
+                        state.cacheWriteTokens += cacheWrite;
                         long totalTokens = data.path("usage").path("totalTokens").asLong(0);
                         rateLimitService.addUserTokens(
                                 prompt.userId(), totalTokens > 0 ? totalTokens : tokensIn + tokensOut);
@@ -455,6 +460,8 @@ public class ChatServiceImpl implements ChatService {
                                 data.path("seqInTurn").isNumber() ? data.path("seqInTurn").asInt() : null,
                                 tokensIn,
                                 tokensOut,
+                                cacheRead,
+                                cacheWrite,
                                 status);
                         // The persisted message is authoritative; keep the
                         // remaining deltas scoped to this message only.
@@ -475,7 +482,9 @@ public class ChatServiceImpl implements ChatService {
                                 error.path("code").asText(null),
                                 error.path("message").asText(null),
                                 state.tokensIn,
-                                state.tokensOut);
+                                state.tokensOut,
+                                state.cacheReadTokens,
+                                state.cacheWriteTokens);
                         settled = true;
                     }
                     default -> {
@@ -525,6 +534,8 @@ public class ChatServiceImpl implements ChatService {
                         null,
                         0,
                         0,
+                        0,
+                        0,
                         "partial");
             }
             projection.settleRun(
@@ -533,7 +544,9 @@ public class ChatServiceImpl implements ChatService {
                     STREAM_INTERRUPTED,
                     message,
                     state.tokensIn,
-                    state.tokensOut);
+                    state.tokensOut,
+                    state.cacheReadTokens,
+                    state.cacheWriteTokens);
         } catch (RuntimeException ex) {
             log.error("failed to persist interrupted run {}", prompt.turn().runRowId(), ex);
         }
@@ -705,6 +718,8 @@ public class ChatServiceImpl implements ChatService {
         private int nextOrdinal = 1;
         private long tokensIn;
         private long tokensOut;
+        private long cacheReadTokens;
+        private long cacheWriteTokens;
         private final StringBuilder text = new StringBuilder();
         private final StringBuilder thinking = new StringBuilder();
     }

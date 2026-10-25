@@ -50,13 +50,15 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
 
     @Override
     @Transactional
-    public void startTurn(TurnKey turn, String userText) {
+    public void startTurn(TurnKey turn, String userText, String requestId, String modelId) {
         LocalDateTime now = nowUtc();
 
         Run run = new Run();
         run.setId(turn.runRowId());
         run.setSessionId(turn.sessionId());
         run.setTurnId(turn.turnId());
+        run.setRequestId(requestId);
+        run.setModelId(modelId);
         run.setStatus("running");
         run.setStartedAt(now);
         runDao.insert(run);
@@ -90,6 +92,8 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
             Integer seqInTurn,
             long tokensIn,
             long tokensOut,
+            long cacheReadTokens,
+            long cacheWriteTokens,
             String status) {
         Message message = baseMessage(turn, ordinal, "assistant");
         message.setContent(text);
@@ -98,6 +102,8 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
         message.setAssistantSeqInTurn(seqInTurn);
         message.setTokensIn(tokensIn);
         message.setTokensOut(tokensOut);
+        message.setCacheReadTokens(cacheReadTokens);
+        message.setCacheWriteTokens(cacheWriteTokens);
         message.setStatus(status);
         messageDao.upsert(message);
         if ("complete".equals(status) || "partial".equals(status)) {
@@ -123,7 +129,9 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
             String errorCode,
             String errorMessage,
             long tokensIn,
-            long tokensOut) {
+            long tokensOut,
+            long cacheReadTokens,
+            long cacheWriteTokens) {
         runDao.settle(
                 turn.runRowId(),
                 mapRunStatus(contractStatus),
@@ -131,6 +139,8 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
                 truncateUtf8(errorMessage, ERROR_MESSAGE_LIMIT_BYTES),
                 tokensIn,
                 tokensOut,
+                cacheReadTokens,
+                cacheWriteTokens,
                 nowUtc());
         messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "sent");
         cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), 0));
@@ -144,6 +154,8 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
                 "failed",
                 errorCode,
                 truncateUtf8(errorMessage, ERROR_MESSAGE_LIMIT_BYTES),
+                0L,
+                0L,
                 0L,
                 0L,
                 nowUtc());

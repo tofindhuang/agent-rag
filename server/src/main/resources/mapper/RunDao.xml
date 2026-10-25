@@ -16,6 +16,8 @@
             error_message = #{errorMessage},
             tokens_in = #{tokensIn},
             tokens_out = #{tokensOut},
+            cache_read_tokens = #{cacheReadTokens},
+            cache_write_tokens = #{cacheWriteTokens},
             settled_at = #{settledAt}
         WHERE id = #{id}
     </update>

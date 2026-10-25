@@ -19,6 +19,8 @@ public interface RunDao extends BaseMapper<Run> {
             @Param("errorMessage") String errorMessage,
             @Param("tokensIn") Long tokensIn,
             @Param("tokensOut") Long tokensOut,
+            @Param("cacheReadTokens") Long cacheReadTokens,
+            @Param("cacheWriteTokens") Long cacheWriteTokens,
             @Param("settledAt") LocalDateTime settledAt);
 
     /** Purge support: runs go after messages and before the session row. */

@@ -23,6 +23,7 @@ public final class FakeGateway {
     private final HttpServer server;
     private final AtomicReference<String> lastCreateSessionUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
+    private final AtomicReference<String> lastPromptRequestId = new AtomicReference<>();
     private final AtomicReference<String> promptMode = new AtomicReference<>("complete");
     private final AtomicInteger putCount = new AtomicInteger();
     private final AtomicReference<String> probeMode = new AtomicReference<>("ok");
@@ -56,6 +57,10 @@ public final class FakeGateway {
 
     public String lastTurnId() {
         return lastTurnId.get();
+    }
+
+    public String lastPromptRequestId() {
+        return lastPromptRequestId.get();
     }
 
     public void setPromptMode(String mode) {
@@ -218,6 +223,7 @@ public final class FakeGateway {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         String turnId = turnIdOf(body);
         lastTurnId.set(turnId);
+        lastPromptRequestId.set(exchange.getRequestHeaders().getFirst("X-Request-Id"));
         String mode = promptMode.get();
 
         if ("reject".equals(mode)) {
@@ -236,6 +242,11 @@ public final class FakeGateway {
         } else if ("interrupted".equals(mode)) {
             appendFrame(sse, 2, "thinking_delta", "{\"delta\":\"partial think\"}");
             appendFrame(sse, 3, "text_delta", "{\"delta\":\"partial text\"}");
+        } else if ("cache".equals(mode)) {
+            appendFrame(sse, 2, "message_end",
+                    assistantMessage(1, "cached answer", "stop", "[]", 100, 20, 700, 200));
+            appendFrame(sse, 3, "run_settled",
+                    "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
         } else if ("toolInterrupted".equals(mode)) {
             appendFrame(sse, 2, "message_end", assistantMessage(1, "first answer", "toolUse",
                     "[{\"toolCallId\":\"call-1\",\"name\":\"run_code\",\"args\":{}}]", 20, 10));
@@ -265,9 +276,22 @@ public final class FakeGateway {
 
     private static String assistantMessage(
             int seqInTurn, String text, String stopReason, String toolCalls, long input, long output) {
+        return assistantMessage(seqInTurn, text, stopReason, toolCalls, input, output, 0, 0);
+    }
+
+    private static String assistantMessage(
+            int seqInTurn,
+            String text,
+            String stopReason,
+            String toolCalls,
+            long input,
+            long output,
+            long cacheRead,
+            long cacheWrite) {
         return "{\"seqInTurn\":" + seqInTurn + ",\"role\":\"assistant\",\"text\":\""
                 + text + "\",\"thinking\":\"why\",\"toolCalls\":" + toolCalls
                 + ",\"usage\":{\"input\":" + input + ",\"output\":" + output
+                + ",\"cacheRead\":" + cacheRead + ",\"cacheWrite\":" + cacheWrite
                 + "},\"stopReason\":\"" + stopReason + "\"}";
     }
 
