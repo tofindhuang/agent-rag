@@ -172,9 +172,10 @@ AC：
 
 | 项 | 要求 |
 |---|---|
-| 并发 | 单 gateway 进程 ≥50 活跃会话（PoC 实测校准）；gateway 可横向扩展，会话按 hash 亲和路由 |
+| 并发 | 单 gateway 进程 ≥50 活跃会话（M1 实测）；目标单机峰值 50–200 活跃会话、约 2000 注册用户；参考部署 5 实例、单实例软上限 60、空闲 15 分钟驱逐；会话按亲和路由，单写者由文件锁保证 |
 | 延迟 | 首 token P95 < 3s（扣除模型自身 TTFB）；`kb_search`/`run_code` 回传 P95 < 500ms（不含代码执行本身） |
-| 可用性 | Java 与 gateway 任一重启不丢已持久化消息；部署滚动更新不断流（M1 只验单实例重启；滚动更新不断流依赖多实例与亲和路由，随 M2 验收） |
+| 可用性 | Java 与 gateway 任一重启不丢已持久化消息；计划内滚动更新采用排空：在飞轮次完成，或 10 分钟宽限后 abort 成 `partial`；不承诺崩溃 / `kill -9` 时迁移半截 LLM 流 |
+| 存储 | 本地会话文件只保留 90 天内活动的会话，其余冷归档到对象存储并可透明恢复；归档对象永久保留，用户永久删除时销毁 |
 | 数据安全 | MySQL 加密存储凭证类字段；传输全程 TLS；沙箱执行产物保留 7 天后清理 |
 | 版本策略 | pi 锁定精确版本；升级前跑契约测试（RPC 事件 schema、extension API）；不依赖 experimental 包（pi-server/pi-protocol） |
 
@@ -207,12 +208,15 @@ AC：
 | `doc_chunks` | id, document_id, seq, content, vector_id, token_count |
 | `exec_records` | id, session_id, user_id, language, code, exit_code, stdout/stderr_ref, duration_ms, cpu/mem_used, status |
 | `api_usage` | id, user_id, session_id, model, tokens_in/out, cost_est, created_at |
+| `session_archives` | session_id, user_id, object_prefix, jsonl_sha256, meta_sha256, size_bytes, status(archived/failed/deleted), attempts, last_error, archived_at, updated_at |
 
 Redis key 草案：
 
 | key | 用途 | TTL |
 |---|---|---|
-| `route:sess:{session_id}` | 会话→gateway 实例的路由表 | 会话活跃期 |
+| `gw:instances` | 存活 gateway 实例 ID 集合 | 随实例注销 |
+| `gw:inst:{instance_id}` | 实例地址、心跳、容量、draining 状态 | 15s，5s 续约 |
+| `route:sess:{session_id}` | 会话→gateway 实例的路由表（放置提示） | 24h，访问续期 |
 | `rl:{user_id}:{window}` | 限流计数 | 窗口期 |
 | `sem:sandbox:{user_id}` | 沙箱并发信号量 | 执行期间 |
 
@@ -224,7 +228,7 @@ Redis key 草案：
 |---|---|---|
 | M0 PoC | 1–2 周 | 端到端 demo：单 gateway 进程 + prompt 整体替换（验证 forceSystemPrompt 定制程度）+ kb_search / run_code extension 打通 + SSE 链路；冻结 Java↔gateway 事件契约 v1；定向量库与 embedding 选型 |
 | M1 MVP | 4–6 周 | 全部 P0：多租户认证、RAG 摄取管线、沙箱隔离与审计、compaction 配置化、画像提取/注入/用户可控、MySQL 消息投影 |
-| M2 硬化 | 3–4 周 | gateway 多实例与亲和路由、冷启动恢复压测、可观测看板、限流调优、gVisor 评估 |
+| M2 硬化 | 3–4 周 | 切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测。切片 2：OAuth、摘要正文可见、限流调优、gVisor 评估、沙箱预热/复用、检索评测扩展、无答案拒答。FR-7 可观测看板已提前交付 |
 
 ## 8. 风险与开放问题
 

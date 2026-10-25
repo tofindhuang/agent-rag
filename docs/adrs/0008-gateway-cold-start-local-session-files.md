@@ -4,7 +4,7 @@ Date: 2026-10-23
 
 ## Status
 
-Accepted（由 ADR-0011 修订：用户主动彻底删除会话时删除 pi 文件与 sidecar；普通归档仍无限保留）
+Accepted（由 ADR-0011 修订：用户主动彻底删除会话时删除 pi 文件与 sidecar；普通归档仍无限保留。2026-10-25 由 ADR-0024 修订为多实例共享目录 + 文件锁，由 ADR-0025 增加 90 天冷归档）
 
 ## Context
 
@@ -20,7 +20,7 @@ pi SDK 的 `SessionManager` 原生支持 `create(cwd, sessionDir, {id})`、`find
 - **create-or-open 幂等恢复**：`PUT /sessions/:id` 先按 id 查找；存在则 `open`（响应 restored 语义），不存在则 `create(..., {id})`。session id 由 Java 生成（= 业务 Session id = AgentSession id）。
 - **sidecar 归属元数据**：每个 session 旁写 `${id}.meta.json` 记录 `userId`；重启后 gateway 仍能校验「这个会话属于谁」。session 文件在而 sidecar 缺失时，按当次 `X-User-Id` 绑定写入并告警。
 - **Java 每次发 prompt 前先发幂等 `PUT /sessions/:id`**：单实例 50 会话规模下这次额外 HTTP 成本可忽略，换来「任何时刻 gateway 重启都能在下一条消息前恢复」的必然性，不需要 404 重试逻辑。
-- **M1 不做文件清理与多实例**：session 文件无限保留；共享存储（对象存储/共享文件系统）与清理任务留 M2。
+- **M1 不做文件清理与多实例**：session 文件无限保留；共享存储（对象存储/共享文件系统）与清理任务留 M2。（M2 已由 ADR-0024 改为单机共享目录 + 文件锁，由 ADR-0025 改为 90 天冷归档到对象存储）
 
 ## Considered Options(被否的备选)
 
@@ -31,8 +31,8 @@ pi SDK 的 `SessionManager` 原生支持 `create(cwd, sessionDir, {id})`、`find
 
 ## Consequences
 
-- gateway 换宿主/换机器时 session 文件不迁移，会话不可恢复（单实例 M1 接受；M2 共享存储解决）。
-- 磁盘占用随会话单调增长，M1 明确不清理，挂账 M2。
+- gateway 换宿主/换机器时 session 文件不迁移，会话不可恢复（M1 单实例接受）。M2 用共享目录解决同主机多实例；跨主机仍不在承诺内（ADR-0024）。
+- 磁盘占用随会话单调增长，M1 明确不清理。M2 由 ADR-0025 归档 90 天未活动的会话，本地只保留近期数据。
 - 归属校验依赖 sidecar 文件；sidecar 丢失会退化为「首次访问者绑定」，需要日志告警暴露异常。
 - Java 侧内存 `sessionUsers` Map 删除，归属真相转移到 MySQL sessions 表（Java 校验）+ sidecar（gateway 校验），两侧一致性由同一 sessionId 串联。
 - pi SessionManager 文件格式随 SDK 版本演进，锁版本（ADR-0001）+ 契约测试继续是升级安全网。

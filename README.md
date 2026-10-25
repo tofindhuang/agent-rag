@@ -21,11 +21,11 @@
 | 对话管理 | 会话 CRUD、多轮上下文、SSE 流式输出、中断、冷启动恢复 | ✅ M1 |
 | 知识库 / RAG | 上传 → 解析 → 切分 → embedding → Qdrant；`kb_search` 工具 + 引用溯源；多知识库；扫描件 OCR | ✅ M1 |
 | 沙箱代码执行 | 模型调用 `run_code`，一次性 Docker 容器：禁网、非 root、只读根、CPU/内存限制、审计入库 | ✅ M1 |
-| 上下文压缩 | 接近模型窗口时自动 compaction，摘要可见、原文可回捞，上下文用量实时展示 | ✅ M1 |
+| 上下文压缩 | 接近模型窗口时自动 compaction，压缩事件与上下文用量实时展示，原文可回捞；摘要正文查看在 M2 切片 2 | ✅ M1 |
 | 长期记忆 | 会话结束后异步提取偏好/项目事实，冲突版本化；按会话选择记忆集注入 | ✅ M1 |
 | 多租户与安全 | JWT（access + refresh）、会话按用户隔离、工具白名单、per-user RPM/TPM 限流 | ✅ M1 |
-| 可观测 | Prometheus 指标（限流等）；用量统计、全链路 trace、运营看板 | 🚧 M2 |
-| 多实例 | gateway 横向扩展、会话亲和路由、滚动更新不断流 | 🚧 M2 |
+| 可观测 | Prometheus 指标（限流等）；用量统计、全链路 trace、运营看板 | ✅ M2 |
+| 多实例 | gateway 横向扩展、会话亲和路由、单写者文件锁、排空式滚动更新、90 天冷归档 | 🚧 M2 切片 1 |
 
 M1 的验收证据（50 并发压测、重启耐久性、延迟指标）见
 [docs/research/2026-10-25-m1-load-test-report.md](docs/research/2026-10-25-m1-load-test-report.md) 与
@@ -179,7 +179,10 @@ npm run dev        # Next.js，监听 :3000
 |---|---|---|
 | `JWT_SECRET` | 开发占位值 | 必填；长度 ≥32 字节，否则启动失败 |
 | `MODEL_SECRET_KEY` | 开发占位值 | 必填；32 字节 Base64，加密用户 provider key |
-| `GATEWAY_URL` / `GATEWAY_API_TOKEN` | `http://localhost:3001` / 空 | Java → gateway；生产建议设置共享 token |
+| `GATEWAY_URL` / `GATEWAY_URLS` / `GATEWAY_API_TOKEN` | `http://localhost:3001` / 空 / 空 | Java → gateway；多实例用 `GATEWAY_URLS` 静态种子，`GATEWAY_URL` 保留单实例兼容 |
+| `GATEWAY_INSTANCE_ID` / `GATEWAY_PUBLIC_URL` | hostname:port / 本机地址 | gateway 实例身份与 Java 可达地址 |
+| `GATEWAY_MAX_SESSIONS` / `GATEWAY_IDLE_EVICT_MS` / `GATEWAY_DRAIN_GRACE_MS` | 60 / 900000 / 600000 | 单实例上限、空闲驱逐、排空宽限 |
+| `SESSION_ARCHIVE_AFTER_DAYS` | 90（0 关闭） | 未活动会话冷归档阈值 |
 | `MYSQL_*` / `REDIS_*` | 见 `.env.example` | 基础设施连接 |
 | `EMBEDDING_*` / `RERANK_*` | 空 | KB 部署级兜底（用户级设置优先） |
 | `KB_ALLOW_PRIVATE_ENDPOINTS` | `false` | 是否允许内网 embedding / 模型端点 |
@@ -255,11 +258,10 @@ bash sandbox/test-isolation.sh
 ## 路线图
 
 - **M1（已完成）**：P0 全量 —— 认证与多租户、RAG 摄取、沙箱隔离与审计、compaction、长期记忆、限流；50 并发验收通过。
-- **M2（进行中/计划）**：
-  - gateway 多实例、会话 hash 亲和路由、滚动更新不断流；
-  - FR-7 可观测：用量统计、`request_id` 全链路 trace、运营看板；
-  - 沙箱预热池/容器复用评估、gVisor 评估；
-  - OAuth 登录（P1）、限流调优。
+- **M2（切片 1 进行中）**：
+  - 切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测；
+  - 切片 2：OAuth 登录（P1）、摘要正文查看、沙箱预热池/容器复用评估、gVisor 评估、限流调优、检索评测扩展、无答案拒答；
+  - FR-7 可观测（用量统计、`request_id` 全链路 trace、运营看板）已交付。
 
 ## 参与贡献
 

@@ -31,7 +31,7 @@ _Avoid_: global model、platform model
 
 ### 会话（Session）
 
-一段持续的多轮对话及其上下文，归属单一用户，由业务层（Java）创建与管理。可处于 active 或 archived（归档）状态；归档保留历史，可恢复或彻底删除。
+一段持续的多轮对话及其上下文，归属单一用户，由业务层（Java）创建与管理。可处于 active 或 archived（业务归档）状态；业务归档保留历史，可恢复或彻底删除。
 _Avoid_: conversation、chat、对话（作名词指 Session 时统一用「会话」）
 
 ### AgentSession
@@ -53,6 +53,36 @@ _Avoid_: job、task、turn
 
 托管 AgentSession 的 Node 服务，系统中唯一与 LLM 通信的组件。
 _Avoid_: engine、pi server
+
+### Gateway 实例（Gateway Instance）
+
+一个运行中的 gateway 进程，有稳定 ID、可被 Java 访问的地址、会话容量与 draining 状态；多个实例共享同一会话目录。
+_Avoid_: 节点、副本、pod
+
+### 会话路由（Session Route）
+
+会话当前归属的 gateway 实例。路由是放置提示；单写者归属由文件锁最终裁决。
+_Avoid_: 绑定、分片
+
+### 会话驻留（Resident）
+
+AgentSession 当前在某个 gateway 实例内存中。驻留与会话是否活跃无关；空闲会话可被驱逐。
+_Avoid_: 在线、加载中
+
+### 驱逐（Evict）
+
+释放内存中的 AgentSession 与文件锁，保留 JSONL 与 sidecar；下次访问时从磁盘恢复。
+_Avoid_: 删除、卸载、回收（口语可用，实体名统一 Evict）
+
+### 排空（Drain）
+
+实例停止接收新会话与新轮次，等待在飞轮次结束或宽限期到期后退出；是滚动更新的安全退出方式。
+_Avoid_: 下线、关机、优雅关闭（泛指时）
+
+### 会话归档（Session Archive）
+
+把 90 天未活动的 pi session 文件压缩上传对象存储并删除本地副本；用户下一次发消息时自动恢复，仍可继续对话。与业务状态 archived（用户把会话移出活跃列表）不是同一件事。
+_Avoid_: 业务归档、冷备份、删除
 
 ### 契约（Contract）
 
