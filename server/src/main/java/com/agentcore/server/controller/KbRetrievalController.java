@@ -6,9 +6,13 @@ import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.dto.kb.KbEvalLabelCreateRequest;
 import com.agentcore.server.dto.kb.KbEvalLabelListResponse;
 import com.agentcore.server.dto.kb.KbEvalLabelView;
+import com.agentcore.server.dto.kb.KbEvalRunListResponse;
+import com.agentcore.server.dto.kb.KbEvalRunRequest;
+import com.agentcore.server.dto.kb.KbEvalRunResponse;
 import com.agentcore.server.dto.kb.KbRetrievalQueryRequest;
 import com.agentcore.server.dto.kb.KbRetrievalQueryResponse;
 import com.agentcore.server.service.KbEvalLabelService;
+import com.agentcore.server.service.KbEvalService;
 import com.agentcore.server.service.KbRetrievalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -31,11 +35,15 @@ public class KbRetrievalController {
 
     private final KbRetrievalService retrievalService;
     private final KbEvalLabelService labelService;
+    private final KbEvalService evalService;
 
     public KbRetrievalController(
-            KbRetrievalService retrievalService, KbEvalLabelService labelService) {
+            KbRetrievalService retrievalService,
+            KbEvalLabelService labelService,
+            KbEvalService evalService) {
         this.retrievalService = retrievalService;
         this.labelService = labelService;
+        this.evalService = evalService;
     }
 
     @PostMapping("/query")
@@ -74,5 +82,33 @@ public class KbRetrievalController {
     public void deleteLabel(
             @AuthenticationPrincipal AuthenticatedUser user, @PathVariable("id") long id) {
         labelService.delete(user.userId(), id);
+    }
+
+    @PostMapping("/eval/run")
+    public KbEvalRunResponse runEvaluation(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody KbEvalRunRequest request) {
+        if (request.kbId() == null || request.kbId().isBlank()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "kbId is required");
+        }
+        return evalService.run(user.userId(), request.kbId());
+    }
+
+    @GetMapping("/eval/runs")
+    public KbEvalRunListResponse runs(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam("kbId") String kbId,
+            @RequestParam(value = "limit", defaultValue = "20") int limit) {
+        if (kbId == null || kbId.isBlank()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "kbId is required");
+        }
+        return evalService.listRuns(user.userId(), kbId, limit);
+    }
+
+    @GetMapping("/eval/runs/{runId}")
+    public KbEvalRunResponse runDetail(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable("runId") long runId) {
+        return evalService.getRun(user.userId(), runId);
     }
 }

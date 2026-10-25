@@ -62,7 +62,7 @@ class KbUrlGuardTest {
 
     private static KbUrlGuard guard(boolean allowPrivate) {
         KbProperties properties = new KbProperties(
-                true, allowPrivate, 200, 1L << 30, 3, null, null);
+                true, allowPrivate, 200, 1L << 30, 3, null, null, null);
         return new KbUrlGuard(properties);
     }
 }

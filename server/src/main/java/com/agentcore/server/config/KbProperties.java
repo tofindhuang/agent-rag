@@ -15,7 +15,8 @@ public record KbProperties(
         Long maxBytesPerUser,
         Integer workerThreads,
         Embedding embedding,
-        Rerank rerank) {
+        Rerank rerank,
+        Eval eval) {
 
     public KbProperties {
         if (enabled == null) {
@@ -38,6 +39,9 @@ public record KbProperties(
         }
         if (rerank == null) {
             rerank = Rerank.defaults();
+        }
+        if (eval == null) {
+            eval = Eval.defaults();
         }
     }
 
@@ -103,6 +107,26 @@ public record KbProperties(
 
         public boolean configured() {
             return baseUrl != null && !baseUrl.isBlank();
+        }
+    }
+
+    /** Bounds for one synchronous evaluation run (ADR-0022). */
+    public record Eval(Integer budgetMs, Integer concurrency, Integer historyLimit) {
+
+        public Eval {
+            if (budgetMs == null || budgetMs <= 0) {
+                budgetMs = 60_000;
+            }
+            if (concurrency == null || concurrency <= 0) {
+                concurrency = 4;
+            }
+            if (historyLimit == null || historyLimit <= 0) {
+                historyLimit = 20;
+            }
+        }
+
+        static Eval defaults() {
+            return new Eval(60_000, 4, 20);
         }
     }
 }

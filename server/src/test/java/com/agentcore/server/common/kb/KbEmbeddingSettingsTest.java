@@ -84,6 +84,6 @@ class KbEmbeddingSettingsTest {
                 ? new KbProperties.Embedding(
                         "https://embedding.example.com/v1", "key", "model", 1024, 32, "/embeddings")
                 : null;
-        return new KbProperties(true, true, 200, 1L << 30, 3, embedding, null);
+        return new KbProperties(true, true, 200, 1L << 30, 3, embedding, null, null);
     }
 }

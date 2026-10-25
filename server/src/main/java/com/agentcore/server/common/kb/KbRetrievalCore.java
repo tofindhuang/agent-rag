@@ -68,6 +68,15 @@ public class KbRetrievalCore {
         }
     }
 
+    /** Rerank config snapshot for the run report; resolves the same config retrieval will use. */
+    public Optional<KbRerankConfig> resolveRerank(long userId) {
+        try {
+            return rerankSettings.resolve(userId);
+        } catch (KbRerankException e) {
+            throw mapRerankFailure(e);
+        }
+    }
+
     public Outcome retrieve(
             long userId, String kbId, KbEmbeddingConfig embedding, String query, int topK) {
         return retrieve(userId, kbId, embedding, query, topK, SEARCH_BUDGET);

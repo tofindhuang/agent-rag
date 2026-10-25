@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.KbEvalRunDao">
+
+    <sql id="runColumns">
+        id, user_id, kb_id, complete, label_count, executed_count, rotten_count,
+        skipped_count, embedding_model, embedding_dim, rerank_model, duration_ms,
+        recall5, mrr5, pool_recall10, baseline_recall5, baseline_mrr5, created_at
+    </sql>
+
+    <insert id="insertRun" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_eval_runs (user_id, kb_id, complete, label_count, executed_count,
+            rotten_count, skipped_count, embedding_model, embedding_dim, rerank_model,
+            duration_ms, recall5, mrr5, pool_recall10, baseline_recall5, baseline_mrr5)
+        VALUES (#{userId}, #{kbId}, #{complete}, #{labelCount}, #{executedCount},
+            #{rottenCount}, #{skippedCount}, #{embeddingModel}, #{embeddingDim},
+            #{rerankModel}, #{durationMs}, #{recall5}, #{mrr5}, #{poolRecall10},
+            #{baselineRecall5}, #{baselineMrr5})
+    </insert>
+
+    <select id="findOwned" resultType="com.agentcore.server.domain.KbEvalRun">
+        SELECT <include refid="runColumns"/>
+        FROM kb_eval_runs
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="listByKb" resultType="com.agentcore.server.domain.KbEvalRun">
+        SELECT <include refid="runColumns"/>
+        FROM kb_eval_runs
+        WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <delete id="prune">
+        DELETE FROM kb_eval_runs
+        WHERE user_id = #{userId}
+          AND kb_id = #{kbId}
+          AND id NOT IN (
+              SELECT id FROM (
+                  SELECT id
+                  FROM kb_eval_runs
+                  WHERE user_id = #{userId}
+                    AND kb_id = #{kbId}
+                  ORDER BY created_at DESC, id DESC
+                  LIMIT #{keep}
+              ) keep
+          )
+    </delete>
+
+</mapper>

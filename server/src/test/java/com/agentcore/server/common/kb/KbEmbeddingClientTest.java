@@ -19,7 +19,7 @@ class KbEmbeddingClientTest {
     void setUp() {
         server = FakeEmbeddingServer.start(8);
         KbProperties properties = new KbProperties(
-                true, true, 200, 1L << 30, 3, null, null);
+                true, true, 200, 1L << 30, 3, null, null, null);
         client = new KbEmbeddingClient(new ObjectMapper(), new KbUrlGuard(properties));
     }
 

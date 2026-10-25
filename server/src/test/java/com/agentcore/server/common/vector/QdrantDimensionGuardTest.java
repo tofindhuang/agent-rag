@@ -92,7 +92,7 @@ class QdrantDimensionGuardTest {
 
     private QdrantDimensionGuard guard(
             boolean enabled, VectorStore store, KbUserSettingsDao settings) {
-        KbProperties properties = new KbProperties(enabled, false, 200, 1L << 30, 3, null, null);
+        KbProperties properties = new KbProperties(enabled, false, 200, 1L << 30, 3, null, null, null);
         return new QdrantDimensionGuard(properties, qdrant, store, settings);
     }
 }

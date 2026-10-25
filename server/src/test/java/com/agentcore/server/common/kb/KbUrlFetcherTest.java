@@ -29,7 +29,7 @@ class KbUrlFetcherTest {
         server.createContext("/", (exchange) -> handler.get().handle(exchange));
         server.start();
         KbProperties properties = new KbProperties(
-                true, true, 200, 1L << 30, 3, null, null);
+                true, true, 200, 1L << 30, 3, null, null, null);
         fetcher = new KbUrlFetcher(new KbUrlGuard(properties));
     }
 

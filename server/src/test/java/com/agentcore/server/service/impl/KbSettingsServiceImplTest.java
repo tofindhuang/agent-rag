@@ -89,6 +89,7 @@ class KbSettingsServiceImplTest {
                 3,
                 new KbProperties.Embedding(
                         "https://embedding.example.com/v1", "key", "model", 1024, 32, "/embeddings"),
+                null,
                 null);
         KbUserSettingsDao settingsDao = mock(KbUserSettingsDao.class);
         KbUrlGuard guard = new KbUrlGuard(properties);

@@ -36,6 +36,7 @@ class KbConfigurationGateTest {
                 3,
                 new KbProperties.Embedding(
                         "https://embedding.example.com/v1", "key", "model", 1024, 32, "/embeddings"),
+                null,
                 null);
         KbConfigurationGate gate =
                 new KbConfigurationGate(properties, storage(), mock(KbUserSettingsDao.class));
@@ -57,7 +58,7 @@ class KbConfigurationGateTest {
     }
 
     private static KbProperties defaults() {
-        return new KbProperties(true, false, 200, 1L << 30, 3, null, null);
+        return new KbProperties(true, false, 200, 1L << 30, 3, null, null, null);
     }
 
     private static KbS3Properties storage() {

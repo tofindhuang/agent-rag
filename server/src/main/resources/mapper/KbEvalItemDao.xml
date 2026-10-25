@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.KbEvalItemDao">
+
+    <sql id="itemColumns">
+        id, run_id, label_id, status, rank_final, rank_vector, score_final
+    </sql>
+
+    <insert id="insertBatch">
+        INSERT INTO kb_eval_items (run_id, label_id, status, rank_final, rank_vector, score_final)
+        VALUES
+        <foreach collection="items" item="item" separator=",">
+            (#{item.runId}, #{item.labelId}, #{item.status}, #{item.rankFinal},
+             #{item.rankVector}, #{item.scoreFinal})
+        </foreach>
+    </insert>
+
+    <select id="listByRun" resultType="com.agentcore.server.domain.KbEvalItem">
+        SELECT <include refid="itemColumns"/>
+        FROM kb_eval_items
+        WHERE run_id = #{runId}
+        ORDER BY id ASC
+    </select>
+
+</mapper>
