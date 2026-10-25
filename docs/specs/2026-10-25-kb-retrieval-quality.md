@@ -1,7 +1,7 @@
 # 检索质量保障：模型指纹、查询调试与标注评测
 
 日期：2026-10-25
-状态：待实现
+状态：已实现
 关联需求：FR-2（知识库 / RAG）
 关联 ADR：[0022](../adrs/0022-kb-retrieval-quality-assurance.md)
 上游 spec：[2026-10-23-knowledge-base-rag.md](2026-10-23-knowledge-base-rag.md)、[2026-10-24-multi-knowledge-base.md](2026-10-24-multi-knowledge-base.md)、[2026-10-24-kb-settings-management.md](2026-10-24-kb-settings-management.md)
