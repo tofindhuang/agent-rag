@@ -31,6 +31,15 @@ public interface ChatProjectionService {
     void appendTool(
             TurnKey turn, int ordinal, String content, String toolName, String detailsJson);
 
+    /** Records one compaction reported by the gateway (FR-7). */
+    void recordCompaction(
+            TurnKey turn,
+            long userId,
+            String requestId,
+            String reason,
+            Long tokensBefore,
+            Long tokensAfter);
+
     /** Settles the run; any settled run means the user message reached the gateway. */
     void settleRun(
             TurnKey turn,

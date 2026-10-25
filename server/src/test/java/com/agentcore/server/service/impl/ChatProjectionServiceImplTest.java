@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.agentcore.server.dao.CompactionEventDao;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
@@ -22,7 +23,8 @@ class ChatProjectionServiceImplTest {
     private final MessageDao messageDao = mock(MessageDao.class);
     private final MessageCache messageCache = mock(MessageCache.class);
     private final ChatProjectionServiceImpl projection = new ChatProjectionServiceImpl(
-            messageDao, mock(RunDao.class), mock(SessionDao.class), messageCache, new ObjectMapper());
+            messageDao, mock(RunDao.class), mock(CompactionEventDao.class),
+            mock(SessionDao.class), messageCache, new ObjectMapper());
 
     @Test
     void storesToolDetailsWithTheMessage() {

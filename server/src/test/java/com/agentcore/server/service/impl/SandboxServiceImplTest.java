@@ -56,6 +56,7 @@ class SandboxServiceImplTest {
         assertThat(row.getRunId()).isEqualTo("run-1");
         assertThat(row.getToolCallId()).isEqualTo("call-1");
         assertThat(row.getImage()).isEqualTo("agent-core-sandbox:python-3.12");
+        assertThat(row.getQueueMs()).isNotNull().isGreaterThanOrEqualTo(0);
         assertThat(admission.acquired).isEqualTo(1);
         assertThat(admission.released).isZero();
     }

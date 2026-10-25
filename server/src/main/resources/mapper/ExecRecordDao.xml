@@ -5,17 +5,17 @@
 
     <sql id="execRecordColumns">
         id, user_id, session_id, turn_id, run_id, tool_call_id, request_id, language, code,
-        status, exit_code, duration_ms, timed_out, truncated, oom_killed, peak_memory_bytes,
+        status, exit_code, duration_ms, queue_ms, timed_out, truncated, oom_killed, peak_memory_bytes,
         cpu_time_ms, stdout, stderr, error_message, image, created_at, started_at, finished_at
     </sql>
 
     <insert id="insert">
         INSERT INTO exec_records (
             id, user_id, session_id, turn_id, run_id, tool_call_id, request_id, language, code,
-            status, image, created_at, started_at
+            status, queue_ms, image, created_at, started_at
         ) VALUES (
             #{id}, #{userId}, #{sessionId}, #{turnId}, #{runId}, #{toolCallId}, #{requestId},
-            #{language}, #{code}, #{status}, #{image}, #{createdAt}, #{startedAt}
+            #{language}, #{code}, #{status}, #{queueMs}, #{image}, #{createdAt}, #{startedAt}
         )
     </insert>
 

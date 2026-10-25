@@ -22,6 +22,7 @@ public class ExecRecord {
     private String status;
     private Integer exitCode;
     private Integer durationMs;
+    private Integer queueMs;
     private Boolean timedOut;
     private Boolean truncated;
     private Boolean oomKilled;
@@ -129,6 +130,15 @@ public class ExecRecord {
 
     public void setDurationMs(Integer durationMs) {
         this.durationMs = durationMs;
+    }
+
+    /** Admission wait before the container started (ADR-0023). */
+    public Integer getQueueMs() {
+        return queueMs;
+    }
+
+    public void setQueueMs(Integer queueMs) {
+        this.queueMs = queueMs;
     }
 
     public Boolean getTimedOut() {

@@ -242,6 +242,13 @@ public final class FakeGateway {
         } else if ("interrupted".equals(mode)) {
             appendFrame(sse, 2, "thinking_delta", "{\"delta\":\"partial think\"}");
             appendFrame(sse, 3, "text_delta", "{\"delta\":\"partial text\"}");
+        } else if ("compaction".equals(mode)) {
+            appendFrame(sse, 2, "compaction",
+                    "{\"reason\":\"threshold\",\"tokensBefore\":1000,\"tokensAfter\":300}");
+            appendFrame(sse, 3, "message_end",
+                    assistantMessage(1, "compacted answer", "stop", "[]", 40, 8));
+            appendFrame(sse, 4, "run_settled",
+                    "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
         } else if ("cache".equals(mode)) {
             appendFrame(sse, 2, "message_end",
                     assistantMessage(1, "cached answer", "stop", "[]", 100, 20, 700, 200));

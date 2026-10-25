@@ -474,6 +474,15 @@ public class ChatServiceImpl implements ChatService {
                             data.path("content").asText(""),
                             data.path("name").asText(""),
                             detailsJson(data.path("details")));
+                    case "compaction" -> projection.recordCompaction(
+                            prompt.turn(),
+                            prompt.userId(),
+                            prompt.requestId(),
+                            data.path("reason").asText(null),
+                            data.hasNonNull("tokensBefore")
+                                    ? data.path("tokensBefore").asLong() : null,
+                            data.hasNonNull("tokensAfter")
+                                    ? data.path("tokensAfter").asLong() : null);
                     case "run_settled" -> {
                         JsonNode error = data.path("error");
                         projection.settleRun(

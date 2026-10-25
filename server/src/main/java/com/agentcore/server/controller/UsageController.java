@@ -1,8 +1,7 @@
 package com.agentcore.server.controller;
 
 import com.agentcore.server.common.auth.AuthenticatedUser;
-import com.agentcore.server.common.error.ApiException;
-import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.common.usage.UsageWindows;
 import com.agentcore.server.dto.usage.UserUsageResponse;
 import com.agentcore.server.service.UsageQueryService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -26,15 +25,6 @@ public class UsageController {
     public UserUsageResponse me(
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestParam(value = "window", defaultValue = "30d") String window) {
-        return usageQueryService.userUsage(user.userId(), days(window));
-    }
-
-    static int days(String window) {
-        return switch (window) {
-            case "7d" -> 7;
-            case "30d" -> 30;
-            default -> throw new ApiException(ErrorCode.INVALID_REQUEST,
-                    "window must be 7d or 30d");
-        };
+        return usageQueryService.userUsage(user.userId(), UsageWindows.days(window));
     }
 }

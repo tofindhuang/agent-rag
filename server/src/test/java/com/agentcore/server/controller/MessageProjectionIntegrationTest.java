@@ -214,6 +214,27 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void recordsCompactionEventsFromTheStream() throws Exception {
+        String token = newUserToken();
+        String sessionId = createSession(token);
+        GATEWAY.setPromptMode("compaction");
+
+        send(token, sessionId, "触发压缩");
+
+        var event = jdbc.queryForMap(
+                "SELECT user_id, session_id, run_id, turn_id, request_id, reason,"
+                        + " tokens_before, tokens_after FROM compaction_events"
+                        + " WHERE session_id = ?",
+                sessionId);
+        assertThat(event.get("session_id")).isEqualTo(sessionId);
+        assertThat(event.get("run_id")).isNotNull();
+        assertThat(event.get("request_id")).isEqualTo(GATEWAY.lastPromptRequestId());
+        assertThat(event.get("reason")).isEqualTo("threshold");
+        assertThat(((Number) event.get("tokens_before")).longValue()).isEqualTo(1000);
+        assertThat(((Number) event.get("tokens_after")).longValue()).isEqualTo(300);
+    }
+
+    @Test
     void recordsRequestModelAndCacheTokensForTheRun() throws Exception {
         String token = newUserToken();
         String sessionId = createSession(token);

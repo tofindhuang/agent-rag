@@ -77,7 +77,10 @@ public class SandboxServiceImpl implements SandboxService {
             throw new ApiException(ErrorCode.SANDBOX_UNAVAILABLE, ex.getMessage(), ex);
         }
 
+        long queueStarted = System.nanoTime();
         SandboxPermit permit = admission.acquire(userId);
+        long queueMs = Math.min(
+                Integer.MAX_VALUE, (System.nanoTime() - queueStarted) / 1_000_000L);
         String execId = UUID.randomUUID().toString();
         ExecRecord record = new ExecRecord();
         record.setId(execId);
@@ -90,6 +93,7 @@ public class SandboxServiceImpl implements SandboxService {
         record.setLanguage(language);
         record.setCode(code);
         record.setStatus("running");
+        record.setQueueMs((int) queueMs);
         record.setImage(properties.image());
         record.setCreatedAt(now());
         try {

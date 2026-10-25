@@ -1,9 +1,11 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.dao.CompactionEventDao;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.domain.CompactionEvent;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.Run;
 import com.agentcore.server.domain.Session;
@@ -31,6 +33,7 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
 
     private final MessageDao messageDao;
     private final RunDao runDao;
+    private final CompactionEventDao compactionEventDao;
     private final SessionDao sessionDao;
     private final MessageCache messageCache;
     private final ObjectMapper objectMapper;
@@ -38,11 +41,13 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     public ChatProjectionServiceImpl(
             MessageDao messageDao,
             RunDao runDao,
+            CompactionEventDao compactionEventDao,
             SessionDao sessionDao,
             MessageCache messageCache,
             ObjectMapper objectMapper) {
         this.messageDao = messageDao;
         this.runDao = runDao;
+        this.compactionEventDao = compactionEventDao;
         this.sessionDao = sessionDao;
         this.messageCache = messageCache;
         this.objectMapper = objectMapper;
@@ -119,6 +124,28 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
         message.setDetails(toolDetails(detailsJson, toolName));
         messageDao.upsert(message);
         cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
+    }
+
+    @Override
+    @Transactional
+    public void recordCompaction(
+            TurnKey turn,
+            long userId,
+            String requestId,
+            String reason,
+            Long tokensBefore,
+            Long tokensAfter) {
+        CompactionEvent event = new CompactionEvent();
+        event.setUserId(userId);
+        event.setSessionId(turn.sessionId());
+        event.setRunId(turn.runRowId());
+        event.setTurnId(turn.turnId());
+        event.setRequestId(requestId);
+        event.setReason(reason);
+        event.setTokensBefore(tokensBefore);
+        event.setTokensAfter(tokensAfter);
+        event.setCreatedAt(nowUtc());
+        compactionEventDao.insert(event);
     }
 
     @Override
