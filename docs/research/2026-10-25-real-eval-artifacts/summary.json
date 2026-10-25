@@ -1,0 +1,245 @@
+{
+  "date": "2026-10-25",
+  "config": {
+    "embedding": {
+      "provider": "SiliconFlow",
+      "model": "BAAI/bge-m3",
+      "dimension": 1024,
+      "batchSize": 32
+    },
+    "rerank": {
+      "provider": "SiliconFlow",
+      "model": "BAAI/bge-reranker-v2-m3",
+      "candidates": 10,
+      "topK": 5
+    },
+    "vectorStore": "qdrant/qdrant:v1.14.1"
+  },
+  "corpus": [
+    {
+      "title": "requirements.md",
+      "chunks": 18
+    },
+    {
+      "title": "README.md",
+      "chunks": 20
+    },
+    {
+      "title": "2026-10-25-kb-retrieval-quality.md",
+      "chunks": 32
+    }
+  ],
+  "labels": 18,
+  "metrics": {
+    "recall5": 0.9444,
+    "mrr5": 0.8889,
+    "poolRecall10": 0.9444,
+    "baselineRecall5": 0.8333,
+    "baselineMrr5": 0.6778
+  },
+  "rerankDelta": {
+    "recall5": 0.1111,
+    "mrr5": 0.2111
+  },
+  "perDocument": {
+    "requirements.md": {
+      "labels": 3,
+      "recall5": 1.0,
+      "poolRecall10": 1.0,
+      "mrr5": 1.0
+    },
+    "README.md": {
+      "labels": 4,
+      "recall5": 1.0,
+      "poolRecall10": 1.0,
+      "mrr5": 0.875
+    },
+    "2026-10-25-kb-retrieval-quality.md": {
+      "labels": 11,
+      "recall5": 0.9091,
+      "poolRecall10": 0.9091,
+      "mrr5": 0.8636
+    }
+  },
+  "evaluationDurationsMs": [
+    1943,
+    1732
+  ],
+  "retrievalLatencyMs": {
+    "embedding": [
+      120,
+      107,
+      119
+    ],
+    "rerank": [
+      206,
+      169,
+      138
+    ],
+    "source": "POST /api/kb/settings/test, three samples"
+  },
+  "items": [
+    {
+      "document": "requirements.md",
+      "seq": 17,
+      "query": "风险 R1 的内容是什么？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.48399147391319275
+    },
+    {
+      "document": "requirements.md",
+      "seq": 16,
+      "query": "M1 MVP 的周期是多久？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.9544699192047119
+    },
+    {
+      "document": "requirements.md",
+      "seq": 7,
+      "query": "FR-2 的 AC4 要求用真实文档建立至少多少条标注？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.9388394951820374
+    },
+    {
+      "document": "README.md",
+      "seq": 17,
+      "query": "需求文档在仓库中的位置是哪里？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 2,
+      "scoreFinal": 0.03193686902523041
+    },
+    {
+      "document": "README.md",
+      "seq": 13,
+      "query": "JWT_SECRET 的长度要求是什么？",
+      "status": "hit",
+      "rankVector": 2,
+      "rankFinal": 1,
+      "scoreFinal": 0.9594386219978333
+    },
+    {
+      "document": "README.md",
+      "seq": 10,
+      "query": "构建沙箱镜像时使用哪个 Dockerfile？",
+      "status": "hit",
+      "rankVector": 8,
+      "rankFinal": 1,
+      "scoreFinal": 0.9309829473495483
+    },
+    {
+      "document": "README.md",
+      "seq": 18,
+      "query": "README 路线图中 M2 计划包含哪些内容？",
+      "status": "hit",
+      "rankVector": 2,
+      "rankFinal": 1,
+      "scoreFinal": 0.6909413933753967
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 29,
+      "query": "修改部署默认 embedding 模型后，检索会返回什么错误？",
+      "status": "hit",
+      "rankVector": 5,
+      "rankFinal": 1,
+      "scoreFinal": 0.9668664932250977
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 28,
+      "query": "评测的内部并发数和单条查询预算分别是多少？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.926162838935852
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 24,
+      "query": "哪些接口不接索引闸门、只校验归属？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.751005232334137
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 23,
+      "query": "检索闸门 KbIndexGuard 的两个方法分别校验什么？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.9773576855659485
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 17,
+      "query": "候选池 recall@10 很低时，说明问题主要出在哪里？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.9527590274810791
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 16,
+      "query": "recall@5 指标的定义是什么？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 2,
+      "scoreFinal": 0.4433347284793854
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 14,
+      "query": "rank_final 记录的是什么排名？",
+      "status": "hit",
+      "rankVector": 2,
+      "rankFinal": 1,
+      "scoreFinal": 0.9248038530349731
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 6,
+      "query": "有效标注少于多少条时界面会提示样本过少？",
+      "status": "miss",
+      "rankVector": null,
+      "rankFinal": null,
+      "scoreFinal": null
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 5,
+      "query": "每个知识库的评测运行历史保留多少次？",
+      "status": "hit",
+      "rankVector": 7,
+      "rankFinal": 1,
+      "scoreFinal": 0.7563338875770569
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 4,
+      "query": "评测标注用什么来标识期望的 Passage？",
+      "status": "hit",
+      "rankVector": 1,
+      "rankFinal": 1,
+      "scoreFinal": 0.9365694522857666
+    },
+    {
+      "document": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 2,
+      "query": "spike 评测的 recall@5 是在什么语料上得到的？",
+      "status": "hit",
+      "rankVector": 2,
+      "rankFinal": 1,
+      "scoreFinal": 0.9770798683166504
+    }
+  ]
+}

@@ -112,3 +112,7 @@ RERANK_CANDIDATES=10 ROUNDS=3 node run-spike.mjs
 ```
 
 结果写入 `/tmp/agent-core-rag-spike/metrics.json`。spike 代码只在 `spike/rag-selection` 分支，不进入 `dev` 主线。
+
+## 后续复核（2026-10-25）
+
+真实文档复测已完成：三份真实仓库文档、18 条标注，recall@5 0.9444 / MRR@5 0.8889，rerank 增益 +0.1111 recall / +0.2111 MRR。合成语料掩盖的 rerank 收益在真实文本上得到实证。详见 [真实模型评测](2026-10-25-real-embedding-rerank-eval.md)。

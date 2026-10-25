@@ -330,3 +330,7 @@ CREATE TABLE IF NOT EXISTS kb_eval_items (
 - 无答案查询与分数阈值：需要先定义拒答语义。
 - 评测结果的跨 KB 汇总视图（产品形态确定后再做）。
 - 若将来支持共享 KB，再设计协作标注与权限。
+
+## 复核记录（2026-10-25）
+
+真实模型复测已完成：三份真实仓库文档（70 个切片）、18 条标注、`BAAI/bge-m3` + `BAAI/bge-reranker-v2-m3`。两次运行结果一致：recall@5 0.9444、MRR@5 0.8889、候选池 recall@10 0.9444、直搜 recall@5 0.8333 / MRR@5 0.6778；rerank 增益 +0.1111 recall / +0.2111 MRR。唯一 miss 为 embedding 召回（措辞差异）。详见 [真实模型评测](../research/2026-10-25-real-embedding-rerank-eval.md)。
