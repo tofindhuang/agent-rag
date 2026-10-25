@@ -39,6 +39,20 @@ LOADTEST_MODEL_API_KEY=... npm run smoke
 流程：注册 → 登录 → 建 DeepSeek provider → 按 catalog 的模型 id 建会话 →
 SSE 一轮对话 → 收到 `run_settled`，原始指标写入 `.run/metrics.jsonl`。
 
+## 多实例 + 滚动重启
+
+```bash
+LOADTEST_MANAGE_APP=1 \
+LOADTEST_GATEWAY_INSTANCES=5 \
+LOADTEST_USERS=200 \
+LOADTEST_RESTART_GATEWAY_AFTER_MS=5000 \
+LOADTEST_MODEL_API_KEY=... npm run run
+```
+
+五个 gateway 进程共享同一个 `GATEWAY_SESSION_DIR`，Java 通过
+`GATEWAY_URLS` 发现它们。重启阶段逐个调用 `POST /admin/drain`，等在飞
+轮次结束后再退出并启动新进程，验证滚动更新不断流。
+
 ## 托管模式 + gateway 滚动重启
 
 让 harness 自己起停 Java/gateway，并在压测中段重启 gateway 一次：

@@ -40,19 +40,25 @@ async function main(): Promise<void> {
   const keepApp = process.env.LOADTEST_KEEP_APP === "1";
   const restartGatewayAfterMs = intEnv("LOADTEST_RESTART_GATEWAY_AFTER_MS", 0);
   const restartServerAfterMs = intEnv("LOADTEST_RESTART_SERVER_AFTER_MS", 0);
+  const gatewayInstances = intEnv("LOADTEST_GATEWAY_INSTANCES", 1);
   const logDir = dirname(config.metricsFile);
   const managed: ManagedProcess[] = [];
   let server: ManagedProcess | null = null;
-  let gateway: ManagedProcess | null = null;
+  let gateways: ManagedProcess[] = [];
   const restartPromises: Promise<void>[] = [];
   const restartTimers: NodeJS.Timeout[] = [];
 
-  const startGateway = (): ManagedProcess =>
+  const startGateway = (index = 0): ManagedProcess =>
     startProcess({
       command: "bash",
       args: [resolve(root, "tools/loadtest/scripts/run-gateway.sh")],
       cwd: root,
-      logFile: join(logDir, "gateway.log"),
+      logFile: join(logDir, `gateway-${index}.log`),
+      env: {
+        GATEWAY_PORT: String(3001 + index),
+        GATEWAY_INSTANCE_ID: `loadtest-${index}`,
+        GATEWAY_PUBLIC_URL: `http://127.0.0.1:${3001 + index}`,
+      },
     });
 
   const startServer = (): ManagedProcess =>
@@ -78,23 +84,33 @@ async function main(): Promise<void> {
       server = startServer();
       managed.push(server);
       await waitForHttp("http://127.0.0.1:8080/api/health", 180_000);
-      gateway = startGateway();
-      managed.push(gateway);
-      await waitForHttp("http://127.0.0.1:3001/health", 60_000);
+      gateways = Array.from({ length: gatewayInstances }, (_, index) => startGateway(index));
+      managed.push(...gateways);
+      for (let index = 0; index < gatewayInstances; index++) {
+        await waitForHttp(`http://127.0.0.1:${3001 + index}/health`, 60_000);
+      }
     }
 
     if (restartGatewayAfterMs > 0) {
       restartTimers.push(
         setTimeout(() => {
           restartPromises.push((async () => {
-            if (!gateway) throw new Error("gateway restart requires LOADTEST_MANAGE_APP=1");
-            console.error("[loadtest] restarting gateway");
-            await gateway.stop();
-            await waitForHttpDown("http://127.0.0.1:3001/health", 30_000);
-            gateway = startGateway();
-            managed.push(gateway);
-            await waitForHttp("http://127.0.0.1:3001/health", 60_000);
-            console.error("[loadtest] gateway restarted");
+            if (!manageApp) throw new Error("gateway restart requires LOADTEST_MANAGE_APP=1");
+            for (let index = 0; index < gatewayInstances; index++) {
+              const url = `http://127.0.0.1:${3001 + index}`;
+              console.error(`[loadtest] draining gateway ${index}`);
+              try {
+                await fetch(`${url}/admin/drain`, { method: "POST" });
+              } catch {
+                // Already down; the restart still proceeds.
+              }
+              await waitForHttpDown(`${url}/health`, 180_000);
+              await gateways[index].stop();
+              gateways[index] = startGateway(index);
+              managed.push(gateways[index]);
+              await waitForHttp(`${url}/health`, 60_000);
+              console.error(`[loadtest] gateway ${index} restarted`);
+            }
           })());
         }, restartGatewayAfterMs),
       );

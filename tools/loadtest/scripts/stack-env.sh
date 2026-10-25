@@ -34,9 +34,22 @@ export S3_BUCKET=agent-core-kb
 export JWT_SECRET="loadtest-jwt-secret-0123456789abcdefghij"
 export MODEL_SECRET_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 
-# gateway wiring
+# gateway wiring (multi-instance): every instance shares one session directory.
+export LOADTEST_GATEWAY_INSTANCES="${LOADTEST_GATEWAY_INSTANCES:-1}"
+: "${GATEWAY_PORT:=3001}"
+: "${GATEWAY_INSTANCE_ID:=loadtest-0}"
+: "${GATEWAY_PUBLIC_URL:=http://127.0.0.1:${GATEWAY_PORT}}"
+: "${GATEWAY_SESSION_DIR:=${ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}/tools/loadtest/.run/sessions}"
 export GATEWAY_URL=http://127.0.0.1:3001
-export GATEWAY_PORT=3001
+export GATEWAY_PORT GATEWAY_INSTANCE_ID GATEWAY_PUBLIC_URL GATEWAY_SESSION_DIR
+export GATEWAY_DRAIN_GRACE_MS="${GATEWAY_DRAIN_GRACE_MS:-120000}"
+mkdir -p "$GATEWAY_SESSION_DIR"
+export REDIS_URL="redis://127.0.0.1:${LOADTEST_REDIS_PORT}"
+gateway_urls=""
+for ((i = 0; i < LOADTEST_GATEWAY_INSTANCES; i++)); do
+  gateway_urls+="http://127.0.0.1:$((3001 + i)),"
+done
+export GATEWAY_URLS="${gateway_urls%,}"
 export JAVA_API_URL=http://127.0.0.1:8080
 export SANDBOX_API_URL=http://127.0.0.1:8080
 
