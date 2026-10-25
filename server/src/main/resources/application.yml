@@ -9,6 +9,13 @@ app:
   admin:
     # Comma-separated allow-list for the read-only admin role (ADR-0023).
     emails: ${ADMIN_EMAILS:}
+  usage:
+    # Deployment-level pricing (ADR-0023). Prices are per million tokens in a
+    # single currency; models absent here are reported as unpriced.
+    currency: ${USAGE_CURRENCY:CNY}
+    utc-offset: ${USAGE_UTC_OFFSET:+08:00}
+    active-session-window: ${USAGE_ACTIVE_SESSION_WINDOW:15m}
+    model-prices: {}
   # Knowledge base / RAG (FR-2). User settings override embedding/rerank;
   # deployment values below are the fallback.
   kb:

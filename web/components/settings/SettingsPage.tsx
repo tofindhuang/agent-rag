@@ -7,6 +7,7 @@ import { AccountSettings } from "./AccountSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { MemorySettings } from "./MemorySettings";
 import { ModelSettings } from "./ModelSettings";
+import { UsageSettings } from "./UsageSettings";
 import styles from "./settings.module.css";
 
 export function SettingsPage() {
@@ -16,6 +17,7 @@ export function SettingsPage() {
       <div className={styles.sections}>
         <ModelSettings />
         <MemorySettings />
+        <UsageSettings />
         <AccountSettings />
         <AppearanceSettings />
         {user?.role === "admin" ? (
