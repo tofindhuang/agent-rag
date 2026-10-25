@@ -10,6 +10,7 @@ import {
   fetchKbPassages,
   knowledgeError,
 } from "@/lib/api/knowledge";
+import { notifyKbEvalLabelsChanged } from "@/lib/kb-eval-events";
 import type { KbDocument, KbPassage } from "@/types/knowledge";
 import styles from "./knowledge.module.css";
 
@@ -66,6 +67,7 @@ export function PassageDialog({ document, onClose }: PassageDialogProps) {
       setAnnotatingSeq(null);
       setAnnotationQuery("");
       setNotice("已标为期望答案；同一问题再次标注会覆盖目标片段。");
+      notifyKbEvalLabelsChanged();
     } catch (cause: unknown) {
       console.error(cause);
       setError(knowledgeError(cause));

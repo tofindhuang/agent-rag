@@ -124,6 +124,7 @@ export function RetrievalEvalSection({
                               baseline ? quality.runDetails[baseline.runId] : undefined
                             }
                             loading={quality.detailBusy}
+                            expected={Boolean(baseline)}
                           />
                         </td>
                       </tr>
@@ -225,15 +226,20 @@ function RunDiff({
   current,
   baseline,
   loading,
+  expected,
 }: {
   current?: KbEvalRun;
   baseline?: KbEvalRun;
   loading: boolean;
+  expected: boolean;
 }) {
   if (!current) return <p className={styles.hint}>对比加载中…</p>;
-  if (loading && !baseline) return <p className={styles.hint}>对比加载中…</p>;
   if (!baseline) {
-    return <p className={styles.hint}>没有可比较的完整运行。</p>;
+    return (
+      <p className={styles.hint}>
+        {loading || expected ? "对比加载中…" : "没有可比较的完整运行。"}
+      </p>
+    );
   }
 
   const before = new Map<number, KbEvalItem>(

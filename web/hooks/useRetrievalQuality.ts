@@ -10,6 +10,7 @@ import {
   knowledgeError,
   runKbEval,
 } from "@/lib/api/knowledge";
+import { KB_EVAL_LABELS_CHANGED } from "@/lib/kb-eval-events";
 import type {
   KbEvalLabel,
   KbEvalLabelList,
@@ -47,12 +48,14 @@ export function useRetrievalQuality(kbId: string | null) {
     setLabels(await fetchKbEvalLabels(kbId));
   }, [kbId]);
 
-  const refreshRuns = useCallback(async () => {
+  const refreshRuns = useCallback(async (): Promise<KbEvalRunSummary[]> => {
     if (!kbId) {
       setRuns([]);
-      return;
+      return [];
     }
-    setRuns((await fetchKbEvalRuns(kbId)).items);
+    const items = (await fetchKbEvalRuns(kbId)).items;
+    setRuns(items);
+    return items;
   }, [kbId]);
 
   useEffect(() => {
@@ -87,6 +90,18 @@ export function useRetrievalQuality(kbId: string | null) {
       cancelled = true;
     };
   }, [kbId]);
+
+  useEffect(() => {
+    if (!kbId) return;
+    const handler = () => {
+      void refreshLabels().catch((cause: unknown) => {
+        console.error(cause);
+        setLabelError(knowledgeError(cause));
+      });
+    };
+    window.addEventListener(KB_EVAL_LABELS_CHANGED, handler);
+    return () => window.removeEventListener(KB_EVAL_LABELS_CHANGED, handler);
+  }, [kbId, refreshLabels]);
 
   const createLabel = useCallback(
     async (input: NewLabelInput) => {
@@ -123,25 +138,6 @@ export function useRetrievalQuality(kbId: string | null) {
     [refreshLabels],
   );
 
-  const startEvaluation = useCallback(async () => {
-    if (!kbId) return;
-    setEvalBusy(true);
-    setEvalError(null);
-    try {
-      const report = await runKbEval(kbId);
-      setLastRun(report);
-      setRunDetails((previous) => ({ ...previous, [report.runId]: report }));
-      setExpandedRunId(report.runId);
-      await refreshRuns();
-      await refreshLabels();
-    } catch (cause: unknown) {
-      console.error(cause);
-      setEvalError(knowledgeError(cause));
-    } finally {
-      setEvalBusy(false);
-    }
-  }, [kbId, refreshLabels, refreshRuns]);
-
   const ensureDetail = useCallback(
     async (runId: number) => {
       if (runDetails[runId]) return;
@@ -158,6 +154,29 @@ export function useRetrievalQuality(kbId: string | null) {
     },
     [runDetails],
   );
+
+  const startEvaluation = useCallback(async () => {
+    if (!kbId) return;
+    setEvalBusy(true);
+    setEvalError(null);
+    try {
+      const report = await runKbEval(kbId);
+      setLastRun(report);
+      setRunDetails((previous) => ({ ...previous, [report.runId]: report }));
+      setExpandedRunId(report.runId);
+      const updatedRuns = await refreshRuns();
+      await refreshLabels();
+      const baseline = previousCompleteRun(updatedRuns, report.runId);
+      if (baseline) {
+        await ensureDetail(baseline.runId);
+      }
+    } catch (cause: unknown) {
+      console.error(cause);
+      setEvalError(knowledgeError(cause));
+    } finally {
+      setEvalBusy(false);
+    }
+  }, [ensureDetail, kbId, refreshLabels, refreshRuns]);
 
   const toggleRun = useCallback(
     async (run: KbEvalRunSummary) => {
