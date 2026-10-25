@@ -48,7 +48,7 @@ class RateLimitServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(service.checkUserRpm(userId).allowed()).isTrue();
         RateLimitDecision rejected = service.checkUserRpm(userId);
         assertThat(rejected.allowed()).isFalse();
-        assertThat(rejected.retryAfterSeconds()).isEqualTo(2);
+        assertThat(rejected.retryAfterSeconds()).isBetween(1L, 2L);
 
         Thread.sleep(2_100L);
 

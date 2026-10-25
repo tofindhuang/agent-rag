@@ -51,7 +51,6 @@ export class DrainGate {
         resolve(value);
       };
       const timer = setTimeout(() => finish(false), Math.max(0, timeoutMs));
-      timer.unref?.();
       this.waiters.push(() => finish(true));
     });
   }
