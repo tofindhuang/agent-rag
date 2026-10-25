@@ -8,7 +8,8 @@ import type { GatewayConfig } from "./config.js";
 import { AGENT_TOOL_WHITELIST, SessionPool, type PiSession, type SessionFactory } from "./pool.js";
 import type { SessionModelConfig } from "./pool-contract.js";
 import type { RunRef } from "./identity.js";
-import { SessionConflictError } from "./pool-contract.js";
+import { SessionBusyError } from "./session-lock.js";
+import { SessionConflictError, SessionStateCorruptError } from "./pool-contract.js";
 
 const dirs: string[] = [];
 
@@ -27,6 +28,9 @@ function config(): GatewayConfig {
     profileExtractMaxChars: 6_000,
     profileExtractMaxCandidates: 5,
     sessionDir: dir,
+    instanceId: "test-pool",
+    lockHeartbeatMs: 60_000,
+    lockStaleMs: 30_000,
   };
 }
 
@@ -185,6 +189,31 @@ test("ensure creates, dispose keeps the file, restart restores", async () => {
   assert.deepEqual(restored, { created: false, restored: true });
   await assert.rejects(() => restarted.ensure("s1", "u2"), SessionConflictError);
   await restarted.disposeAll();
+});
+
+test("holds the single-writer lock until the session is disposed", async () => {
+  const cfg = config();
+  const first = new SessionPool(cfg, fakeFactory);
+  await first.ensure("s-lock", "u1");
+
+  const second = new SessionPool({ ...cfg, instanceId: "other" }, fakeFactory);
+  await assert.rejects(() => second.ensure("s-lock", "u1"), SessionBusyError);
+
+  await first.dispose("s-lock");
+
+  const restored = await second.ensure("s-lock", "u1");
+  assert.equal(restored.restored, true);
+  await second.disposeAll();
+});
+
+test("requireExisting refuses to create an empty session", async () => {
+  const pool = new SessionPool(config(), fakeFactory);
+
+  await assert.rejects(
+    () => pool.ensure("s-missing", "u1", undefined, undefined, true),
+    SessionStateCorruptError,
+  );
+  assert.equal(pool.size, 0);
 });
 
 test("ensure rebuilds the runtime when the model config changes", async () => {

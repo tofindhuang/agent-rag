@@ -8,7 +8,12 @@ import type { RunIdentity } from "./identity.js";
 import { logPiEvent } from "./log.js";
 import { EndpointBlockedError, EndpointResolutionError } from "./outbound.js";
 import type { GatewayPool, ProfileInput } from "./pool-contract.js";
-import { InvalidSessionIdError, SessionConflictError } from "./pool-contract.js";
+import {
+  InvalidSessionIdError,
+  SessionConflictError,
+  SessionStateCorruptError,
+} from "./pool-contract.js";
+import { SessionBusyError } from "./session-lock.js";
 import { probeProvider, ProbeError, type ProviderApi } from "./providers.js";
 import type { SessionModelConfig } from "./pool-contract.js";
 
@@ -18,6 +23,8 @@ export type GatewayErrorCode =
   | "USER_MISMATCH"
   | "SESSION_NOT_FOUND"
   | "SESSION_CONFLICT"
+  | "SESSION_BUSY"
+  | "SESSION_STATE_CORRUPT"
   | "RUN_IN_PROGRESS"
   | "NO_ACTIVE_RUN"
   | "UPSTREAM_UNAVAILABLE"
@@ -93,10 +100,20 @@ export function createApp({ config, pool }: AppDependencies): Express {
       sendError(res, 400, "INVALID_REQUEST", parsedModel.error);
       return;
     }
+    const parsedRequireExisting = readRequireExisting((req.body ?? {}) as Record<string, unknown>);
+    if ("error" in parsedRequireExisting) {
+      sendError(res, 400, "INVALID_REQUEST", parsedRequireExisting.error);
+      return;
+    }
 
     try {
       const result = await pool.ensure(
-        req.params.id, userId, parsedModel.model, parsedModel.profile);
+        req.params.id,
+        userId,
+        parsedModel.model,
+        parsedModel.profile,
+        parsedRequireExisting.requireExisting ?? false,
+      );
       res.status(200).json({
         sessionId: req.params.id,
         created: result.created,
@@ -118,6 +135,14 @@ export function createApp({ config, pool }: AppDependencies): Express {
       }
       if (err instanceof SessionConflictError) {
         sendError(res, 409, "SESSION_CONFLICT", err.message);
+        return;
+      }
+      if (err instanceof SessionBusyError) {
+        sendError(res, 409, "SESSION_BUSY", err.message, true, ownerDetails(err));
+        return;
+      }
+      if (err instanceof SessionStateCorruptError) {
+        sendError(res, 409, "SESSION_STATE_CORRUPT", err.message);
         return;
       }
       sendError(res, 500, "INTERNAL", "internal error");
@@ -310,6 +335,14 @@ export function createApp({ config, pool }: AppDependencies): Express {
         sendError(res, 403, "USER_MISMATCH", "session belongs to another user");
         return;
       }
+      if (err instanceof SessionBusyError) {
+        sendError(res, 409, "SESSION_BUSY", err.message, true, ownerDetails(err));
+        return;
+      }
+      if (err instanceof SessionStateCorruptError) {
+        sendError(res, 409, "SESSION_STATE_CORRUPT", err.message);
+        return;
+      }
       if (err instanceof InvalidSessionIdError) {
         sendError(res, 400, "INVALID_REQUEST", "invalid session id");
         return;
@@ -390,6 +423,15 @@ function readSessionModel(body: Record<string, unknown>): ParsedModel {
   };
 }
 
+export function readRequireExisting(
+  body: Record<string, unknown>,
+): { requireExisting?: boolean } | { error: string } {
+  const raw = body.requireExisting;
+  if (raw === undefined) return {};
+  if (typeof raw !== "boolean") return { error: "requireExisting must be a boolean" };
+  return { requireExisting: raw };
+}
+
 export function readProfileInput(
   body: Record<string, unknown>,
 ): { profile?: ProfileInput } | { error: string } {
@@ -433,13 +475,18 @@ function requireUserId(req: Request, res: Response): string | null {
   return userId;
 }
 
+function ownerDetails(err: SessionBusyError): Record<string, unknown> {
+  return err.owner ? { owner: { instanceId: err.owner.instanceId } } : {};
+}
+
 function sendError(
   res: Response,
   status: number,
   code: GatewayErrorCode,
   message: string,
   retryable = false,
+  details: Record<string, unknown> = {},
 ): void {
   if (res.headersSent) return;
-  res.status(status).json({ error: { code, message, retryable } });
+  res.status(status).json({ error: { code, message, retryable, ...details } });
 }

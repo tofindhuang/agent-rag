@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { createApp, readProfileInput } from "./app.js";
+import { createApp, readProfileInput, readRequireExisting } from "./app.js";
 import type { GatewayConfig } from "./config.js";
 import type { RunIdentity } from "./identity.js";
 import type {
@@ -13,7 +13,8 @@ import type {
   GatewaySessionEntry,
   SessionModelConfig,
 } from "./pool-contract.js";
-import { SessionConflictError } from "./pool-contract.js";
+import { SessionConflictError, SessionStateCorruptError } from "./pool-contract.js";
+import { SessionBusyError } from "./session-lock.js";
 
 test("validates the optional profile payload on session ensure", () => {
   assert.deepEqual(
@@ -25,6 +26,9 @@ test("validates the optional profile payload on session ensure", () => {
   assert.ok("error" in readProfileInput({ profileFacts: ["a".repeat(1_001)] }));
   assert.ok("error" in readProfileInput({ profileFacts: Array(51).fill("a") }));
   assert.ok("error" in readProfileInput({ profileMemoryEnabled: "yes" }));
+  assert.deepEqual(readRequireExisting({ requireExisting: true }), { requireExisting: true });
+  assert.deepEqual(readRequireExisting({}), {});
+  assert.ok("error" in readRequireExisting({ requireExisting: "yes" }));
 });
 
 class FakeSession implements GatewaySession {
@@ -61,6 +65,7 @@ class FakePool implements GatewayPool {
   readonly entries = new Map<string, FakeEntry>();
   readonly removedFiles: Array<{ sessionId: string; userId: string }> = [];
   deferRuns = false;
+  ensureError: Error | undefined;
 
   get size(): number {
     return this.entries.size;
@@ -71,6 +76,7 @@ class FakePool implements GatewayPool {
   }
 
   async ensure(sessionId: string, userId: string, model?: SessionModelConfig) {
+    if (this.ensureError) throw this.ensureError;
     const modelRef = model
       ? {
           provider: model.name ?? "custom",
@@ -165,6 +171,9 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     profileExtractMaxChars: 6_000,
     profileExtractMaxCandidates: 5,
     sessionDir,
+    instanceId: "test-app",
+    lockHeartbeatMs: 60_000,
+    lockStaleMs: 30_000,
   };
   const app = createApp({ config, pool });
   const server = app.listen(0, "127.0.0.1");
@@ -206,7 +215,14 @@ function identity(overrides: Partial<RunIdentity> = {}): RunIdentity {
   };
 }
 
-type ErrorBody = { error: { code: string; message: string; retryable: boolean } };
+type ErrorBody = {
+  error: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    owner?: { instanceId: string };
+  };
+};
 
 test("PUT is idempotent and rejects a different user", async () => {
   await withServer(async ({ base }) => {
@@ -231,6 +247,57 @@ test("PUT is idempotent and rejects a different user", async () => {
     assert.equal(conflict.status, 409);
     const body = (await conflict.json()) as ErrorBody;
     assert.equal(body.error.code, "SESSION_CONFLICT");
+  });
+});
+
+test("PUT maps a foreign lock to SESSION_BUSY with the owner", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionBusyError("s1", {
+      instanceId: "g2",
+      pid: 42,
+      acquiredAt: 1,
+      heartbeatAt: 2,
+    });
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_BUSY");
+    assert.equal(body.error.retryable, true);
+    assert.deepEqual(body.error.owner, { instanceId: "g2" });
+  });
+});
+
+test("PUT maps corrupt session state to SESSION_STATE_CORRUPT", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionStateCorruptError("s1", "session sidecar is missing");
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_STATE_CORRUPT");
+  });
+});
+
+test("PUT rejects a non-boolean requireExisting", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ requireExisting: "yes" }),
+    });
+
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
   });
 });
 

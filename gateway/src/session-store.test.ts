@@ -3,7 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { SessionConflictError } from "./pool-contract.js";
+import { SessionConflictError, SessionStateCorruptError } from "./pool-contract.js";
+import { SessionBusyError } from "./session-lock.js";
 import { SessionFileStore } from "./session-store.js";
 
 const dirs: string[] = [];
@@ -49,6 +50,7 @@ test("restores an existing session after a restart", () => {
   const created = first.acquire("s2", "u1");
   flushConversation(created.manager);
   const file = created.manager.getSessionFile();
+  created.lock.release();
 
   const restarted = new SessionFileStore(process.cwd(), dir).acquire("s2", "u1");
 
@@ -63,7 +65,9 @@ test("restores with the cwd recorded at creation", () => {
   const { dir } = tempStore();
   const otherCwd = mkdtempSync(join(tmpdir(), "gateway-cwd-"));
   dirs.push(otherCwd);
-  flushConversation(new SessionFileStore(process.cwd(), dir).acquire("s5", "u1").manager);
+  const created = new SessionFileStore(process.cwd(), dir).acquire("s5", "u1");
+  flushConversation(created.manager);
+  created.lock.release();
 
   const restarted = new SessionFileStore(otherCwd, dir).acquire("s5", "u1");
 
@@ -73,21 +77,42 @@ test("restores with the cwd recorded at creation", () => {
 
 test("rejects a different user for an existing session", () => {
   const { store } = tempStore();
-  store.acquire("s3", "u1");
+  const first = store.acquire("s3", "u1");
+  first.lock.release();
 
   assert.throws(() => store.acquire("s3", "u2"), SessionConflictError);
 });
 
-test("rebinds ownership when the sidecar is missing", () => {
+test("refuses to open a session whose sidecar is missing", () => {
   const { store, dir } = tempStore();
-  flushConversation(store.acquire("s4", "u1").manager);
+  const lease = store.acquire("s4", "u1");
+  flushConversation(lease.manager);
+  lease.lock.release();
   unlinkSync(join(dir, "s4.meta.json"));
 
-  const rebound = store.acquire("s4", "u2");
+  assert.throws(() => store.acquire("s4", "u2"), SessionStateCorruptError);
+});
 
-  assert.equal(rebound.restored, true);
-  const meta = JSON.parse(readFileSync(join(dir, "s4.meta.json"), "utf8"));
-  assert.equal(meta.userId, "u2");
+test("refuses to create a new context when requireExisting is set", () => {
+  const { store, dir } = tempStore();
+
+  assert.throws(() => store.acquire("s9", "u1", true), SessionStateCorruptError);
+  assert.equal(existsSync(join(dir, "s9.meta.json")), false);
+  assert.equal(existsSync(join(dir, "s9.jsonl")), false);
+});
+
+test("allows only one store to hold a session at a time", () => {
+  const { store, dir } = tempStore();
+  const first = store.acquire("s10", "u1");
+  flushConversation(first.manager);
+  const other = new SessionFileStore(process.cwd(), dir, { instanceId: "other" });
+
+  assert.throws(() => other.acquire("s10", "u1"), SessionBusyError);
+
+  first.lock.release();
+  const reacquired = other.acquire("s10", "u1");
+  assert.equal(reacquired.restored, true);
+  reacquired.lock.release();
 });
 
 test("removes the pi file and sidecar for the owning user, idempotently", () => {
@@ -96,6 +121,7 @@ test("removes the pi file and sidecar for the owning user, idempotently", () => 
   flushConversation(lease.manager);
   const file = lease.manager.getSessionFile();
   assert.ok(file && existsSync(file));
+  lease.lock.release();
 
   store.remove("s6", "u1");
 
@@ -106,7 +132,8 @@ test("removes the pi file and sidecar for the owning user, idempotently", () => 
 
 test("refuses to remove another user's session files", () => {
   const { store } = tempStore();
-  store.acquire("s7", "u1");
+  const lease = store.acquire("s7", "u1");
+  lease.lock.release();
 
   assert.throws(() => store.remove("s7", "u2"), SessionConflictError);
 });
@@ -115,7 +142,8 @@ test("refuses to remove a file whose sidecar is missing", () => {
   const { store, dir } = tempStore();
   const lease = store.acquire("s8", "u1");
   flushConversation(lease.manager);
+  lease.lock.release();
   unlinkSync(join(dir, "s8.meta.json"));
 
-  assert.throws(() => store.remove("s8", "u1"), SessionConflictError);
+  assert.throws(() => store.remove("s8", "u1"), SessionStateCorruptError);
 });

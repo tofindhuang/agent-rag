@@ -39,6 +39,7 @@ import type {
 import { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { SessionFileStore, type SessionLease } from "./session-store.js";
+import type { SessionLock } from "./session-lock.js";
 import {
   buildSessionModel,
   modelRefFromConfig,
@@ -75,6 +76,8 @@ export interface PoolEntry {
   /** Last provider-reported context size; null until the next assistant turn. */
   lastContextTokens: number | null;
   profileRef: ProfileRef;
+  /** Single-writer lock held for the resident lifetime (ADR-0024). */
+  lock: SessionLock;
 }
 
 interface EnsureOutcome {
@@ -93,7 +96,11 @@ export class SessionPool implements GatewayPool {
     private readonly config: GatewayConfig,
     factory?: SessionFactory,
   ) {
-    this.store = new SessionFileStore(process.cwd(), config.sessionDir);
+    this.store = new SessionFileStore(process.cwd(), config.sessionDir, {
+      instanceId: config.instanceId,
+      lockHeartbeatMs: config.lockHeartbeatMs,
+      lockStaleMs: config.lockStaleMs,
+    });
     this.factory = factory ?? ((manager, runRef, userId, modelConfig, profileRef) =>
       this.createPiSession(manager, runRef, userId, modelConfig, profileRef));
   }
@@ -116,6 +123,7 @@ export class SessionPool implements GatewayPool {
     userId: string,
     modelConfig?: SessionModelConfig,
     profile?: ProfileInput,
+    requireExisting = false,
   ): Promise<EnsureSessionResult> {
     const existing = this.entries.get(sessionId);
     if (existing) {
@@ -142,7 +150,7 @@ export class SessionPool implements GatewayPool {
       return ensureResult(false, false, outcome.entry.model);
     }
 
-    const creation = this.createEntry(sessionId, userId, modelConfig, profile).finally(() => {
+    const creation = this.createEntry(sessionId, userId, modelConfig, profile, requireExisting).finally(() => {
       this.pendingCreates.delete(sessionId);
     });
     this.pendingCreates.set(sessionId, creation);
@@ -156,17 +164,24 @@ export class SessionPool implements GatewayPool {
     userId: string,
     modelConfig?: SessionModelConfig,
     profile?: ProfileInput,
+    requireExisting = false,
   ): Promise<EnsureOutcome> {
     if (this.entries.has(sessionId)) throw new SessionExistsError(sessionId);
 
-    const lease: SessionLease = this.store.acquire(sessionId, userId);
+    const lease: SessionLease = this.store.acquire(sessionId, userId, requireExisting);
     const runRef: RunRef = { current: null };
     const profileRef: ProfileRef = {
       facts: profile?.facts ?? [],
       enabled: profile?.enabled ?? true,
       lastExtractAt: 0,
     };
-    const session = await this.factory(lease.manager, runRef, userId, modelConfig, profileRef);
+    let session: PiSession;
+    try {
+      session = await this.factory(lease.manager, runRef, userId, modelConfig, profileRef);
+    } catch (err) {
+      lease.lock.release();
+      throw err;
+    }
 
     const now = Date.now();
     const entry: PoolEntry = {
@@ -184,6 +199,7 @@ export class SessionPool implements GatewayPool {
       compaction: buildCompactionPlan(session.model?.contextWindow, this.config.compaction),
       lastContextTokens: null,
       profileRef,
+      lock: lease.lock,
     };
     this.entries.set(sessionId, entry);
     return { entry, created: lease.created, restored: lease.restored };
@@ -296,10 +312,14 @@ export class SessionPool implements GatewayPool {
     this.entries.delete(sessionId);
     entry.activeRun = null;
     entry.runRef.current = null;
-    if (wasRunning) {
-      await entry.session.abort().catch(() => undefined);
+    try {
+      if (wasRunning) {
+        await entry.session.abort().catch(() => undefined);
+      }
+      entry.session.dispose();
+    } finally {
+      entry.lock.release();
     }
-    entry.session.dispose();
     return true;
   }
 

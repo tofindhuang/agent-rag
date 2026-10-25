@@ -51,6 +51,9 @@ function toolFor(url: string): CapturedTool {
     profileExtractMaxMessages: 30,
     profileExtractMaxChars: 6_000,
     profileExtractMaxCandidates: 5,
+    instanceId: "test-ext",
+    lockHeartbeatMs: 60_000,
+    lockStaleMs: 30_000,
   };
   runCodeExtension(config, () => identity)(pi);
   assert.ok(captured);

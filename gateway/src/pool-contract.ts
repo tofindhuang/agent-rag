@@ -75,6 +75,7 @@ export interface GatewayPool {
     userId: string,
     model?: SessionModelConfig,
     profile?: ProfileInput,
+    requireExisting?: boolean,
   ): Promise<EnsureSessionResult>;
   beginRun(sessionId: string, identity: RunIdentity): GatewaySessionEntry | null;
   endRun(sessionId: string, runId: string): void;
@@ -106,5 +107,12 @@ export class SessionNotFoundError extends Error {
 export class SessionConflictError extends Error {
   constructor(sessionId: string) {
     super(`session belongs to another user: ${sessionId}`);
+  }
+}
+
+/** The session files exist but their ownership or context state is unusable. */
+export class SessionStateCorruptError extends Error {
+  constructor(sessionId: string, message = "session state is corrupt") {
+    super(`${message}: ${sessionId}`);
   }
 }

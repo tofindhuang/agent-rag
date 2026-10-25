@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { resolve } from "node:path";
 import type { CompactionConfig } from "./compaction.js";
 
@@ -17,6 +18,11 @@ export interface GatewayConfig {
   apiToken?: string;
   /** Directory holding pi session files and ownership sidecars (ADR-0008). */
   sessionDir: string;
+  /** Stable identity of this gateway instance (ADR-0024). */
+  instanceId: string;
+  /** Single-writer lock heartbeat and takeover threshold (ADR-0024). */
+  lockHeartbeatMs: number;
+  lockStaleMs: number;
   /** Allow private/loopback/HTTP model provider endpoints (ADR-0010). */
   allowPrivateModelEndpoints: boolean;
   /** Global compaction policy (FR-4); reserve is computed per model window. */
@@ -43,12 +49,16 @@ function intEnv(name: string, fallback: number): number {
 }
 
 export function loadConfig(): GatewayConfig {
+  const port = intEnv("GATEWAY_PORT", 3001);
   return {
-    port: intEnv("GATEWAY_PORT", 3001),
+    port,
     javaApiUrl: process.env.JAVA_API_URL ?? "http://localhost:8080",
     sandboxApiUrl: process.env.SANDBOX_API_URL ?? "http://localhost:8080",
     apiToken: process.env.GATEWAY_API_TOKEN,
     sessionDir: resolve(process.env.GATEWAY_SESSION_DIR ?? "data/sessions"),
+    instanceId: process.env.GATEWAY_INSTANCE_ID?.trim() || `${hostname()}:${port}`,
+    lockHeartbeatMs: Math.max(10, intEnv("GATEWAY_LOCK_HEARTBEAT_MS", 5_000)),
+    lockStaleMs: Math.max(20, intEnv("GATEWAY_LOCK_STALE_MS", 30_000)),
     allowPrivateModelEndpoints: process.env.MODEL_ALLOW_PRIVATE_ENDPOINTS === "true",
     compaction: {
       enabled: process.env.COMPACTION_ENABLED !== "false",
