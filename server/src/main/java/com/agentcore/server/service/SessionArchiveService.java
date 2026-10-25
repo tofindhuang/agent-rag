@@ -18,5 +18,8 @@ public interface SessionArchiveService {
     /** Idempotent deletion of both objects and the ledger row. */
     void delete(String sessionId, long userId);
 
+    /** Skips object storage entirely when the session has no archive ledger row. */
+    void deleteIfPresent(String sessionId, long userId);
+
     SessionArchive find(String sessionId);
 }

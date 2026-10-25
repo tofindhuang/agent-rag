@@ -134,6 +134,10 @@ class FakePool implements GatewayPool {
     this.removedFiles.push({ sessionId, userId });
   }
 
+  async archive(_sessionId: string, _userId: string): Promise<boolean> {
+    return false;
+  }
+
   async run(sessionId: string, _text: string): Promise<void> {
     const entry = this.entries.get(sessionId);
     if (!entry) throw new Error("session missing");

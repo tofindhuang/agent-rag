@@ -37,10 +37,17 @@ import type {
   ProfileRef,
   SessionModelConfig,
 } from "./pool-contract.js";
-import { SessionConflictError, SessionExistsError, SessionNotFoundError, SessionCapacityError } from "./pool-contract.js";
+import {
+  SessionArchiveUnavailableError,
+  SessionCapacityError,
+  SessionConflictError,
+  SessionExistsError,
+  SessionNotFoundError,
+} from "./pool-contract.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { SessionFileStore, type SessionLease } from "./session-store.js";
 import type { SessionLock } from "./session-lock.js";
+import { ArchiveError, type ArchiveTransport } from "./archive.js";
 import {
   buildSessionModel,
   modelRefFromConfig,
@@ -94,6 +101,8 @@ export interface SessionPoolOptions {
   onEvict?: (sessionId: string) => void;
   /** Override the eviction scan interval (tests and tuning). */
   evictionScanMs?: number;
+  /** Java-proxied archive transport (ADR-0025). */
+  archiveTransport?: ArchiveTransport;
 }
 
 export class SessionPool implements GatewayPool {
@@ -192,6 +201,18 @@ export class SessionPool implements GatewayPool {
     requireExisting = false,
   ): Promise<EnsureOutcome> {
     if (this.entries.has(sessionId)) throw new SessionExistsError(sessionId);
+
+    if (requireExisting && this.options.archiveTransport) {
+      try {
+        await this.store.restoreMissing(
+            sessionId, userId, () => this.options.archiveTransport!.download(sessionId, userId));
+      } catch (err) {
+        if (err instanceof ArchiveError) {
+          throw new SessionArchiveUnavailableError(sessionId, err.message);
+        }
+        throw err;
+      }
+    }
 
     const lease: SessionLease = this.store.acquire(sessionId, userId, requireExisting);
     const runRef: RunRef = { current: null };
@@ -350,6 +371,15 @@ export class SessionPool implements GatewayPool {
 
   removeFiles(sessionId: string, userId: string): void {
     this.store.remove(sessionId, userId);
+  }
+
+  /** Archives an idle, non-resident session under its file lock. */
+  async archive(sessionId: string, userId: string): Promise<boolean> {
+    if (this.entries.has(sessionId)) return false;
+    const transport = this.options.archiveTransport;
+    if (!transport) return false;
+    return this.store.archive(sessionId, userId, (jsonl, meta) =>
+      transport.upload(sessionId, userId, jsonl, meta));
   }
 
   /** Releases every idle resident session; files and sidecars stay on disk. */

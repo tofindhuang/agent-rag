@@ -8,6 +8,7 @@ import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { logInfo } from "./log.js";
 import { SessionPool } from "./pool.js";
+import { HttpArchiveTransport } from "./archive.js";
 import { RedisInstanceRegistry, RedisRegistryStore } from "./registry.js";
 
 const config = loadConfig();
@@ -27,6 +28,7 @@ const registry = config.redisUrl
 pool = new SessionPool(config, undefined, {
   isInstanceAlive: (instanceId) => registry?.isInstanceAlive(instanceId),
   onEvict: (sessionId) => void registry?.deleteSessionRoute(sessionId),
+  archiveTransport: new HttpArchiveTransport(config),
 });
 
 let draining = false;

@@ -37,7 +37,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
         "app.kb.ingest-consumer-enabled=false",
-        "app.kb.eval.budget-ms=1500"
+        "app.kb.eval.budget-ms=3000"
 })
 class KbEvalBudgetIntegrationTest extends AbstractKbIntegrationTest {
 

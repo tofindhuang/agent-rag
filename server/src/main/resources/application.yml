@@ -89,6 +89,11 @@ app:
     urls: ${GATEWAY_URLS:}
     # Shared token; must match the gateway's GATEWAY_API_TOKEN when set.
     api-token: ${GATEWAY_API_TOKEN:}
+  # Cold archive of inactive pi sessions (ADR-0025).
+  session-archive:
+    after-days: ${SESSION_ARCHIVE_AFTER_DAYS:90}
+    batch-size: ${SESSION_ARCHIVE_BATCH_SIZE:50}
+    cron: ${SESSION_ARCHIVE_CRON:0 30 3 * * *}
   # run_code executor (FR-3). The image must exist on the Docker host;
   # the server never builds or pulls it at runtime.
   sandbox:

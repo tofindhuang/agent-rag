@@ -46,4 +46,8 @@ public interface SessionDao extends BaseMapper<Session> {
             @Param("lastActiveAt") LocalDateTime lastActiveAt);
 
     int deleteOwned(@Param("id") String id, @Param("userId") long userId);
+
+    /** Sessions inactive before the cutoff, oldest first, for cold archive. */
+    List<Session> listArchiveCandidates(
+            @Param("cutoff") java.time.LocalDateTime cutoff, @Param("limit") int limit);
 }

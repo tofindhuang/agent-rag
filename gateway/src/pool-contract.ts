@@ -83,6 +83,8 @@ export interface GatewayPool {
   dispose(sessionId: string): Promise<boolean>;
   /** Deletes the pi file and sidecar; ownership-checked and idempotent. */
   removeFiles(sessionId: string, userId: string): void;
+  /** Gzips and uploads an idle session through Java; false when skipped. */
+  archive(sessionId: string, userId: string): Promise<boolean>;
   run(sessionId: string, text: string): Promise<void>;
 }
 
@@ -121,5 +123,12 @@ export class SessionStateCorruptError extends Error {
 export class SessionCapacityError extends Error {
   constructor(limit: number) {
     super(`gateway session capacity reached: ${limit}`);
+  }
+}
+
+/** The cold archive could not be downloaded or verified. */
+export class SessionArchiveUnavailableError extends Error {
+  constructor(sessionId: string, message = "session archive is unavailable") {
+    super(`${message}: ${sessionId}`);
   }
 }

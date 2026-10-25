@@ -38,6 +38,30 @@ type SidecarRead =
   | { state: "invalid"; reason: string };
 
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function parseArchivedMeta(data: Buffer, userId: string, sessionId: string): SidecarMeta {
+  try {
+    const parsed: unknown = JSON.parse(data.toString("utf8"));
+    if (typeof parsed !== "object" || parsed === null) {
+      throw new SessionStateCorruptError(sessionId, "archived sidecar is not an object");
+    }
+    const meta = parsed as Partial<SidecarMeta>;
+    if (meta.userId !== userId) {
+      throw new SessionStateCorruptError(sessionId, "archived sidecar owner mismatch");
+    }
+    if (typeof meta.cwd !== "string" || meta.cwd.length === 0) {
+      throw new SessionStateCorruptError(sessionId, "archived sidecar has no cwd");
+    }
+    return {
+      userId: meta.userId,
+      cwd: meta.cwd,
+      boundAt: typeof meta.boundAt === "string" ? meta.boundAt : "",
+    };
+  } catch (err) {
+    if (err instanceof SessionStateCorruptError) throw err;
+    throw new SessionStateCorruptError(sessionId, "archived sidecar is unreadable");
+  }
+}
 const DEFAULT_INSTANCE_ID = "local";
 
 /**
@@ -123,6 +147,95 @@ export class SessionFileStore {
 
   private sidecarPath(sessionId: string): string {
     return join(this.sessionDir, `${sessionId}.meta.json`);
+  }
+
+  /**
+   * Archives the JSONL and sidecar while holding the single-writer lock.
+   * The uploader runs inside the lock; files are removed only after it returns.
+   */
+  async archive(
+    sessionId: string,
+    userId: string,
+    uploader: (jsonl: Buffer, meta: Buffer) => Promise<void>,
+  ): Promise<boolean> {
+    if (!SESSION_ID_PATTERN.test(sessionId)) {
+      throw new InvalidSessionIdError(sessionId);
+    }
+
+    const lock = this.newLock(sessionId);
+    lock.acquire();
+    try {
+      const sidecar = this.readSidecar(sessionId);
+      if (sidecar.state === "invalid") {
+        throw new SessionStateCorruptError(sessionId, sidecar.reason);
+      }
+      if (sidecar.state === "ok" && sidecar.meta.userId !== userId) {
+        throw new SessionConflictError(sessionId);
+      }
+
+      const cwd = sidecar.state === "ok" ? sidecar.meta.cwd : this.cwd;
+      const file = SessionManager.findById(cwd, sessionId, this.sessionDir);
+      if (!file) return false;
+      if (sidecar.state === "missing") {
+        throw new SessionStateCorruptError(sessionId, "session sidecar is missing");
+      }
+
+      const jsonl = readFileSync(file);
+      const meta = readFileSync(this.sidecarPath(sessionId));
+      await uploader(jsonl, meta);
+      unlinkSync(file);
+      unlinkSync(this.sidecarPath(sessionId));
+      return true;
+    } finally {
+      lock.release();
+    }
+  }
+
+  /**
+   * Downloads a cold archive before the normal acquire path opens it. Must be
+   * called without the session lock; acquire takes the lock afterwards.
+   */
+  async restoreMissing(
+    sessionId: string,
+    userId: string,
+    loader: () => Promise<{ jsonl: Buffer; meta: Buffer }>,
+  ): Promise<boolean> {
+    if (!SESSION_ID_PATTERN.test(sessionId)) {
+      throw new InvalidSessionIdError(sessionId);
+    }
+
+    const sidecar = this.readSidecar(sessionId);
+    if (sidecar.state === "invalid") {
+      throw new SessionStateCorruptError(sessionId, sidecar.reason);
+    }
+    if (sidecar.state === "ok" && sidecar.meta.userId !== userId) {
+      throw new SessionConflictError(sessionId);
+    }
+
+    const cwd = sidecar.state === "ok" ? sidecar.meta.cwd : this.cwd;
+    if (SessionManager.findById(cwd, sessionId, this.sessionDir)) return false;
+
+    const restored = await loader();
+    const archivedMeta = parseArchivedMeta(restored.meta, userId, sessionId);
+    const jsonlPath = join(this.sessionDir, `${sessionId}.jsonl`);
+    this.writeAtomic(jsonlPath, restored.jsonl);
+    if (sidecar.state === "missing") {
+      this.writeAtomic(
+        this.sidecarPath(sessionId),
+        Buffer.from(JSON.stringify({
+          userId: archivedMeta.userId,
+          cwd: archivedMeta.cwd,
+          boundAt: new Date().toISOString(),
+        }), "utf8"),
+      );
+    }
+    return true;
+  }
+
+  private writeAtomic(path: string, data: Buffer): void {
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, data);
+    renameSync(tmp, path);
   }
 
   /**

@@ -35,6 +35,7 @@
 | `POST` | `/sessions/:id/prompt` | `X-User-Id`，`{ text, turnId }` | `200` SSE |
 | `POST` | `/sessions/:id/abort` | `X-User-Id`，空 body | `202` |
 | `POST` | `/sessions/:id/release` | `X-User-Id`，空 body | `204`；有活动 Run 时 `409 RUN_IN_PROGRESS` |
+| `POST` | `/sessions/:id/archive` | `X-User-Id`，空 body | `200 { archived: boolean }`；驻留/在飞时 `archived=false` |
 | `POST` | `/admin/drain` | 共享 token | `202 { draining: true }` |
 | `DELETE` | `/sessions/:id` | `X-User-Id` | `204` |
 | `DELETE` | `/sessions/:id/files` | `X-User-Id` | `204` |
@@ -152,6 +153,7 @@ HTTP 错误码：
 | `SESSION_BUSY` | 409 | true | 会话锁被另一个实例持有；错误体带 `owner.instanceId` |
 | `SESSION_STATE_CORRUPT` | 409 | false | sidecar 缺失/损坏，或 `requireExisting` 但引擎上下文不在 |
 | `GATEWAY_CAPACITY` | 503 | true | 实例达到驻留会话上限，Java 应改投其他实例 |
+| `SESSION_ARCHIVE_UNAVAILABLE` | 409 | true | 冷归档缺失/损坏，或归档传输失败 |
 | `RUN_IN_PROGRESS` | 409 | false | 同一会话已有进行中的 Run |
 | `INSTANCE_DRAINING` | 409 | true | 实例正在排空，拒绝新会话/新 Run |
 | `NO_ACTIVE_RUN` | 409 | false | 空闲时调用 abort |

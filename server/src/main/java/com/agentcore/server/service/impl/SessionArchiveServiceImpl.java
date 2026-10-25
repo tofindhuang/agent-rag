@@ -81,6 +81,20 @@ public class SessionArchiveServiceImpl implements SessionArchiveService {
     }
 
     @Override
+    @Transactional
+    public void deleteIfPresent(String sessionId, long userId) {
+        SessionArchive row = archiveDao.selectById(sessionId);
+        if (row == null) return;
+        if (!row.getUserId().equals(userId)) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "session not found");
+        }
+        String prefix = prefix(userId, sessionId);
+        objectStore.delete(prefix + "/" + ArchiveKind.JSONL.fileName);
+        objectStore.delete(prefix + "/" + ArchiveKind.META.fileName);
+        archiveDao.deleteById(sessionId);
+    }
+
+    @Override
     public SessionArchive find(String sessionId) {
         return archiveDao.selectById(sessionId);
     }

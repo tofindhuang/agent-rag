@@ -12,9 +12,11 @@ import {
   InvalidSessionIdError,
   SessionCapacityError,
   SessionConflictError,
+  SessionArchiveUnavailableError,
   SessionStateCorruptError,
 } from "./pool-contract.js";
 import { SessionBusyError } from "./session-lock.js";
+import { ArchiveError } from "./archive.js";
 import { probeProvider, ProbeError, type ProviderApi } from "./providers.js";
 import type { SessionModelConfig } from "./pool-contract.js";
 
@@ -28,6 +30,7 @@ export type GatewayErrorCode =
   | "SESSION_STATE_CORRUPT"
   | "GATEWAY_CAPACITY"
   | "INSTANCE_DRAINING"
+  | "SESSION_ARCHIVE_UNAVAILABLE"
   | "RUN_IN_PROGRESS"
   | "NO_ACTIVE_RUN"
   | "UPSTREAM_UNAVAILABLE"
@@ -168,6 +171,10 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
       }
       if (err instanceof SessionStateCorruptError) {
         sendError(res, 409, "SESSION_STATE_CORRUPT", err.message);
+        return;
+      }
+      if (err instanceof SessionArchiveUnavailableError) {
+        sendError(res, 409, "SESSION_ARCHIVE_UNAVAILABLE", err.message, true);
         return;
       }
       if (err instanceof SessionCapacityError) {
@@ -333,6 +340,31 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
       return;
     }
     res.status(202).end();
+  });
+
+  // Cold archive: Java asks any gateway to gzip and upload an idle session.
+  app.post("/sessions/:id/archive", async (req, res) => {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+
+    try {
+      const archived = await pool.archive(req.params.id, userId);
+      res.status(200).json({ archived });
+    } catch (err) {
+      if (err instanceof SessionConflictError) {
+        sendError(res, 409, "SESSION_CONFLICT", err.message);
+        return;
+      }
+      if (err instanceof SessionStateCorruptError) {
+        sendError(res, 409, "SESSION_STATE_CORRUPT", err.message);
+        return;
+      }
+      if (err instanceof SessionArchiveUnavailableError || err instanceof ArchiveError) {
+        sendError(res, 502, "UPSTREAM_UNAVAILABLE", err.message, true);
+        return;
+      }
+      throw err;
+    }
   });
 
   // Drain migration: release an idle resident session so another instance can

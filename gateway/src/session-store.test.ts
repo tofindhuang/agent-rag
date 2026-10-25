@@ -115,6 +115,47 @@ test("allows only one store to hold a session at a time", () => {
   reacquired.lock.release();
 });
 
+test("archives the JSONL and sidecar inside the lock, then removes them", async () => {
+  const { store, dir } = tempStore();
+  const lease = store.acquire("s11", "u1");
+  flushConversation(lease.manager);
+  const file = lease.manager.getSessionFile();
+  assert.ok(file && existsSync(file));
+  lease.lock.release();
+
+  let uploaded: { jsonl: Buffer; meta: Buffer } | undefined;
+  const archived = await store.archive("s11", "u1", async (jsonl, meta) => {
+    uploaded = { jsonl, meta };
+  });
+
+  assert.equal(archived, true);
+  assert.ok(uploaded && uploaded.jsonl.length > 0);
+  assert.equal(JSON.parse(uploaded.meta.toString("utf8")).userId, "u1");
+  assert.equal(existsSync(file), false);
+  assert.equal(existsSync(join(dir, "s11.meta.json")), false);
+  assert.equal(await store.archive("s11", "u1", async () => undefined), false);
+});
+
+test("restores missing archive files before the normal acquire path", async () => {
+  const { store, dir } = tempStore();
+  const lease = store.acquire("s12", "u1");
+  flushConversation(lease.manager);
+  const file = lease.manager.getSessionFile();
+  assert.ok(file);
+  const jsonl = readFileSync(file);
+  const meta = readFileSync(join(dir, "s12.meta.json"));
+  lease.lock.release();
+  store.remove("s12", "u1");
+
+  const restored = await store.restoreMissing("s12", "u1", async () => ({ jsonl, meta }));
+
+  assert.equal(restored, true);
+  const resumed = store.acquire("s12", "u1");
+  assert.equal(resumed.restored, true);
+  assert.ok(resumed.manager.getEntries().length > 0);
+  resumed.lock.release();
+});
+
 test("removes the pi file and sidecar for the owning user, idempotently", () => {
   const { store, dir } = tempStore();
   const lease = store.acquire("s6", "u1");

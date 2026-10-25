@@ -20,6 +20,7 @@ import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.KbKnowledgeBaseService;
+import com.agentcore.server.service.SessionArchiveService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.common.ratelimit.RateLimitService;
@@ -51,6 +52,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
     private RateLimitService rateLimitService;
     @Autowired
     private ProfileFactService profileFactService;
+
+    @Autowired
+    private SessionArchiveService sessionArchiveService;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -361,7 +365,8 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 transactionManager,
                 gatewayClient,
                 rateLimitService,
-                profileFactService);
+                profileFactService,
+                sessionArchiveService);
 
         assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }

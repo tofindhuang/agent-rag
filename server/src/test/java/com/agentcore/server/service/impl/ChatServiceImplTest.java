@@ -20,6 +20,7 @@ import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.ProfileFactService;
+import com.agentcore.server.service.SessionArchiveService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.PromptStream;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -106,7 +107,8 @@ class ChatServiceImplTest {
                 transactionManager(),
                 new GatewayClient(properties, mapper),
                 rateLimit,
-                profileFacts);
+                profileFacts,
+                mock(SessionArchiveService.class));
     }
 
     private static final class TestRateLimitService implements RateLimitService {

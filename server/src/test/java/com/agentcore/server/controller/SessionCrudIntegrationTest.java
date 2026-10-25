@@ -20,6 +20,7 @@ import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.KbKnowledgeBaseService;
+import com.agentcore.server.service.SessionArchiveService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
 import com.agentcore.server.common.ratelimit.RateLimitService;
@@ -51,6 +52,9 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
     private RateLimitService rateLimitService;
     @Autowired
     private ProfileFactService profileFactService;
+
+    @Autowired
+    private SessionArchiveService sessionArchiveService;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -181,7 +185,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 transactionManager,
                 gatewayClient,
                 rateLimitService,
-                profileFactService);
+                profileFactService,
+                sessionArchiveService);
         List<Session> listed = fresh.listSessions(userId, "active", null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);

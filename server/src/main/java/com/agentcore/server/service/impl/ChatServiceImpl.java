@@ -21,6 +21,7 @@ import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.ProfileFactService;
+import com.agentcore.server.service.SessionArchiveService;
 import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.KbKnowledgeBaseService;
@@ -84,6 +85,7 @@ public class ChatServiceImpl implements ChatService {
     private final GatewayClient client;
     private final RateLimitService rateLimitService;
     private final ProfileFactService profileFactService;
+    private final SessionArchiveService sessionArchiveService;
 
     public ChatServiceImpl(
             GatewayProperties gateway,
@@ -100,7 +102,8 @@ public class ChatServiceImpl implements ChatService {
             PlatformTransactionManager transactionManager,
             GatewayClient client,
             RateLimitService rateLimitService,
-            ProfileFactService profileFactService) {
+            ProfileFactService profileFactService,
+            SessionArchiveService sessionArchiveService) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
@@ -116,6 +119,7 @@ public class ChatServiceImpl implements ChatService {
         this.client = client;
         this.rateLimitService = rateLimitService;
         this.profileFactService = profileFactService;
+        this.sessionArchiveService = sessionArchiveService;
     }
 
     @Override
@@ -252,6 +256,8 @@ public class ChatServiceImpl implements ChatService {
 
         // Files first. On failure the rows stay, so the caller can retry.
         deleteGatewayFiles(sessionId, userId);
+        // Archived engine files live in object storage; clear them before rows.
+        sessionArchiveService.deleteIfPresent(sessionId, userId);
 
         transactionTemplate.executeWithoutResult(status -> {
             messageDao.deleteBySession(sessionId);
