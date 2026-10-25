@@ -167,6 +167,28 @@ class KbEvalRunIntegrationTest extends AbstractKbIntegrationTest {
     }
 
     @Test
+    void keepsOnlyTheNewestTwentyRuns() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+        String documentId = seedDocument(user.id(), kbId, 1);
+        label(user.token(), kbId, "历史问题", documentId, 1);
+
+        long oldestRun = runId(runEvaluation(user.token(), kbId).andExpect(status().isOk()));
+        for (int i = 0; i < 20; i++) {
+            runEvaluation(user.token(), kbId).andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/api/kb/retrieval/eval/runs")
+                        .param("kbId", kbId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(20));
+        mockMvc.perform(get("/api/kb/retrieval/eval/runs/" + oldestRun)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void rejectsRunsWithoutLabels() throws Exception {
         User user = newUser();
         String kbId = knowledgeBaseService.defaultId(user.id());
