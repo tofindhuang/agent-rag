@@ -29,7 +29,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         "app.rate-limit.user-tpm=999999999",
         "app.rate-limit.auth-ip-rpm=999999",
         "management.server.port=0",
-        "management.endpoints.web.exposure.include=prometheus"
+        "management.endpoints.web.exposure.include=prometheus",
+        // Many cached Spring contexts share one MySQL container; keep each
+        // pool small so the container's max_connections is never exhausted.
+        "spring.datasource.hikari.maximum-pool-size=4",
+        "spring.datasource.hikari.minimum-idle=1"
 })
 public abstract class AbstractIntegrationTest {
 
