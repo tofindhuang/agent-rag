@@ -72,15 +72,15 @@ export function AdminOverview() {
           <div className={styles.cards}>
             <Stat label="运行中 run" value={formatNumber(data.active.runningRuns)} />
             <Stat label="15 分钟活跃会话" value={formatNumber(data.active.activeSessions15m)} />
-            <Stat
-              label="输入 token"
-              value={formatNumber(data.usage.tokensIn)}
-              hint={data.usage.unpricedRuns > 0 ? "含未定价运行" : undefined}
-            />
+            <Stat label="输入 token" value={formatNumber(data.usage.tokensIn)} />
             <Stat label="输出 token" value={formatNumber(data.usage.tokensOut)} />
             <Stat label="缓存读" value={formatNumber(data.usage.cacheReadTokens)} />
             <Stat label="缓存写" value={formatNumber(data.usage.cacheWriteTokens)} />
-            <Stat label="成本" value={formatCost(data.usage.cost, data.currency)} />
+            <Stat
+              label="成本"
+              value={formatCost(data.usage.cost, data.currency)}
+              hint={data.usage.unpricedRuns > 0 ? "含未定价运行" : undefined}
+            />
             <Stat label="执行" value={formatNumber(data.executions.total)} />
             <Stat
               label="检索命中率"
