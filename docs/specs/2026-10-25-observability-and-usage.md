@@ -1,7 +1,7 @@
 # 可观测与运营：admin 只读看板、用量与 trace
 
 日期：2026-10-25
-状态：待实现
+状态：已实现
 关联需求：FR-7（P1）
 关联 ADR：[0023](../adrs/0023-observability-mysql-read-only-admin.md)
 上游记录：[M1 closeout](../tickets/m1-closeout/01-closeout-record.md)
@@ -385,3 +385,15 @@ app:
 - 若需要账单或终身用量：新增 append-only 用量账本，看板 API 不变。
 - OpenTelemetry / 分布式 tracing；embedding/rerank 成本；按用户时区；导出；实时推送。
 - 无答案查询与相关性指标（依赖检索质量评测的阈值语义）。
+
+## 验收记录（2026-10-25）
+
+一次性栈（MySQL/Qdrant/RabbitMQ/Silo，独立端口）+ 种子数据（3 个账号、2 个普通用户、4 个 run、3 次执行、2 条 compaction、2 次 kb_search）完成端到端验收：
+
+- 普通用户：设置页显示今天/7 天用量、缓存四类 token、成本 ¥0.0054/¥0.0072、Top 会话；无 admin 入口；`/admin` 显示「没有权限」。
+- admin：设置页出现「打开运营看板」；总览显示运行中 run 1、15 分钟活跃会话 1、token 2400/550、缓存 800/100、成本 ¥0.0072、未定价 1、执行 3（成功 1/失败 1/超时 1）、检索命中率 50%、compaction 2、排队 p95 40ms、耗时 p95 3000ms；三个图表与按天表正常。
+- 用户列表：搜索 `alice-fr7` 返回 1 人；成本/会话/缓存列正确；详情显示按天趋势、模型分布、2 个会话（仅 sessionId 与元数据，无标题/正文）。
+- trace：`req-alice-1` 返回 6 个节点（run 开始 → assistant → kb_search → assistant → run_code → run 结束），含 execId/耗时/排队/退出码，无消息正文与工具参数。
+- 服务端 361 个测试通过（0 失败、2 个条件跳过）；web `typecheck`/`build` 通过。
+
+已知限制：种子数据为验收专用，不代表生产规模；成本依赖部署价格表；彻底删除会话会减少历史用量（spec 已明示）。
