@@ -148,3 +148,23 @@ _Avoid_: 图片转文字、扫描识别
 
 用户自带的 embedding/rerank 端点与凭证；未配置时回落到部署默认值。生效来源标记为 `user` / `system` / `none`（rerank 另可标记 `disabled`）。
 _Avoid_: embedding config、RAG config
+
+### 模型指纹（Model Fingerprint）
+
+文档摄取时记录的 embedding 模型标识与维度，用于在检索前证明向量出处；不一致或缺失时知识库拒绝检索，要求重建。
+_Avoid_: model tag、version stamp
+
+### 候选池（Candidate Pool）
+
+检索时从向量库取回、供 rerank 排序的 Passage 集合（默认 10 条）；它决定 rerank 能达到的质量上限。
+_Avoid_: shortlist、预选集
+
+### 评测标注（Eval Label）
+
+「问题 → 期望 Passage」的配对，属于某个知识库；用文档内序号与文本指纹锁定目标，文档重建后可能腐化（rotten）。
+_Avoid_: golden pair（口语可用）、测试用例
+
+### 检索评测（Retrieval Evaluation）
+
+对一个知识库的全部评测标注执行检索，产出 recall@5、MRR@5、候选池 recall@10 等指标的一次运行；结果按知识库保留历史用于对比。
+_Avoid_: RAG eval、质量测试
