@@ -19,6 +19,7 @@ public enum ErrorCode {
     SESSION_BUSY(409, true),
     SESSION_STATE_CORRUPT(409, false),
     GATEWAY_CAPACITY(503, true),
+    SESSION_ARCHIVE_UNAVAILABLE(409, true),
     SESSION_PURGE_FAILED(502, true),
     SESSION_PURGE_BLOCKED(409, false),
     EMAIL_ALREADY_EXISTS(409, false),
