@@ -20,6 +20,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
+import { logInfo, logWarn } from "./log.js";
 import {
   applyCompactionSettings,
   buildCompactionPlan,
@@ -36,7 +37,7 @@ import type {
   ProfileRef,
   SessionModelConfig,
 } from "./pool-contract.js";
-import { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";
+import { SessionConflictError, SessionExistsError, SessionNotFoundError, SessionCapacityError } from "./pool-contract.js";
 import { buildSystemPrompt } from "./prompt.js";
 import { SessionFileStore, type SessionLease } from "./session-store.js";
 import type { SessionLock } from "./session-lock.js";
@@ -89,6 +90,10 @@ interface EnsureOutcome {
 export interface SessionPoolOptions {
   /** Registry probe used before taking over a stale session lock. */
   isInstanceAlive?: (instanceId: string) => boolean | undefined;
+  /** Called after an idle session is evicted, so the caller can drop its route. */
+  onEvict?: (sessionId: string) => void;
+  /** Override the eviction scan interval (tests and tuning). */
+  evictionScanMs?: number;
 }
 
 export class SessionPool implements GatewayPool {
@@ -96,12 +101,15 @@ export class SessionPool implements GatewayPool {
   private readonly pendingCreates = new Map<string, Promise<EnsureOutcome>>();
   private readonly store: SessionFileStore;
   private readonly factory: SessionFactory;
+  private readonly options: SessionPoolOptions;
+  private evictionTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     private readonly config: GatewayConfig,
     factory?: SessionFactory,
     options: SessionPoolOptions = {},
   ) {
+    this.options = options;
     this.store = new SessionFileStore(process.cwd(), config.sessionDir, {
       instanceId: config.instanceId,
       lockHeartbeatMs: config.lockHeartbeatMs,
@@ -110,6 +118,11 @@ export class SessionPool implements GatewayPool {
     });
     this.factory = factory ?? ((manager, runRef, userId, modelConfig, profileRef) =>
       this.createPiSession(manager, runRef, userId, modelConfig, profileRef));
+    if (config.idleEvictMs > 0) {
+      const scanMs = Math.max(1_000, options.evictionScanMs ?? Math.min(30_000, config.idleEvictMs / 2));
+      this.evictionTimer = setInterval(() => void this.evictIdle(), scanMs);
+      this.evictionTimer.unref?.();
+    }
   }
 
   get size(): number {
@@ -155,6 +168,11 @@ export class SessionPool implements GatewayPool {
       const outcome = await inflight;
       if (outcome.entry.userId !== userId) throw new SessionConflictError(sessionId);
       return ensureResult(false, false, outcome.entry.model);
+    }
+
+    if (this.entries.size + this.pendingCreates.size >= this.config.maxSessions) {
+      logWarn("gateway session capacity reached", { limit: this.config.maxSessions });
+      throw new SessionCapacityError(this.config.maxSessions);
     }
 
     const creation = this.createEntry(sessionId, userId, modelConfig, profile, requireExisting).finally(() => {
@@ -334,7 +352,26 @@ export class SessionPool implements GatewayPool {
     this.store.remove(sessionId, userId);
   }
 
+  /** Releases every idle resident session; files and sidecars stay on disk. */
+  async evictIdle(now = Date.now()): Promise<string[]> {
+    const evicted: string[] = [];
+    for (const [sessionId, entry] of [...this.entries.entries()]) {
+      if (entry.activeRun) continue;
+      if (now - entry.lastActiveAt <= this.config.idleEvictMs) continue;
+      if (await this.dispose(sessionId)) {
+        evicted.push(sessionId);
+        logInfo("session evicted", { sessionId });
+        this.options.onEvict?.(sessionId);
+      }
+    }
+    return evicted;
+  }
+
   async disposeAll(): Promise<void> {
+    if (this.evictionTimer) {
+      clearInterval(this.evictionTimer);
+      this.evictionTimer = undefined;
+    }
     await Promise.allSettled([...this.entries.keys()].map((id) => this.dispose(id)));
   }
 }

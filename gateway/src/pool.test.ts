@@ -9,7 +9,11 @@ import { AGENT_TOOL_WHITELIST, SessionPool, type PiSession, type SessionFactory 
 import type { SessionModelConfig } from "./pool-contract.js";
 import type { RunRef } from "./identity.js";
 import { SessionBusyError } from "./session-lock.js";
-import { SessionConflictError, SessionStateCorruptError } from "./pool-contract.js";
+import {
+  SessionCapacityError,
+  SessionConflictError,
+  SessionStateCorruptError,
+} from "./pool-contract.js";
 
 const dirs: string[] = [];
 
@@ -31,6 +35,7 @@ function config(): GatewayConfig {
     instanceId: "test-pool",
     publicUrl: "http://127.0.0.1:0",
     maxSessions: 60,
+    idleEvictMs: 900_000,
     registryHeartbeatMs: 60_000,
     registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,
@@ -218,6 +223,62 @@ test("requireExisting refuses to create an empty session", async () => {
     SessionStateCorruptError,
   );
   assert.equal(pool.size, 0);
+});
+
+test("evicts an idle session, keeps its file, and rehydrates on the next ensure", async () => {
+  const cfg = { ...config(), idleEvictMs: 10 };
+  const evictedIds: string[] = [];
+  const pool = new SessionPool(cfg, fakeFactory, {
+    evictionScanMs: 100_000,
+    onEvict: (sessionId) => evictedIds.push(sessionId),
+  });
+
+  await pool.ensure("s-idle", "u1");
+  const file = SessionManager.findById(process.cwd(), "s-idle", cfg.sessionDir);
+  assert.ok(file && existsSync(file));
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(await pool.evictIdle(), ["s-idle"]);
+  assert.deepEqual(evictedIds, ["s-idle"]);
+  assert.equal(pool.size, 0);
+  assert.ok(existsSync(file), "eviction must keep the pi session file");
+
+  const restored = await pool.ensure("s-idle", "u1");
+  assert.equal(restored.restored, true);
+  await pool.disposeAll();
+});
+
+test("does not evict a session with an active run", async () => {
+  const cfg = { ...config(), idleEvictMs: 10 };
+  const pool = new SessionPool(cfg, fakeFactory, { evictionScanMs: 100_000 });
+  await pool.ensure("s-busy", "u1");
+  const entry = pool.get("s-busy");
+  assert.ok(entry);
+  pool.beginRun("s-busy", {
+    userId: "u1",
+    sessionId: "s-busy",
+    turnId: "t1",
+    runId: "r1",
+    requestId: "q1",
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(await pool.evictIdle(), []);
+  assert.equal(pool.size, 1);
+
+  pool.endRun("s-busy", "r1");
+  await pool.disposeAll();
+});
+
+test("rejects new sessions at the resident cap but keeps resident ones usable", async () => {
+  const pool = new SessionPool({ ...config(), maxSessions: 2 }, fakeFactory);
+  await pool.ensure("s1", "u1");
+  await pool.ensure("s2", "u1");
+
+  await assert.rejects(() => pool.ensure("s3", "u1"), SessionCapacityError);
+  const resident = await pool.ensure("s1", "u1");
+  assert.equal(resident.created, false);
+  await pool.disposeAll();
 });
 
 test("ensure rebuilds the runtime when the model config changes", async () => {

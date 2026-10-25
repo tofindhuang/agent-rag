@@ -149,6 +149,18 @@ test("tracks whether another instance is alive", async () => {
   await first.stop();
 });
 
+test("drops a session route hint on eviction", async () => {
+  const store = new FakeStore();
+  const reg = registry(store);
+  await reg.start();
+  await store.set("route:sess:s1", "g1", 60);
+
+  await reg.deleteSessionRoute("s1");
+
+  assert.equal(store.values.has("route:sess:s1"), false);
+  await reg.stop();
+});
+
 test("returns unknown liveness when the registry refresh is stale", async () => {
   const store = new FakeStore();
   let now = 1_000;

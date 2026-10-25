@@ -13,7 +13,11 @@ import type {
   GatewaySessionEntry,
   SessionModelConfig,
 } from "./pool-contract.js";
-import { SessionConflictError, SessionStateCorruptError } from "./pool-contract.js";
+import {
+  SessionCapacityError,
+  SessionConflictError,
+  SessionStateCorruptError,
+} from "./pool-contract.js";
 import { SessionBusyError } from "./session-lock.js";
 
 test("validates the optional profile payload on session ensure", () => {
@@ -174,6 +178,7 @@ async function startServer(apiToken?: string): Promise<TestServer> {
     instanceId: "test-app",
     publicUrl: "http://127.0.0.1:0",
     maxSessions: 60,
+    idleEvictMs: 900_000,
     registryHeartbeatMs: 60_000,
     registryTtlSeconds: 15,
     lockHeartbeatMs: 60_000,
@@ -288,6 +293,22 @@ test("PUT maps corrupt session state to SESSION_STATE_CORRUPT", async () => {
     assert.equal(response.status, 409);
     const body = (await response.json()) as ErrorBody;
     assert.equal(body.error.code, "SESSION_STATE_CORRUPT");
+  });
+});
+
+test("PUT maps the resident cap to a retryable GATEWAY_CAPACITY", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionCapacityError(60);
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 503);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "GATEWAY_CAPACITY");
+    assert.equal(body.error.retryable, true);
   });
 });
 

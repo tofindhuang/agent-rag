@@ -25,6 +25,7 @@ const registry = config.redisUrl
 
 pool = new SessionPool(config, undefined, {
   isInstanceAlive: (instanceId) => registry?.isInstanceAlive(instanceId),
+  onEvict: (sessionId) => void registry?.deleteSessionRoute(sessionId),
 });
 const app = createApp({ config, pool, lifecycle: registry });
 

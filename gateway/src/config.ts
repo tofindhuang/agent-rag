@@ -24,6 +24,8 @@ export interface GatewayConfig {
   publicUrl: string;
   /** Soft cap on resident sessions per instance (ADR-0024). */
   maxSessions: number;
+  /** Idle time after which a resident AgentSession is released. */
+  idleEvictMs: number;
   /** Redis URL for the instance registry; unset disables registration. */
   redisUrl?: string;
   registryHeartbeatMs: number;
@@ -67,6 +69,7 @@ export function loadConfig(): GatewayConfig {
     instanceId: process.env.GATEWAY_INSTANCE_ID?.trim() || `${hostname()}:${port}`,
     publicUrl: process.env.GATEWAY_PUBLIC_URL?.trim() || `http://127.0.0.1:${port}`,
     maxSessions: Math.max(1, intEnv("GATEWAY_MAX_SESSIONS", 60)),
+    idleEvictMs: Math.max(0, intEnv("GATEWAY_IDLE_EVICT_MS", 900_000)),
     redisUrl: process.env.REDIS_URL?.trim() || undefined,
     registryHeartbeatMs: Math.max(10, intEnv("GATEWAY_REGISTRY_HEARTBEAT_MS", 5_000)),
     registryTtlSeconds: Math.max(1, intEnv("GATEWAY_REGISTRY_TTL_SECONDS", 15)),

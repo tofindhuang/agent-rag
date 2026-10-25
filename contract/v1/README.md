@@ -148,6 +148,7 @@ HTTP 错误码：
 | `SESSION_CONFLICT` | 409 | false | PUT 时会话归属不同 |
 | `SESSION_BUSY` | 409 | true | 会话锁被另一个实例持有；错误体带 `owner.instanceId` |
 | `SESSION_STATE_CORRUPT` | 409 | false | sidecar 缺失/损坏，或 `requireExisting` 但引擎上下文不在 |
+| `GATEWAY_CAPACITY` | 503 | true | 实例达到驻留会话上限，Java 应改投其他实例 |
 | `RUN_IN_PROGRESS` | 409 | false | 同一会话已有进行中的 Run |
 | `NO_ACTIVE_RUN` | 409 | false | 空闲时调用 abort |
 | `UPSTREAM_UNAVAILABLE` | 503 | true | gateway 无法连接业务层或沙箱 |

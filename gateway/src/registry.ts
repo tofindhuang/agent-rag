@@ -25,6 +25,7 @@ export interface RegistryOptions {
 
 const INSTANCES_KEY = "gw:instances";
 const INSTANCE_KEY_PREFIX = "gw:inst:";
+const SESSION_ROUTE_PREFIX = "route:sess:";
 const DEFAULT_HEARTBEAT_MS = 5_000;
 const DEFAULT_TTL_SECONDS = 15;
 
@@ -84,6 +85,15 @@ export class RedisInstanceRegistry {
     if (this.lastRefreshAt === 0) return undefined;
     if (this.now() - this.lastRefreshAt > this.heartbeatMs * 3) return undefined;
     return this.peers.has(instanceId);
+  }
+
+  /** Drops the routing hint after an idle eviction; the file lock remains authoritative. */
+  async deleteSessionRoute(sessionId: string): Promise<void> {
+    try {
+      await this.options.store.delete(`${SESSION_ROUTE_PREFIX}${sessionId}`);
+    } catch (err) {
+      logWarn("gateway route cleanup failed", { error: errorMessage(err) });
+    }
   }
 
   async refreshPeers(): Promise<void> {

@@ -116,3 +116,10 @@ export class SessionStateCorruptError extends Error {
     super(`${message}: ${sessionId}`);
   }
 }
+
+/** The instance reached its resident-session cap and cannot open more. */
+export class SessionCapacityError extends Error {
+  constructor(limit: number) {
+    super(`gateway session capacity reached: ${limit}`);
+  }
+}

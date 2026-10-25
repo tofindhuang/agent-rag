@@ -10,6 +10,7 @@ import { EndpointBlockedError, EndpointResolutionError } from "./outbound.js";
 import type { GatewayPool, ProfileInput } from "./pool-contract.js";
 import {
   InvalidSessionIdError,
+  SessionCapacityError,
   SessionConflictError,
   SessionStateCorruptError,
 } from "./pool-contract.js";
@@ -25,6 +26,7 @@ export type GatewayErrorCode =
   | "SESSION_CONFLICT"
   | "SESSION_BUSY"
   | "SESSION_STATE_CORRUPT"
+  | "GATEWAY_CAPACITY"
   | "RUN_IN_PROGRESS"
   | "NO_ACTIVE_RUN"
   | "UPSTREAM_UNAVAILABLE"
@@ -155,6 +157,10 @@ export function createApp({ config, pool, lifecycle }: AppDependencies): Express
       }
       if (err instanceof SessionStateCorruptError) {
         sendError(res, 409, "SESSION_STATE_CORRUPT", err.message);
+        return;
+      }
+      if (err instanceof SessionCapacityError) {
+        sendError(res, 503, "GATEWAY_CAPACITY", err.message, true);
         return;
       }
       sendError(res, 500, "INTERNAL", "internal error");

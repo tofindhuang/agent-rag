@@ -10,6 +10,11 @@ export interface RunLogContext {
  * Raw pi events are never exposed on the SSE contract. When explicitly enabled,
  * they are emitted as one structured JSON line for debugging.
  */
+/** Structured info line; never emits free-form console output. */
+export function logInfo(msg: string, fields: Record<string, unknown> = {}): void {
+  process.stdout.write(JSON.stringify({ level: "info", msg, ...fields }) + "\n");
+}
+
 /** Structured warning line; never emits free-form console output. */
 export function logWarn(msg: string, fields: Record<string, unknown> = {}): void {
   process.stdout.write(JSON.stringify({ level: "warn", msg, ...fields }) + "\n");
