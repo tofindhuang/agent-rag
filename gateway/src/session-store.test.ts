@@ -156,6 +156,20 @@ test("restores missing archive files before the normal acquire path", async () =
   resumed.lock.release();
 });
 
+test("refuses to restore an archive whose sidecar belongs to another user", async () => {
+  const { store, dir } = tempStore();
+  const meta = Buffer.from(JSON.stringify({ userId: "u2", cwd: process.cwd() }));
+
+  await assert.rejects(
+    () => store.restoreMissing("s13", "u1", async () => ({
+      jsonl: Buffer.from("{}\n"),
+      meta,
+    })),
+    SessionStateCorruptError,
+  );
+  assert.equal(existsSync(join(dir, "s13.jsonl")), false);
+});
+
 test("removes the pi file and sidecar for the owning user, idempotently", () => {
   const { store, dir } = tempStore();
   const lease = store.acquire("s6", "u1");

@@ -19,6 +19,7 @@ import type {
   SessionModelConfig,
 } from "./pool-contract.js";
 import {
+  SessionArchiveUnavailableError,
   SessionCapacityError,
   SessionConflictError,
   SessionStateCorruptError,
@@ -306,6 +307,34 @@ test("PUT maps corrupt session state to SESSION_STATE_CORRUPT", async () => {
     assert.equal(response.status, 409);
     const body = (await response.json()) as ErrorBody;
     assert.equal(body.error.code, "SESSION_STATE_CORRUPT");
+  });
+});
+
+test("PUT maps a missing archive to SESSION_ARCHIVE_UNAVAILABLE", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionArchiveUnavailableError("s1", "archive is missing");
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_ARCHIVE_UNAVAILABLE");
+    assert.equal(body.error.retryable, true);
+  });
+});
+
+test("archive endpoint reports when the pool skips a session", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1/archive`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { archived: false });
   });
 });
 
