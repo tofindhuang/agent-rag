@@ -7,6 +7,7 @@ public class UsageSessionRow {
 
     private String sessionId;
     private String title;
+    private LocalDateTime createdAt;
     private LocalDateTime lastActiveAt;
     private String modelId;
     private Long runs;
@@ -19,6 +20,8 @@ public class UsageSessionRow {
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getLastActiveAt() { return lastActiveAt; }
     public void setLastActiveAt(LocalDateTime lastActiveAt) { this.lastActiveAt = lastActiveAt; }
     public String getModelId() { return modelId; }

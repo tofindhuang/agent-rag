@@ -2,6 +2,10 @@ package com.agentcore.server.service.impl;
 
 import com.agentcore.server.config.UsageProperties;
 import com.agentcore.server.dao.UsageDao;
+import com.agentcore.server.domain.AdminUserCountRow;
+import com.agentcore.server.domain.AdminUserRow;
+import com.agentcore.server.domain.AdminUserSessionRow;
+import com.agentcore.server.domain.AdminUserTokenRow;
 import com.agentcore.server.domain.CompactionDailyRow;
 import com.agentcore.server.domain.ExecutionStatusRow;
 import com.agentcore.server.domain.RetrievalDailyRow;
@@ -12,6 +16,13 @@ import com.agentcore.server.domain.UsageSessionRow;
 import com.agentcore.server.dto.admin.ActiveView;
 import com.agentcore.server.dto.admin.AdminDaily;
 import com.agentcore.server.dto.admin.AdminOverviewResponse;
+import com.agentcore.server.dto.admin.AdminUserDetailResponse;
+import com.agentcore.server.dto.admin.AdminUserInfo;
+import com.agentcore.server.dto.admin.AdminUserListResponse;
+import com.agentcore.server.dto.admin.AdminUserModel;
+import com.agentcore.server.dto.admin.AdminUserSession;
+import com.agentcore.server.dto.admin.AdminUserSessions;
+import com.agentcore.server.dto.admin.AdminUserSummary;
 import com.agentcore.server.dto.admin.CompactionView;
 import com.agentcore.server.dto.admin.ExecutionView;
 import com.agentcore.server.dto.admin.RetrievalView;
@@ -31,9 +42,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.springframework.stereotype.Service;
 
@@ -217,6 +230,163 @@ public class UsageQueryServiceImpl implements UsageQueryService {
                 dailyRows);
     }
 
+    @Override
+    public AdminUserListResponse adminUsers(
+            String query, int page, int size, int days, String sort) {
+        String normalized = query == null || query.isBlank() ? null : query.trim();
+        LocalDateTime from = windowStart(days);
+
+        Map<Long, UserAggregate> users = new LinkedHashMap<>();
+        for (AdminUserRow row : usageDao.adminUsers(normalized)) {
+            users.put(row.getUserId(), new UserAggregate(row));
+        }
+        if (users.isEmpty()) {
+            return new AdminUserListResponse(properties.currency(), List.of(), 0, page, size);
+        }
+        for (AdminUserTokenRow row : usageDao.adminUserTokens(from, properties.utcOffset())) {
+            UserAggregate user = users.get(row.getUserId());
+            if (user != null) {
+                user.addTokens(row, properties.price(row.getModelId()));
+            }
+        }
+        for (AdminUserCountRow row : usageDao.adminUserExecutions(from)) {
+            UserAggregate user = users.get(row.getUserId());
+            if (user != null) {
+                user.executions += n(row.getAmount());
+            }
+        }
+        for (AdminUserCountRow row : usageDao.adminUserSearches(from)) {
+            UserAggregate user = users.get(row.getUserId());
+            if (user != null) {
+                user.searches += n(row.getAmount());
+            }
+        }
+        for (AdminUserSessionRow row : usageDao.adminUserSessions()) {
+            UserAggregate user = users.get(row.getUserId());
+            if (user != null) {
+                user.sessions = n(row.getSessions());
+                user.lastActiveAt = row.getLastActiveAt();
+            }
+        }
+
+        List<UserAggregate> ordered = new ArrayList<>(users.values());
+        ordered.sort(comparator(sort).thenComparingLong(UserAggregate::userId));
+        int total = ordered.size();
+        int fromIndex = Math.min((page - 1) * size, total);
+        int toIndex = Math.min(fromIndex + size, total);
+        List<AdminUserSummary> items = ordered.subList(fromIndex, toIndex).stream()
+                .map(UserAggregate::toSummary)
+                .toList();
+        return new AdminUserListResponse(properties.currency(), items, total, page, size);
+    }
+
+    @Override
+    public AdminUserDetailResponse adminUser(long userId, int days, int page, int size) {
+        AdminUserRow identity = usageDao.adminUser(userId);
+        if (identity == null) {
+            throw new com.agentcore.server.common.error.ApiException(
+                    com.agentcore.server.common.error.ErrorCode.NOT_FOUND, "user not found");
+        }
+        LocalDateTime from = windowStart(days);
+        UserUsageResponse usage = userUsage(userId, days);
+
+        long sessionCount = 0;
+        LocalDateTime lastActiveAt = null;
+        for (AdminUserSessionRow row : usageDao.adminUserSessions()) {
+            if (row.getUserId() != null && row.getUserId() == userId) {
+                sessionCount = n(row.getSessions());
+                lastActiveAt = row.getLastActiveAt();
+            }
+        }
+
+        Map<String, ModelAggregate> models = new LinkedHashMap<>();
+        for (AdminUserTokenRow row : usageDao.adminUserTokens(from, properties.utcOffset())) {
+            if (row.getUserId() != null && row.getUserId() == userId) {
+                models.computeIfAbsent(row.getModelId(), ModelAggregate::new)
+                        .add(row, properties.price(row.getModelId()));
+            }
+        }
+        List<AdminUserModel> modelRows = models.values().stream()
+                .sorted(Comparator.comparingLong(ModelAggregate::totalTokens).reversed())
+                .map(ModelAggregate::toView)
+                .toList();
+
+        Map<String, SessionAccumulator> sessionMap = new LinkedHashMap<>();
+        for (UsageSessionRow row : usageDao.sessionTokens(userId, from)) {
+            sessionMap.computeIfAbsent(row.getSessionId(), (id) -> new SessionAccumulator(row))
+                    .add(row, properties.price(row.getModelId()));
+        }
+        Map<String, Long> executions = new LinkedHashMap<>();
+        for (UsageCountRow row : usageDao.sessionExecutions(userId, from)) {
+            executions.put(row.getBucket(), amount(row));
+        }
+        List<SessionAccumulator> orderedSessions = new ArrayList<>(sessionMap.values());
+        orderedSessions.sort((left, right) -> {
+            if (left.lastActiveAt == null && right.lastActiveAt == null) {
+                return left.sessionId.compareTo(right.sessionId);
+            }
+            if (left.lastActiveAt == null) {
+                return 1;
+            }
+            if (right.lastActiveAt == null) {
+                return -1;
+            }
+            return right.lastActiveAt.compareTo(left.lastActiveAt);
+        });
+        int sessionTotal = orderedSessions.size();
+        int fromIndex = Math.min((page - 1) * size, sessionTotal);
+        int toIndex = Math.min(fromIndex + size, sessionTotal);
+        List<AdminUserSession> sessionItems = orderedSessions.subList(fromIndex, toIndex).stream()
+                .map((session) -> session.toAdminView(executions.getOrDefault(session.sessionId, 0L)))
+                .toList();
+
+        return new AdminUserDetailResponse(
+                properties.currency(),
+                new AdminUserInfo(
+                        identity.getUserId(),
+                        identity.getEmail(),
+                        toInstant(identity.getCreatedAt()),
+                        toInstant(lastActiveAt),
+                        sessionCount),
+                usage.today(),
+                usage.window(),
+                usage.daily(),
+                modelRows,
+                new AdminUserSessions(sessionItems, sessionTotal, page, size));
+    }
+
+    private LocalDateTime windowStart(int days) {
+        LocalDate today = LocalDate.now(properties.offset());
+        return today.minusDays(days - 1L)
+                .atStartOfDay()
+                .atOffset(properties.offset())
+                .withOffsetSameInstant(ZoneOffset.UTC)
+                .toLocalDateTime();
+    }
+
+    private static Comparator<UserAggregate> comparator(String sort) {
+        return switch (sort) {
+            case "cost" -> (left, right) -> right.cost.compareTo(left.cost);
+            case "tokens" -> (left, right) -> Long.compare(right.totalTokens(), left.totalTokens());
+            default -> (left, right) -> {
+                if (left.lastActiveAt == null && right.lastActiveAt == null) {
+                    return 0;
+                }
+                if (left.lastActiveAt == null) {
+                    return 1;
+                }
+                if (right.lastActiveAt == null) {
+                    return -1;
+                }
+                return right.lastActiveAt.compareTo(left.lastActiveAt);
+            };
+        };
+    }
+
+    private static Instant toInstant(LocalDateTime value) {
+        return value == null ? null : value.toInstant(ZoneOffset.UTC);
+    }
+
     private static AdminDay adminDay(Map<String, AdminDay> daily, String day) {
         return daily.computeIfAbsent(day, (key) -> new AdminDay());
     }
@@ -350,6 +520,113 @@ public class UsageQueryServiceImpl implements UsageQueryService {
         }
     }
 
+    private static final class UserAggregate {
+        private final long userId;
+        private final String email;
+        private final LocalDateTime createdAt;
+        private LocalDateTime lastActiveAt;
+        private long sessions;
+        private long tokensIn;
+        private long tokensOut;
+        private long cacheReadTokens;
+        private long cacheWriteTokens;
+        private BigDecimal cost = BigDecimal.ZERO;
+        private int unpricedRuns;
+        private long executions;
+        private long searches;
+
+        private UserAggregate(AdminUserRow row) {
+            this.userId = row.getUserId() == null ? 0L : row.getUserId();
+            this.email = row.getEmail();
+            this.createdAt = row.getCreatedAt();
+        }
+
+        private void addTokens(AdminUserTokenRow row, UsageProperties.ModelPrice price) {
+            long in = n(row.getTokensIn());
+            long out = n(row.getTokensOut());
+            long cacheRead = n(row.getCacheReadTokens());
+            long cacheWrite = n(row.getCacheWriteTokens());
+            tokensIn += in;
+            tokensOut += out;
+            cacheReadTokens += cacheRead;
+            cacheWriteTokens += cacheWrite;
+            if (in + out + cacheRead + cacheWrite == 0) {
+                return;
+            }
+            if (price == null) {
+                unpricedRuns += (int) n(row.getRuns());
+            } else {
+                cost = cost.add(price.cost(in, out, cacheRead, cacheWrite));
+            }
+        }
+
+        private long userId() {
+            return userId;
+        }
+
+        private long totalTokens() {
+            return tokensIn + tokensOut + cacheReadTokens + cacheWriteTokens;
+        }
+
+        private AdminUserSummary toSummary() {
+            return new AdminUserSummary(
+                    userId,
+                    email,
+                    toInstant(createdAt),
+                    toInstant(lastActiveAt),
+                    sessions,
+                    tokensIn,
+                    tokensOut,
+                    cacheReadTokens,
+                    cacheWriteTokens,
+                    cost(cost),
+                    unpricedRuns,
+                    executions,
+                    searches);
+        }
+    }
+
+    private static final class ModelAggregate {
+        private final String modelId;
+        private long tokensIn;
+        private long tokensOut;
+        private long cacheReadTokens;
+        private long cacheWriteTokens;
+        private BigDecimal cost = BigDecimal.ZERO;
+
+        private ModelAggregate(String modelId) {
+            this.modelId = modelId;
+        }
+
+        private void add(AdminUserTokenRow row, UsageProperties.ModelPrice price) {
+            long in = n(row.getTokensIn());
+            long out = n(row.getTokensOut());
+            long cacheRead = n(row.getCacheReadTokens());
+            long cacheWrite = n(row.getCacheWriteTokens());
+            tokensIn += in;
+            tokensOut += out;
+            cacheReadTokens += cacheRead;
+            cacheWriteTokens += cacheWrite;
+            if (price != null && in + out + cacheRead + cacheWrite > 0) {
+                cost = cost.add(price.cost(in, out, cacheRead, cacheWrite));
+            }
+        }
+
+        private long totalTokens() {
+            return tokensIn + tokensOut + cacheReadTokens + cacheWriteTokens;
+        }
+
+        private AdminUserModel toView() {
+            return new AdminUserModel(
+                    modelId,
+                    tokensIn,
+                    tokensOut,
+                    cacheReadTokens,
+                    cacheWriteTokens,
+                    cost(cost));
+        }
+    }
+
     private static final class AdminDay {
         private long tokensIn;
         private long tokensOut;
@@ -406,7 +683,9 @@ public class UsageQueryServiceImpl implements UsageQueryService {
     private static final class SessionAccumulator {
         private final String sessionId;
         private final String title;
+        private final LocalDateTime createdAt;
         private final LocalDateTime lastActiveAt;
+        private final Set<String> modelIds = new HashSet<>();
         private long tokensIn;
         private long tokensOut;
         private long cacheReadTokens;
@@ -416,10 +695,14 @@ public class UsageQueryServiceImpl implements UsageQueryService {
         private SessionAccumulator(UsageSessionRow row) {
             this.sessionId = row.getSessionId();
             this.title = row.getTitle();
+            this.createdAt = row.getCreatedAt();
             this.lastActiveAt = row.getLastActiveAt();
         }
 
         private void add(UsageSessionRow row, UsageProperties.ModelPrice price) {
+            if (row.getModelId() != null) {
+                modelIds.add(row.getModelId());
+            }
             long in = n(row.getTokensIn());
             long out = n(row.getTokensOut());
             long cacheRead = n(row.getCacheReadTokens());
@@ -435,6 +718,20 @@ public class UsageQueryServiceImpl implements UsageQueryService {
 
         private long totalTokens() {
             return tokensIn + tokensOut + cacheReadTokens + cacheWriteTokens;
+        }
+
+        private AdminUserSession toAdminView(long executions) {
+            return new AdminUserSession(
+                    sessionId,
+                    toInstant(createdAt),
+                    toInstant(lastActiveAt),
+                    modelIds.size() == 1 ? modelIds.iterator().next() : null,
+                    tokensIn,
+                    tokensOut,
+                    cacheReadTokens,
+                    cacheWriteTokens,
+                    cost(cost),
+                    executions);
         }
 
         private UsageTopSession toView(long executions) {

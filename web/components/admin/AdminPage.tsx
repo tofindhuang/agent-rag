@@ -5,6 +5,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { PageShell } from "@/components/ui/PageShell";
 import type { AdminTab } from "@/types/admin";
 import { AdminOverview } from "./AdminOverview";
+import { AdminUsers } from "./AdminUsers";
 import styles from "./admin.module.css";
 
 const TABS: Array<{ key: AdminTab; label: string }> = [
@@ -45,7 +46,7 @@ export function AdminPage() {
             ))}
           </div>
           {tab === "overview" ? <AdminOverview /> : null}
-          {tab === "users" ? <p className={styles.hint}>用户页签将在后续票中实现。</p> : null}
+          {tab === "users" ? <AdminUsers /> : null}
           {tab === "trace" ? <p className={styles.hint}>trace 页签将在后续票中实现。</p> : null}
         </>
       ) : (

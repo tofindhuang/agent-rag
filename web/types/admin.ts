@@ -1,4 +1,9 @@
-import type { UsageWindowKey } from "./usage";
+import type {
+  UsageDaily,
+  UsageTotals,
+  UsageWindow,
+  UsageWindowKey,
+} from "./usage";
 
 export interface AdminActive {
   runningRuns: number;
@@ -71,3 +76,76 @@ export interface AdminOverview {
 export type AdminTab = "overview" | "users" | "trace";
 
 export type AdminWindow = UsageWindowKey;
+
+export interface AdminUserSummary {
+  userId: number;
+  email: string;
+  createdAt: string | null;
+  lastActiveAt: string | null;
+  sessions: number;
+  tokensIn: number;
+  tokensOut: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+  unpricedRuns: number;
+  executions: number;
+  searches: number;
+}
+
+export interface AdminUserList {
+  currency: string;
+  items: AdminUserSummary[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface AdminUserInfo {
+  userId: number;
+  email: string;
+  createdAt: string | null;
+  lastActiveAt: string | null;
+  sessions: number;
+}
+
+export interface AdminUserModel {
+  modelId: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+}
+
+export interface AdminUserSession {
+  sessionId: string;
+  createdAt: string | null;
+  lastActiveAt: string | null;
+  modelId: string | null;
+  tokensIn: number;
+  tokensOut: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+  executions: number;
+}
+
+export interface AdminUserSessions {
+  items: AdminUserSession[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface AdminUserDetail {
+  currency: string;
+  user: AdminUserInfo;
+  today: UsageTotals;
+  window: UsageWindow;
+  daily: UsageDaily[];
+  models: AdminUserModel[];
+  sessions: AdminUserSessions;
+}
+
+export type AdminUserSort = "lastActive" | "cost" | "tokens";
