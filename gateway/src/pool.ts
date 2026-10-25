@@ -96,7 +96,7 @@ interface EnsureOutcome {
 
 export interface SessionPoolOptions {
   /** Registry probe used before taking over a stale session lock. */
-  isInstanceAlive?: (instanceId: string) => boolean | undefined;
+  isInstanceAlive?: (instanceId: string, incarnation?: string) => boolean | undefined;
   /** Called after an idle session is evicted, so the caller can drop its route. */
   onEvict?: (sessionId: string) => void;
   /** Override the eviction scan interval (tests and tuning). */
@@ -121,6 +121,7 @@ export class SessionPool implements GatewayPool {
     this.options = options;
     this.store = new SessionFileStore(process.cwd(), config.sessionDir, {
       instanceId: config.instanceId,
+      instanceIncarnation: config.instanceIncarnation,
       lockHeartbeatMs: config.lockHeartbeatMs,
       lockStaleMs: config.lockStaleMs,
       isInstanceAlive: options.isInstanceAlive,

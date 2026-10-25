@@ -62,12 +62,21 @@ public class GatewayClient {
                 : router.resolve(sessionId);
     }
 
+    /** Exact owner target for a drain/lock release, even if it is draining. */
+    public SessionTarget sessionTargetFor(String instanceId) {
+        return router == null ? null : router.targetFor(instanceId);
+    }
+
     public void correctRoute(String sessionId, String instanceId) {
         if (router != null) router.correct(sessionId, instanceId);
     }
 
     public void failoverRoute(String sessionId) {
-        if (router != null) router.failover(sessionId);
+        failoverRoute(sessionId, true);
+    }
+
+    public void failoverRoute(String sessionId, boolean penalizeInstance) {
+        if (router != null) router.failover(sessionId, penalizeInstance);
     }
 
     public void forgetRoute(String sessionId) {

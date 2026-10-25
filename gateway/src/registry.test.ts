@@ -55,6 +55,7 @@ function registry(
 ): RedisInstanceRegistry {
   return new RedisInstanceRegistry({
     instanceId: "g1",
+    incarnation: "inc-1",
     publicUrl: "http://127.0.0.1:3001",
     maxSessions: 60,
     sessionCount: () => 0,
@@ -138,13 +139,13 @@ test("tracks whether another instance is alive", async () => {
   await second.start();
 
   await first.refreshPeers();
-  assert.equal(first.isInstanceAlive("g1"), true);
-  assert.equal(first.isInstanceAlive("g2"), true);
-  assert.equal(first.isInstanceAlive("g3"), false);
+  assert.equal(first.isInstanceAlive("g1", "inc-1"), true);
+  assert.equal(first.isInstanceAlive("g2", "inc-1"), true);
+  assert.equal(first.isInstanceAlive("g3", "inc-1"), false);
 
   await second.stop();
   await first.refreshPeers();
-  assert.equal(first.isInstanceAlive("g2"), false);
+  assert.equal(first.isInstanceAlive("g2", "inc-1"), false);
 
   await first.stop();
 });
@@ -169,6 +170,6 @@ test("returns unknown liveness when the registry refresh is stale", async () => 
   await reg.refreshPeers();
 
   now += 10_000;
-  assert.equal(reg.isInstanceAlive("g1"), undefined);
+  assert.equal(reg.isInstanceAlive("g1", "inc-1"), undefined);
   await reg.stop();
 });

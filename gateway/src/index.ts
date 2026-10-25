@@ -16,6 +16,7 @@ let pool: SessionPool;
 const registry = config.redisUrl
   ? new RedisInstanceRegistry({
       instanceId: config.instanceId,
+      incarnation: config.instanceIncarnation,
       publicUrl: config.publicUrl,
       maxSessions: config.maxSessions,
       sessionCount: () => pool.size,

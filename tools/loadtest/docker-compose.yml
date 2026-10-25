@@ -43,6 +43,9 @@ services:
       RABBITMQ_DEFAULT_USER: agent_core
       RABBITMQ_DEFAULT_PASS: agent_core_dev_only
       RABBITMQ_DEFAULT_VHOST: /
+      # Ephemeral stack: anonymous volume can carry a root-owned erlang cookie
+      # after a container restart; run as root to keep the throwaway stack up.
+      RABBITMQ_RUN_AS_ROOT: "1"
     ports:
       - "${LOADTEST_RABBITMQ_PORT:-23673}:5672"
       - "${LOADTEST_RABBITMQ_MANAGEMENT_PORT:-23674}:15672"

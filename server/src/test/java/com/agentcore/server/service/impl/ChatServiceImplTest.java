@@ -158,12 +158,21 @@ class ChatServiceImplTest {
     }
 
     @Test
-    void marksExistingSessionsAsRequireExisting() {
-        when(messageDao.existsBySession(anyString())).thenReturn(true);
+    void marksSessionsWithEarlierTurnsAsRequireExisting() {
+        when(messageDao.existsBeforeTurn(anyString(), anyString())).thenReturn(true);
 
         openPrompt("complete");
 
         assertEquals(Boolean.TRUE, lastRequireExisting.get());
+    }
+
+    @Test
+    void doesNotMarkAFirstTurnAsRequireExistingEvenWhenItsUserMessageWasProjected() {
+        when(messageDao.existsBySession(anyString())).thenReturn(true);
+
+        openPrompt("complete");
+
+        assertEquals(Boolean.FALSE, lastRequireExisting.get());
     }
 
     @Test

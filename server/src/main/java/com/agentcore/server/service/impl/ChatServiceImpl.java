@@ -153,7 +153,7 @@ public class ChatServiceImpl implements ChatService {
         // DB first: if the gateway rejects the session, compensate by removing
         // the row instead of leaving an unreachable AgentSession behind.
         try {
-            EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice);
+            EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice, false);
             String actualName = ensured.modelName();
             if ("system".equals(choice.source()) && actualName != null && !actualName.isBlank()) {
                 sessionModelDao.upsert(sessionId, null, actualName, "system");
@@ -196,7 +196,8 @@ public class ChatServiceImpl implements ChatService {
         // The gateway keeps the model of a resident AgentSession; dispose it so
         // the next ensure rebuilds the runtime from the pi file with the new model.
         disposeGatewaySession(sessionId, userId);
-        EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice);
+        EnsureOutcome ensured = ensureGatewaySession(
+                sessionId, userId, choice, messageDao.existsBySession(sessionId));
         String actualName = ensured.modelName();
         sessionModelDao.upsert(
                 sessionId, choice.providerModelId(), labelFor(choice, actualName), choice.source());
@@ -387,7 +388,8 @@ public class ChatServiceImpl implements ChatService {
         // model before every prompt; PUT is idempotent and cheap.
         SessionTarget promptTarget;
         try {
-            EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice);
+            EnsureOutcome ensured = ensureGatewaySession(
+                    sessionId, userId, choice, messageDao.existsBeforeTurn(sessionId, turnId));
             syncSnapshot(session, choice, ensured.modelName());
             promptTarget = ensured.target();
         } catch (ApiException ex) {
@@ -405,7 +407,8 @@ public class ChatServiceImpl implements ChatService {
             try {
                 client.markRouteUnavailable(promptTarget.instanceId());
                 client.failoverRoute(sessionId);
-                EnsureOutcome retried = ensureGatewaySession(sessionId, userId, choice);
+                EnsureOutcome retried = ensureGatewaySession(
+                        sessionId, userId, choice, messageDao.existsBeforeTurn(sessionId, turnId));
                 syncSnapshot(session, choice, retried.modelName());
                 promptTarget = retried.target();
                 response = client.sendStreaming(
@@ -422,8 +425,9 @@ public class ChatServiceImpl implements ChatService {
             if (response.statusCode() == 409 && "INSTANCE_DRAINING".equals(error[0])
                     && releaseGatewaySession(promptTarget, sessionId, userId)) {
                 log.info("moving session off draining gateway: {}", sessionId);
-                client.failoverRoute(sessionId);
-                EnsureOutcome moved = ensureGatewaySession(sessionId, userId, choice);
+                client.failoverRoute(sessionId, false);
+                EnsureOutcome moved = ensureGatewaySession(
+                        sessionId, userId, choice, messageDao.existsBeforeTurn(sessionId, turnId));
                 syncSnapshot(session, choice, moved.modelName());
                 promptTarget = moved.target();
                 response = client.sendStreaming(
@@ -666,7 +670,7 @@ public class ChatServiceImpl implements ChatService {
     private record EnsureOutcome(SessionTarget target, String modelName) {}
 
     private EnsureOutcome ensureGatewaySession(
-            String sessionId, long userId, SessionModelChoice choice) {
+            String sessionId, long userId, SessionModelChoice choice, boolean requireExisting) {
         Map<String, Object> body = new LinkedHashMap<>();
         SessionModelChoice.Binding binding = choice.binding();
         if (binding != null) {
@@ -686,7 +690,7 @@ public class ChatServiceImpl implements ChatService {
 
         body.put("profileFacts", profileFactService.injectionFacts(userId, sessionId));
         body.put("profileMemoryEnabled", profileFactService.enabled(userId));
-        body.put("requireExisting", messageDao.existsBySession(sessionId));
+        body.put("requireExisting", requireExisting);
 
         String payload;
         try {
@@ -705,30 +709,57 @@ public class ChatServiceImpl implements ChatService {
                 HttpResponse<String> response = client.send(request);
                 if (response.statusCode() == 409) {
                     String code = gatewayErrorCode(response.body());
-                    if ("SESSION_BUSY".equals(code) && attempt == 0) {
-                        String owner = gatewayErrorOwner(response.body());
-                        if (owner != null && !owner.isBlank()) {
-                            client.correctRoute(sessionId, owner);
+                    if ("SESSION_BUSY".equals(code)) {
+                        if (attempt == 0) {
+                            String owner = gatewayErrorOwner(response.body());
+                            if (owner != null && !owner.isBlank()) {
+                                SessionTarget ownerTarget = client.sessionTargetFor(owner);
+                                if (ownerTarget == null
+                                        || !releaseGatewaySession(ownerTarget, sessionId, userId)) {
+                                    // The owner still has an active run. Let the
+                                    // caller retry instead of opening the same
+                                    // file on a second instance.
+                                    throw new ApiException(ErrorCode.SESSION_BUSY,
+                                            "session is busy; retry later");
+                                }
+                                client.failoverRoute(sessionId, false);
+                            } else {
+                                // Owner metadata can be missing for a few
+                                // milliseconds while another instance creates
+                                // the lock directory. Re-place instead of
+                                // treating it as an ownership conflict.
+                                client.failoverRoute(sessionId, false);
+                            }
                             target = client.sessionTarget(sessionId);
                             continue;
                         }
+                        throw new ApiException(ErrorCode.SESSION_BUSY,
+                                "session is busy; retry later");
                     }
                     if ("SESSION_STATE_CORRUPT".equals(code)) {
                         throw new ApiException(ErrorCode.SESSION_STATE_CORRUPT,
                                 "gateway session state is corrupt");
                     }
                     if ("INSTANCE_DRAINING".equals(code) && attempt == 0) {
-                        client.failoverRoute(sessionId);
-                        target = client.sessionTarget(sessionId);
-                        continue;
+                        if (releaseGatewaySession(target, sessionId, userId)) {
+                            client.failoverRoute(sessionId, false);
+                            target = client.sessionTarget(sessionId);
+                            continue;
+                        }
+                        throw new ApiException(ErrorCode.UPSTREAM_UNAVAILABLE,
+                                "gateway is draining and the session is still running");
                     }
-                    throw new ApiException(ErrorCode.USER_MISMATCH,
-                            "session belongs to another user");
+                    if ("SESSION_CONFLICT".equals(code) || "USER_MISMATCH".equals(code)) {
+                        throw new ApiException(ErrorCode.USER_MISMATCH,
+                                "session belongs to another user");
+                    }
+                    throw new ApiException(ErrorCode.UPSTREAM_ERROR,
+                            "unexpected gateway conflict: " + code);
                 }
                 if (response.statusCode() == 503
                         && "GATEWAY_CAPACITY".equals(gatewayErrorCode(response.body()))) {
                     if (attempt == 0) {
-                        client.failoverRoute(sessionId);
+                        client.failoverRoute(sessionId, false);
                         target = client.sessionTarget(sessionId);
                         continue;
                     }

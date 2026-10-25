@@ -67,6 +67,14 @@ public class GatewayRouter {
         return place(sessionId);
     }
 
+    /** Resolves a specific instance, including one that is draining. */
+    public SessionTarget targetFor(String instanceId) {
+        GatewayInstance instance = find(instanceId);
+        return instance == null
+                ? null
+                : new SessionTarget(instance.instanceId(), instance.baseUrl());
+    }
+
     /** Chooses a new instance for the session and pins it when Redis allows. */
     public SessionTarget place(String sessionId) {
         List<GatewayInstance> instances = routableInstances();
@@ -74,12 +82,11 @@ public class GatewayRouter {
             throw new ApiException(ErrorCode.GATEWAY_CAPACITY,
                     "no gateway instance has capacity");
         }
-        double minLoad = instances.stream().mapToDouble(GatewayInstance::load).min().orElse(0);
-        List<GatewayInstance> leastLoaded = instances.stream()
-                .filter(instance -> instance.load() == minLoad)
-                .toList();
+        // Hash placement keeps new sessions evenly spread even while the
+        // registry's session counts are up to one heartbeat stale. Least-loaded
+        // placement would pile every concurrent create onto the same instance.
         GatewayInstance chosen =
-                leastLoaded.get(Math.floorMod(sessionId.hashCode(), leastLoaded.size()));
+                instances.get(Math.floorMod(sessionId.hashCode(), instances.size()));
         SessionTarget target = new SessionTarget(chosen.instanceId(), chosen.baseUrl());
         remember(sessionId, target);
         saveRoute(sessionId, chosen.instanceId());
@@ -104,8 +111,17 @@ public class GatewayRouter {
 
     /** Drops the current route and briefly avoids the instance that failed. */
     public void failover(String sessionId) {
+        failover(sessionId, true);
+    }
+
+    /**
+     * Drops the route without penalizing a healthy-but-full or draining
+     * instance. Penalizing those would cascade until every instance looks
+     * unavailable.
+     */
+    public void failover(String sessionId, boolean penalizeInstance) {
         CachedRoute cached = routes.remove(sessionId);
-        if (cached != null) {
+        if (penalizeInstance && cached != null) {
             unavailableUntil.put(cached.target.instanceId(),
                     System.currentTimeMillis() + UNAVAILABLE_MS);
         }
@@ -142,10 +158,28 @@ public class GatewayRouter {
         }
         long now = System.currentTimeMillis();
         unavailableUntil.entrySet().removeIf(entry -> entry.getValue() <= now);
-        return source.stream()
+        List<GatewayInstance> available = source.stream()
                 .filter(instance -> !instance.draining() && instance.hasCapacity())
+                .toList();
+        List<GatewayInstance> healthy = available.stream()
                 .filter(instance -> unavailableUntil.getOrDefault(instance.instanceId(), 0L) <= now)
                 .toList();
+        if (!healthy.isEmpty()) {
+            return healthy;
+        }
+        // A short cooldown must not turn into a hard capacity failure when the
+        // only remaining instances are the ones that just restarted. The file
+        // lock still protects correctness, so prefer capacity over cooldown.
+        if (!available.isEmpty()) {
+            return available;
+        }
+        log.warn("no gateway instance with capacity: {}",
+                source.stream()
+                        .map(instance -> instance.instanceId() + "=" + instance.sessions()
+                                + "/" + instance.maxSessions()
+                                + (instance.draining() ? "/draining" : ""))
+                        .toList());
+        return List.of();
     }
 
     private GatewayInstance find(String instanceId) {

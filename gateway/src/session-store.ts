@@ -20,9 +20,11 @@ export interface SessionLease {
 export interface SessionStoreOptions {
   /** Stable gateway instance identity; used by the single-writer lock. */
   instanceId?: string;
+  /** Process-incarnation token for this run of the instance. */
+  instanceIncarnation?: string;
   lockHeartbeatMs?: number;
   lockStaleMs?: number;
-  isInstanceAlive?: (instanceId: string) => boolean | undefined;
+  isInstanceAlive?: (instanceId: string, incarnation?: string) => boolean | undefined;
 }
 
 interface SidecarMeta {
@@ -139,6 +141,7 @@ export class SessionFileStore {
   private newLock(sessionId: string): SessionLock {
     return new SessionLock(this.sessionDir, sessionId, {
       instanceId: this.instanceId,
+      incarnation: this.options.instanceIncarnation,
       heartbeatMs: this.options.lockHeartbeatMs,
       staleMs: this.options.lockStaleMs,
       isInstanceAlive: this.options.isInstanceAlive,

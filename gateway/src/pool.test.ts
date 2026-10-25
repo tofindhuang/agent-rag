@@ -33,6 +33,7 @@ function config(): GatewayConfig {
     profileExtractMaxCandidates: 5,
     sessionDir: dir,
     instanceId: "test-pool",
+    instanceIncarnation: "test-inc",
     publicUrl: "http://127.0.0.1:0",
     maxSessions: 60,
     idleEvictMs: 900_000,

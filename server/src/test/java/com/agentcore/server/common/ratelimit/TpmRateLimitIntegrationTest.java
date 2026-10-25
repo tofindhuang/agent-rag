@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
         "app.rate-limit.user-rpm=999999",
         "app.rate-limit.auth-ip-rpm=999999",
         "app.rate-limit.user-tpm=1",
-        "app.rate-limit.window=1s"
+        "app.rate-limit.window=3s"
 })
 class TpmRateLimitIntegrationTest extends AbstractIntegrationTest {
 
@@ -57,7 +57,7 @@ class TpmRateLimitIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(chatService.history(userId, sessionId, null, 50).items()).hasSize(2);
 
-        Thread.sleep(1_100L);
+        Thread.sleep(3_100L);
         MvcResult afterWindow = mockMvc.perform(prompt(token, sessionId, "after window"))
                 .andExpect(request().asyncStarted())
                 .andReturn();

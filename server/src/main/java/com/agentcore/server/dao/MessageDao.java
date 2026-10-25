@@ -38,6 +38,10 @@ public interface MessageDao extends BaseMapper<Message> {
     /** True once the session has any projected message; drives requireExisting. */
     boolean existsBySession(@Param("sessionId") String sessionId);
 
+    /** True when the session has messages from an earlier turn. */
+    boolean existsBeforeTurn(
+            @Param("sessionId") String sessionId, @Param("turnId") String turnId);
+
     /** Purge support: messages must disappear before their runs (FK order). */
     int deleteBySession(@Param("sessionId") String sessionId);
 }

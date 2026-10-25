@@ -52,7 +52,7 @@ class GatewayRouterTest {
     }
 
     @Test
-    void placesNewSessionsOnTheLeastLoadedInstance() {
+    void placesNewSessionsOnAnInstanceWithCapacity() {
         FakeDirectory directory = new FakeDirectory();
         directory.instances = List.of(
                 new GatewayInstance("g1", "http://g1", 30, 60, false),
@@ -61,9 +61,36 @@ class GatewayRouterTest {
 
         SessionTarget target = router.resolve("session-1");
 
-        assertEquals("g2", target.instanceId());
-        assertEquals("http://g2", target.baseUrl());
-        assertEquals("g2", directory.routes.get("session-1"));
+        assertTrue(target.instanceId().equals("g1") || target.instanceId().equals("g2"));
+        assertEquals(directory.routes.get("session-1"), target.instanceId());
+    }
+
+    @Test
+    void neverPlacesOnAFullInstance() {
+        FakeDirectory directory = new FakeDirectory();
+        directory.instances = List.of(
+                new GatewayInstance("g1", "http://g1", 60, 60, false),
+                new GatewayInstance("g2", "http://g2", 3, 60, false));
+        GatewayRouter router = router(directory, null);
+
+        assertEquals("g2", router.resolve("session-1").instanceId());
+    }
+
+    @Test
+    void hashPlacementSpreadsConcurrentCreatesAcrossInstances() {
+        FakeDirectory directory = new FakeDirectory();
+        directory.instances = List.of(
+                new GatewayInstance("g1", "http://g1", 0, 60, false),
+                new GatewayInstance("g2", "http://g2", 0, 60, false),
+                new GatewayInstance("g3", "http://g3", 0, 60, false));
+        GatewayRouter router = router(directory, null);
+
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (int i = 0; i < 30; i++) {
+            used.add(router.place("session-" + i).instanceId());
+        }
+
+        assertEquals(3, used.size());
     }
 
     @Test
@@ -87,6 +114,18 @@ class GatewayRouterTest {
 
         assertEquals("g2", router.resolve("session-1").instanceId());
         assertEquals("g2", directory.routes.get("session-1"));
+    }
+
+    @Test
+    void usesCapacityEvenWhenEveryCandidateIsCoolingDown() {
+        FakeDirectory directory = new FakeDirectory();
+        directory.instances = List.of(
+                new GatewayInstance("g1", "http://g1", 0, 60, false),
+                new GatewayInstance("g2", "http://g2", 60, 60, false));
+        GatewayRouter router = router(directory, null);
+        router.markUnavailable("g1");
+
+        assertEquals("g1", router.place("session-1").instanceId());
     }
 
     @Test

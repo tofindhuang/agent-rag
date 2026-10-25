@@ -87,6 +87,14 @@
         )
     </select>
 
+    <select id="existsBeforeTurn" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM messages
+            WHERE session_id = #{sessionId}
+              AND turn_id &lt;&gt; #{turnId}
+        )
+    </select>
+
     <delete id="deleteBySession">
         DELETE FROM messages
         WHERE session_id = #{sessionId}

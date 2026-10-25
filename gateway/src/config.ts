@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { resolve } from "node:path";
 import type { CompactionConfig } from "./compaction.js";
@@ -20,6 +21,8 @@ export interface GatewayConfig {
   sessionDir: string;
   /** Stable identity of this gateway instance (ADR-0024). */
   instanceId: string;
+  /** Process-incarnation token; distinguishes restarts that reuse instanceId. */
+  instanceIncarnation: string;
   /** Public address Java uses to reach this instance (ADR-0024). */
   publicUrl: string;
   /** Soft cap on resident sessions per instance (ADR-0024). */
@@ -69,6 +72,7 @@ export function loadConfig(): GatewayConfig {
     apiToken: process.env.GATEWAY_API_TOKEN,
     sessionDir: resolve(process.env.GATEWAY_SESSION_DIR ?? "data/sessions"),
     instanceId: process.env.GATEWAY_INSTANCE_ID?.trim() || `${hostname()}:${port}`,
+    instanceIncarnation: randomUUID(),
     publicUrl: process.env.GATEWAY_PUBLIC_URL?.trim() || `http://127.0.0.1:${port}`,
     maxSessions: Math.max(1, intEnv("GATEWAY_MAX_SESSIONS", 60)),
     idleEvictMs: Math.max(0, intEnv("GATEWAY_IDLE_EVICT_MS", 900_000)),

@@ -108,9 +108,11 @@ test("does not take over a stale heartbeat while the owner instance is alive", a
   const dir = tempDir();
   const first = new SessionLock(dir, "s1", {
     instanceId: "g1",
+    incarnation: "inc-1",
     heartbeatMs: 60_000,
     staleMs: 20,
-    isInstanceAlive: (instanceId) => instanceId === "g1",
+    isInstanceAlive: (instanceId, incarnation) =>
+      instanceId === "g1" && incarnation === "inc-1",
   });
   first.acquire();
 
@@ -120,9 +122,11 @@ test("does not take over a stale heartbeat while the owner instance is alive", a
     () =>
       new SessionLock(dir, "s1", {
         instanceId: "g2",
+        incarnation: "inc-2",
         heartbeatMs: 60_000,
         staleMs: 20,
-        isInstanceAlive: (instanceId) => instanceId === "g1",
+        isInstanceAlive: (instanceId, incarnation) =>
+          instanceId === "g1" && incarnation === "inc-1",
       }).acquire(),
     SessionBusyError,
   );

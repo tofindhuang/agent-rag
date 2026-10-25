@@ -19,6 +19,7 @@ function config(url: string): GatewayConfig {
     apiToken: "shared-token",
     sessionDir: "/tmp",
     instanceId: "test",
+    instanceIncarnation: "test-inc",
     publicUrl: "http://127.0.0.1:0",
     maxSessions: 60,
     idleEvictMs: 0,

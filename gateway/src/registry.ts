@@ -14,6 +14,8 @@ export interface RegistryStore {
 
 export interface RegistryOptions {
   instanceId: string;
+  /** Process-incarnation token; peers use it to judge lock-owner liveness. */
+  incarnation: string;
   publicUrl: string;
   maxSessions: number;
   sessionCount: () => number;
@@ -41,7 +43,7 @@ export class RedisInstanceRegistry {
   private readonly startedAt: number;
   private readonly heartbeatMs: number;
   private readonly ttlSeconds: number;
-  private readonly peers = new Set<string>();
+  private readonly peers = new Map<string, string | undefined>();
   private started = false;
   private draining = false;
   private lastRefreshAt = 0;
@@ -81,10 +83,14 @@ export class RedisInstanceRegistry {
    * `undefined` when that view is too old to trust. A stale registry must not
    * be used to deny a lock takeover forever.
    */
-  isInstanceAlive(instanceId: string): boolean | undefined {
+  isInstanceAlive(instanceId: string, incarnation?: string): boolean | undefined {
     if (this.lastRefreshAt === 0) return undefined;
     if (this.now() - this.lastRefreshAt > this.heartbeatMs * 3) return undefined;
-    return this.peers.has(instanceId);
+    if (!this.peers.has(instanceId)) return false;
+    if (!incarnation) return false; // Old lock without an incarnation: cannot prove it is us.
+    const peerIncarnation = this.peers.get(instanceId);
+    if (!peerIncarnation) return true; // Pre-incarnation registry payload.
+    return peerIncarnation === incarnation;
   }
 
   /** Drops the routing hint after an idle eviction; the file lock remains authoritative. */
@@ -102,7 +108,14 @@ export class RedisInstanceRegistry {
       const values = await this.options.store.mget(ids.map((id) => `${INSTANCE_KEY_PREFIX}${id}`));
       this.peers.clear();
       ids.forEach((id, index) => {
-        if (values[index] !== null) this.peers.add(id);
+        const raw = values[index];
+        if (raw === null) return;
+        try {
+          const parsed = JSON.parse(raw) as { incarnation?: unknown };
+          this.peers.set(id, typeof parsed.incarnation === "string" ? parsed.incarnation : undefined);
+        } catch {
+          this.peers.set(id, undefined);
+        }
       });
       this.lastRefreshAt = this.now();
     } catch (err) {
@@ -130,6 +143,7 @@ export class RedisInstanceRegistry {
     const payload = {
       url: this.options.publicUrl,
       startedAt: this.startedAt,
+      incarnation: this.options.incarnation,
       heartbeatAt: this.now(),
       draining: this.draining,
       sessions: this.options.sessionCount(),

@@ -14,6 +14,8 @@ import { logWarn } from "./log.js";
 /** Metadata written inside `<sessionId>.lock/owner.json`. */
 export interface SessionLockOwner {
   instanceId: string;
+  /** Process-incarnation token; absent on locks written before ADR-0024 hardening. */
+  incarnation?: string;
   pid: number;
   acquiredAt: number;
   heartbeatAt: number;
@@ -22,6 +24,8 @@ export interface SessionLockOwner {
 export interface SessionLockOptions {
   /** Stable identity of this gateway instance. */
   instanceId: string;
+  /** Process-incarnation token for this run of the instance. */
+  incarnation?: string;
   /** How often the owner refreshes `heartbeatAt`. */
   heartbeatMs?: number;
   /** Age after which another instance may attempt a takeover. */
@@ -30,7 +34,7 @@ export interface SessionLockOptions {
    * Optional registry probe. When it confirms the owner instance is still
    * alive, a stale heartbeat is not enough to take the lock away.
    */
-  isInstanceAlive?: (instanceId: string) => boolean | undefined;
+  isInstanceAlive?: (instanceId: string, incarnation?: string) => boolean | undefined;
   /** Injectable clock for tests. */
   now?: () => number;
   /** Injectable pid for tests. */
@@ -40,6 +44,9 @@ export interface SessionLockOptions {
 const DEFAULT_HEARTBEAT_MS = 5_000;
 const DEFAULT_STALE_MS = 30_000;
 const ACQUIRE_ATTEMPTS = 3;
+const OWNER_READ_RETRIES = 5;
+const OWNER_READ_DELAY_MS = 2;
+const sleeper = new Int32Array(new SharedArrayBuffer(4));
 
 /** The session is already owned by another gateway instance. */
 export class SessionBusyError extends Error {
@@ -92,14 +99,16 @@ export class SessionLock {
     for (let attempt = 0; attempt < ACQUIRE_ATTEMPTS; attempt += 1) {
       if (this.tryCreate()) return;
 
-      lastOwner = this.readOwner();
+      lastOwner = this.readOwnerWithGrace();
       const heartbeatAt = lastOwner?.heartbeatAt ?? this.lockDirMtime();
       const stale = this.now() - heartbeatAt > this.staleMs;
 
       if (!stale) {
         throw new SessionBusyError(this.sessionId, lastOwner);
       }
-      if (lastOwner && this.options.isInstanceAlive?.(lastOwner.instanceId) === true) {
+      if (lastOwner
+          && lastOwner.incarnation
+          && this.options.isInstanceAlive?.(lastOwner.instanceId, lastOwner.incarnation) === true) {
         throw new SessionBusyError(this.sessionId, lastOwner);
       }
       if (this.tryTakeover()) return;
@@ -201,6 +210,7 @@ export class SessionLock {
     const now = this.now();
     const owner: SessionLockOwner = {
       instanceId: this.options.instanceId,
+      incarnation: this.options.incarnation,
       pid: this.options.pid ?? process.pid,
       acquiredAt: this.readOwner()?.acquiredAt ?? now,
       heartbeatAt: now,
@@ -208,6 +218,16 @@ export class SessionLock {
     const tmp = `${this.ownerPath}.${process.pid}.${randomUUID()}.tmp`;
     writeFileSync(tmp, JSON.stringify(owner), "utf8");
     renameSync(tmp, this.ownerPath);
+  }
+
+  /** The creator writes owner.json right after mkdir; give it a few ms. */
+  private readOwnerWithGrace(): SessionLockOwner | undefined {
+    for (let attempt = 0; attempt < OWNER_READ_RETRIES; attempt += 1) {
+      const owner = this.readOwner();
+      if (owner) return owner;
+      Atomics.wait(sleeper, 0, 0, OWNER_READ_DELAY_MS);
+    }
+    return undefined;
   }
 
   private readOwner(): SessionLockOwner | undefined {
@@ -224,6 +244,7 @@ export class SessionLock {
       }
       return {
         instanceId: owner.instanceId,
+        incarnation: typeof owner.incarnation === "string" ? owner.incarnation : undefined,
         pid: typeof owner.pid === "number" ? owner.pid : 0,
         acquiredAt: typeof owner.acquiredAt === "number" ? owner.acquiredAt : owner.heartbeatAt,
         heartbeatAt: owner.heartbeatAt,
