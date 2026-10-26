@@ -159,7 +159,7 @@ CREATE TABLE exec_records (
 | `output-max-bytes` | `65536` | stdout+stderr 合计上限 |
 | `chunk-max-bytes` | `2048` | 单帧输出上限 |
 | `per-user-concurrency` | `2` | 每用户并发 |
-| `global-concurrency` | `8` | 全局并发 |
+| `global-concurrency` | `12` | 全局并发（ADR-0026；M1 为 8） |
 | `queue-timeout` | `120s` | 排队等待上限 |
 | `permit-lease` | `240s` | permit 自动过期 |
 | `retention-days` | `90` | 审计保留期 |

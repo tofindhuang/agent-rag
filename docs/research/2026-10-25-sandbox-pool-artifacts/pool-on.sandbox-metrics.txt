@@ -1,0 +1,6 @@
+sandbox_container_lifecycle_ms_count 32
+sandbox_container_lifecycle_ms_sum 42224.0
+sandbox_container_lifecycle_ms_max 2588.0
+sandbox_pool_checkout_total{result="hit"} 20.0
+sandbox_pool_creating 0.0
+sandbox_pool_idle 12.0

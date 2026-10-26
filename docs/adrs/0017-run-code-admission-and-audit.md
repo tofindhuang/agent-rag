@@ -4,7 +4,7 @@ Date: 2026-10-24
 
 ## Status
 
-Accepted
+Accepted（2026-10-25 由 ADR-0026 修订：全局并发默认 8→12，并增加预热容器池；准入、审计与断连语义不变）
 
 ## Context
 
@@ -16,7 +16,7 @@ FR-3 同时要求 per-user 并发上限、超限排队（AC4）、每次执行�
 
 ## Decision
 
-1. **准入先于 SSE**：`/api/exec` 在写响应头之前完成 per-user 与全局 permit 获取，等待上限 120s；超时返回 `503 SANDBOX_QUEUE_TIMEOUT`。流内不出现 `queued` phase。
+1. **准入先于 SSE**：`/api/exec` 在写响应头之前完成 per-user 与全局 permit 获取，等待上限 120s；超时返回 `503 SANDBOX_QUEUE_TIMEOUT`。流内不出现 `queued` phase。（全局并发默认值由 ADR-0026 改为 12；per-user 仍为 2）
 2. **审计 fail-closed**：准入通过后先插入 `exec_records`（`status=running`）再创建容器；插入失败则拒绝执行并释放 permit。终态以一条 UPDATE 落库；JVM 崩溃遗留的 `running` 行在启动时标记为 `aborted`。
 3. **permit 可过期**：使用 Redisson `RPermitExpirableSemaphore`，lease 240s（覆盖排队 120s + 执行 60s + 余量）。加锁顺序固定为 per-user → global，避免排队请求占用全局名额造成跨用户饥饿。Redis 不可用时快速失败，不做进程内降级。
 4. **输出截断不杀容器**：stdout+stderr 合计 64 KiB 后停止转发但继续 drain，保留退出码与终态，`result.truncated=true`。
@@ -31,7 +31,7 @@ FR-3 同时要求 per-user 并发上限、超限排队（AC4）、每次执行�
 
 ## Consequences
 
-- 排队请求占用 Tomcat 线程最多 120s；M1 单实例、默认 8 全局并发下可接受，扩容时需改为异步准入（届时错误语义也要重新设计）。
+- 排队请求占用 Tomcat 线程最多 120s；M1 单实例、默认 8 全局并发下可接受，扩容时需改为异步准入（届时错误语义也要重新设计）。ADR-0026 将默认并发提到 12，但仍保留同步准入。
 - 契约增加三个沙箱错误码（`SANDBOX_UNAVAILABLE` / `SANDBOX_QUEUE_TIMEOUT` / `SANDBOX_CODE_TOO_LARGE`），属纯增量，不升主版本。
 - Redis 故障只影响 `run_code`，聊天与知识库不受影响；代价是执行完全不可用而非降级放行。
 - 审计表随会话彻底删除级联删除，保留期 90 天；与 NFR「沙箱执行产物保留 7 天」分开解释（后者指执行产物/文件）。
