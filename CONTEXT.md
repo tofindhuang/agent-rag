@@ -14,6 +14,26 @@ _Avoid_: account、tenant、member
 不透明随机串，经 httpOnly cookie 传输，服务端只存哈希；每次刷新即轮换，检测到旧令牌重用时撤销同族全部令牌。
 _Avoid_: session token、persistent token、remember-me
 
+### OIDC 提供方（OIDC Provider）
+
+部署方配置的单一 OIDC issuer，提供授权码登录和已验证邮箱；它不是用户自行添加的模型供应商。
+_Avoid_: OAuth server、第三方登录（泛指时）
+
+### 外部身份（External Identity）
+
+OIDC provider 的 `(issuer, subject)` 组合，绑定到一个本地用户；subject 是 provider 的稳定用户标识，不是邮箱。
+_Avoid_: OAuth 账号、第三方账号、provider user
+
+### 账号绑定（Identity Link）
+
+把一个外部身份显式关联到已登录的本地用户；不会按邮箱自动发生，同一用户在同一 issuer 下只能有一个外部身份。
+_Avoid_: 合并账号、自动关联
+
+### 本地密码（Local Password）
+
+用户在本系统设置的密码凭证；OAuth 创建的账号可以没有本地密码，此时只能用已绑定的外部身份登录。
+_Avoid_: OAuth 密码、第三方密码
+
 ### 模型供应商（Model Provider）
 
 用户自行添加的外部模型服务配置（协议、Base URL、加密的 API Key），仅对添加者可见，是会话选择模型的来源。
