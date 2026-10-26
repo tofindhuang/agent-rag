@@ -50,7 +50,8 @@ LOADTEST_MODEL_API_KEY=... npm run run
 ```
 
 五个 gateway 进程共享同一个 `GATEWAY_SESSION_DIR`，Java 通过
-`GATEWAY_URLS` 发现它们。重启阶段逐个调用 `POST /admin/drain`，等在飞
+`GATEWAY_URLS` 发现它们。默认从 `:3001` 起；本机端口被占用时用
+`LOADTEST_GATEWAY_BASE_PORT=3101` 换一组连续端口。重启阶段逐个调用 `POST /admin/drain`，等在飞
 轮次结束后再退出并启动新进程，验证滚动更新不断流。
 
 ## 托管模式 + gateway 滚动重启
@@ -70,6 +71,12 @@ LOADTEST_MODEL_API_KEY=... npm run run
 
 重启 Java（验证 §4「任一重启」）用 `LOADTEST_RESTART_SERVER_AFTER_MS` 替代
 `LOADTEST_RESTART_GATEWAY_AFTER_MS`，其余参数相同。
+
+压测沙箱预热池时用 `LOADTEST_WARMUP_MS=30000` 等池填满再开始；否则开跑瞬间
+的执行会走冷创建兜底，测到的是混合路径。配合 `SANDBOX_POOL_ENABLED` /
+`SANDBOX_POOL_TARGET` 分别跑池开/关基线。设置
+`LOADTEST_SANDBOX_METRICS_URL=http://127.0.0.1:9091/actuator/prometheus`
+会把本次运行的 `sandbox_*` 指标摘录到 `.run/sandbox-metrics.txt`。
 
 ## 拆栈
 

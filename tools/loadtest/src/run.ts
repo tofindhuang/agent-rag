@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { LoadTestClient } from "./api.js";
 import { baselineOffsets, netOfBaseline, startBaselineSampler } from "./baseline.js";
@@ -41,6 +42,8 @@ async function main(): Promise<void> {
   const restartGatewayAfterMs = intEnv("LOADTEST_RESTART_GATEWAY_AFTER_MS", 0);
   const restartServerAfterMs = intEnv("LOADTEST_RESTART_SERVER_AFTER_MS", 0);
   const gatewayInstances = intEnv("LOADTEST_GATEWAY_INSTANCES", 1);
+  const gatewayBasePort = intEnv("LOADTEST_GATEWAY_BASE_PORT", 3001);
+  const warmupMs = intEnv("LOADTEST_WARMUP_MS", 0);
   const logDir = dirname(config.metricsFile);
   const managed: ManagedProcess[] = [];
   let server: ManagedProcess | null = null;
@@ -55,9 +58,9 @@ async function main(): Promise<void> {
       cwd: root,
       logFile: join(logDir, `gateway-${index}.log`),
       env: {
-        GATEWAY_PORT: String(3001 + index),
+        GATEWAY_PORT: String(gatewayBasePort + index),
         GATEWAY_INSTANCE_ID: `loadtest-${index}`,
-        GATEWAY_PUBLIC_URL: `http://127.0.0.1:${3001 + index}`,
+        GATEWAY_PUBLIC_URL: `http://127.0.0.1:${gatewayBasePort + index}`,
       },
     });
 
@@ -87,8 +90,14 @@ async function main(): Promise<void> {
       gateways = Array.from({ length: gatewayInstances }, (_, index) => startGateway(index));
       managed.push(...gateways);
       for (let index = 0; index < gatewayInstances; index++) {
-        await waitForHttp(`http://127.0.0.1:${3001 + index}/health`, 60_000);
+        await waitForHttp(`http://127.0.0.1:${gatewayBasePort + index}/health`, 60_000);
       }
+    }
+
+    if (warmupMs > 0) {
+      // Sandbox warm-pool acceptance waits here until the pool has filled.
+      console.error(`[loadtest] warmup ${warmupMs}ms before starting turns`);
+      await delay(warmupMs);
     }
 
     if (restartGatewayAfterMs > 0) {
@@ -97,7 +106,7 @@ async function main(): Promise<void> {
           restartPromises.push((async () => {
             if (!manageApp) throw new Error("gateway restart requires LOADTEST_MANAGE_APP=1");
             for (let index = 0; index < gatewayInstances; index++) {
-              const url = `http://127.0.0.1:${3001 + index}`;
+              const url = `http://127.0.0.1:${gatewayBasePort + index}`;
               console.error(`[loadtest] draining gateway ${index}`);
               try {
                 await fetch(`${url}/admin/drain`, { method: "POST" });
@@ -207,6 +216,26 @@ async function main(): Promise<void> {
       : null;
     const output = { ...summary, baseline, netFirstTokenMs, verification };
     const summaryFile = config.metricsFile.replace(/\.jsonl$/, "") + ".summary.json";
+
+    const sandboxMetricsUrl = process.env.LOADTEST_SANDBOX_METRICS_URL;
+    if (sandboxMetricsUrl) {
+      try {
+        const response = await fetch(sandboxMetricsUrl);
+        const body = await response.text();
+        const sandboxLines = body
+          .split("\n")
+          .filter((line) => line.startsWith("sandbox_"))
+          .join("\n");
+        const sandboxMetricsFile = join(dirname(config.metricsFile), "sandbox-metrics.txt");
+        await writeFile(sandboxMetricsFile, `${sandboxLines}\n`, "utf8");
+        console.error(`[loadtest] sandbox metrics: ${sandboxMetricsFile}`);
+      } catch (error) {
+        console.error(
+          `[loadtest] failed to read sandbox metrics: ${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
+
     await writeFile(summaryFile, `${JSON.stringify(output, null, 2)}\n`, "utf8");
     console.log(JSON.stringify(output, null, 2));
     console.log(`[loadtest] records: ${config.metricsFile}`);
