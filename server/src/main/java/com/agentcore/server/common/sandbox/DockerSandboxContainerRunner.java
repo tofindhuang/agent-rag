@@ -3,19 +3,15 @@ package com.agentcore.server.common.sandbox;
 import com.agentcore.server.config.SandboxProperties;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
-import com.github.dockerjava.api.command.CreateContainerResponse;
 import com.github.dockerjava.api.command.ExecCreateCmdResponse;
-import com.github.dockerjava.api.model.Capability;
 import com.github.dockerjava.api.model.Event;
 import com.github.dockerjava.api.model.Frame;
-import com.github.dockerjava.api.model.HostConfig;
 import com.github.dockerjava.api.model.Statistics;
 import com.github.dockerjava.api.model.StreamType;
 import jakarta.annotation.PreDestroy;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -44,23 +40,31 @@ import org.springframework.stereotype.Component;
 public class DockerSandboxContainerRunner implements SandboxContainerRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DockerSandboxContainerRunner.class);
-    private static final long MEMORY_BYTES = 512L * 1024 * 1024;
-    private static final long NANO_CPUS = 1_000_000_000L;
-    private static final long PIDS_LIMIT = 64L;
     private static final long STATS_INTERVAL_MS = 1_000L;
     private static final long ATTACH_GRACE_MS = 15_000L;
 
     private final DockerClient docker;
     private final SandboxProperties properties;
+    private final SandboxContainerFactory containerFactory;
+    private final SandboxContainerPool pool;
+    private final SandboxPoolMetrics metrics;
     // Kills must never wait behind a blocking stats call.
     private final ScheduledExecutorService timeoutScheduler =
             Executors.newSingleThreadScheduledExecutor(runnable -> daemon(runnable, "sandbox-timeout-"));
     private final ScheduledExecutorService statsScheduler =
             Executors.newScheduledThreadPool(4, runnable -> daemon(runnable, "sandbox-stats-"));
 
-    public DockerSandboxContainerRunner(DockerClient docker, SandboxProperties properties) {
+    public DockerSandboxContainerRunner(
+            DockerClient docker,
+            SandboxProperties properties,
+            SandboxContainerFactory containerFactory,
+            SandboxContainerPool pool,
+            SandboxPoolMetrics metrics) {
         this.docker = docker;
         this.properties = properties;
+        this.containerFactory = containerFactory;
+        this.pool = pool;
+        this.metrics = metrics;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -95,7 +99,7 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
         ScheduledFuture<?> statsTask = null;
         boolean timedOut = false;
         try {
-            containerId = createAndStartContainer(spec.execId());
+            containerId = acquireContainer(spec.execId());
             sink.phase("running");
             byte[] codeBytes = spec.code().getBytes(StandardCharsets.UTF_8);
 
@@ -235,10 +239,7 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
             }
             if (containerId != null) {
                 try {
-                    docker.removeContainerCmd(containerId)
-                            .withForce(true)
-                            .withRemoveVolumes(true)
-                            .exec();
+                    pool.destroy(containerId);
                 } catch (RuntimeException ex) {
                     log.warn("failed to remove sandbox container {}", containerId, ex);
                 }
@@ -246,33 +247,35 @@ public class DockerSandboxContainerRunner implements SandboxContainerRunner {
         }
     }
 
-    private String createAndStartContainer(String execId) {
-        HostConfig hostConfig = new HostConfig()
-                .withNetworkMode("none")
-                .withMemory(MEMORY_BYTES)
-                .withMemorySwap(MEMORY_BYTES)
-                .withNanoCPUs(NANO_CPUS)
-                .withPidsLimit(PIDS_LIMIT)
-                .withReadonlyRootfs(true)
-                .withTmpFs(Map.of("/work", "size=64m,uid=1000,gid=1000"))
-                .withCapDrop(Capability.ALL)
-                .withSecurityOpts(List.of("no-new-privileges"))
-                .withInit(true);
-        CreateContainerResponse created = docker.createContainerCmd(properties.image())
-                .withCmd("python", "-c", "import time; time.sleep(3600)")
-                .withUser("1000:1000")
-                .withWorkingDir("/work")
-                .withAttachStdout(true)
-                .withAttachStderr(true)
-                .withTty(false)
-                .withLabels(Map.of(
-                        "agent-core.sandbox", "1",
-                        "agent-core.exec-id", execId))
-                .withHostConfig(hostConfig)
-                .exec();
-        String containerId = created.getId();
-        docker.startContainerCmd(containerId).exec();
-        return containerId;
+    /**
+     * One container per execution: take a warm idle container when available,
+     * otherwise create one on the cold path. A pool failure only loses the
+     * speed-up and never fails the execution by itself.
+     */
+    private String acquireContainer(String execId) {
+        try {
+            Optional<String> pooled = pool.checkout();
+            if (pooled.isPresent()) {
+                log.debug("using warm sandbox container for execution {}", execId);
+                return pooled.get();
+            }
+        } catch (RuntimeException ex) {
+            log.warn("sandbox pool checkout failed; falling back to cold creation", ex);
+        }
+        log.debug("sandbox pool empty; cold-creating container for execution {}", execId);
+        return coldCreate(execId);
+    }
+
+    private String coldCreate(String execId) {
+        if (pool.enabled()) {
+            metrics.coldFallback();
+        }
+        long startedNanos = System.nanoTime();
+        try {
+            return containerFactory.createExecutionContainer(execId);
+        } finally {
+            metrics.containerLifecycle((System.nanoTime() - startedNanos) / 1_000_000L);
+        }
     }
 
     private boolean awaitOutput(CountDownLatch finished, int timeoutMs, String containerId) {

@@ -42,7 +42,7 @@ public record SandboxProperties(
             chunkMaxBytes = 2048;
         }
         if (globalConcurrency == null || globalConcurrency <= 0) {
-            globalConcurrency = 8;
+            globalConcurrency = 12;
         }
         if (perUserConcurrency == null || perUserConcurrency <= 0) {
             perUserConcurrency = 2;

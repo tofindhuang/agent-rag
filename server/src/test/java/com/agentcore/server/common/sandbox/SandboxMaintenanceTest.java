@@ -2,6 +2,7 @@ package com.agentcore.server.common.sandbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.agentcore.server.config.SandboxPoolProperties;
 import com.agentcore.server.config.SandboxProperties;
 import com.agentcore.server.dao.ExecRecordDao;
 import com.agentcore.server.domain.ExecRecord;
@@ -16,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -31,7 +33,8 @@ class SandboxMaintenanceTest {
                 container("fresh", Instant.now()));
         List<String> removed = new ArrayList<>();
         SandboxMaintenance maintenance =
-                new SandboxMaintenance(recordDao, docker(containers, removed), properties);
+                new SandboxMaintenance(recordDao, docker(containers, removed), properties,
+                        SandboxPoolProperties.defaults());
 
         int count = maintenance.removeOrphanContainers();
 
@@ -40,10 +43,27 @@ class SandboxMaintenanceTest {
     }
 
     @Test
+    void poolContainersAreOnlyRemovedAfterTwiceTheIdleTtl() {
+        List<Container> containers = List.of(
+                container("pool-fresh", Instant.now().minusSeconds(600), poolLabels()),
+                container("pool-stale", Instant.now().minusSeconds(1_500), poolLabels()));
+        List<String> removed = new ArrayList<>();
+        SandboxMaintenance maintenance = new SandboxMaintenance(
+                recordDao, docker(containers, removed), properties,
+                SandboxPoolProperties.defaults());
+
+        int count = maintenance.removeOrphanContainers();
+
+        assertThat(count).isEqualTo(1);
+        assertThat(removed).containsExactly("pool-stale");
+    }
+
+    @Test
     void staleRecoveryUsesTheMaxTimeoutPlusGraceCutoff() {
         recordDao.staleUpdated = 2;
         SandboxMaintenance maintenance =
-                new SandboxMaintenance(recordDao, docker(List.of(), new ArrayList<>()), properties);
+                new SandboxMaintenance(recordDao, docker(List.of(), new ArrayList<>()), properties,
+                        SandboxPoolProperties.defaults());
 
         int updated = maintenance.recoverStaleRecords();
 
@@ -56,7 +76,8 @@ class SandboxMaintenanceTest {
     @Test
     void retentionDeletesRowsOlderThanTheConfiguredDays() {
         SandboxMaintenance maintenance =
-                new SandboxMaintenance(recordDao, docker(List.of(), new ArrayList<>()), properties);
+                new SandboxMaintenance(recordDao, docker(List.of(), new ArrayList<>()), properties,
+                        SandboxPoolProperties.defaults());
 
         maintenance.purgeExpiredRecords();
 
@@ -73,7 +94,8 @@ class SandboxMaintenanceTest {
             }
             throw new UnsupportedOperationException(method);
         });
-        SandboxMaintenance maintenance = new SandboxMaintenance(recordDao, broken, properties);
+        SandboxMaintenance maintenance = new SandboxMaintenance(recordDao, broken, properties,
+                        SandboxPoolProperties.defaults());
 
         assertThat(maintenance.removeOrphanContainers()).isZero();
     }
@@ -104,10 +126,23 @@ class SandboxMaintenanceTest {
     }
 
     private static Container container(String id, Instant created) {
+        return container(id, created, null);
+    }
+
+    private static Container container(String id, Instant created, Map<String, String> labels) {
         Container container = new Container();
         setField(container, "id", id);
         setField(container, "created", created.getEpochSecond());
+        if (labels != null) {
+            setField(container, "labels", labels);
+        }
         return container;
+    }
+
+    private static Map<String, String> poolLabels() {
+        return Map.of(
+                "agent-core.sandbox", "1",
+                "agent-core.sandbox.role", "pool");
     }
 
     private static void setField(Object target, String name, Object value) {

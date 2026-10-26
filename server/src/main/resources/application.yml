@@ -104,11 +104,18 @@ app:
     code-max-bytes: ${SANDBOX_CODE_MAX_BYTES:262144}
     output-max-bytes: ${SANDBOX_OUTPUT_MAX_BYTES:65536}
     chunk-max-bytes: ${SANDBOX_CHUNK_MAX_BYTES:2048}
-    global-concurrency: ${SANDBOX_GLOBAL_CONCURRENCY:8}
+    global-concurrency: ${SANDBOX_GLOBAL_CONCURRENCY:12}
     per-user-concurrency: ${SANDBOX_PER_USER_CONCURRENCY:2}
     queue-timeout: ${SANDBOX_QUEUE_TIMEOUT:120s}
     permit-lease: ${SANDBOX_PERMIT_LEASE:240s}
     retention-days: ${SANDBOX_RETENTION_DAYS:90}
+    # Warm pool (ADR-0026). Disable to fall back to M1 cold creation.
+    pool:
+      enabled: ${SANDBOX_POOL_ENABLED:true}
+      target: ${SANDBOX_POOL_TARGET:12}
+      max: ${SANDBOX_POOL_MAX:16}
+      idle-ttl: ${SANDBOX_POOL_IDLE_TTL:10m}
+      replenish-workers: ${SANDBOX_POOL_REPLENISH_WORKERS:2}
 
 # Rate-limit metrics live on a separate management port; do not expose other
 # actuator endpoints there.

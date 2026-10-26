@@ -26,6 +26,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
         "app.kb.qdrant.url=http://127.0.0.1:1",
         // Existing suites are not about quotas; dedicated tests lower these.
         "app.rate-limit.user-rpm=999999",
+        // CI contexts must not warm sandbox containers; sandbox suites opt in.
+        "app.sandbox.pool.enabled=false",
         "app.rate-limit.user-tpm=999999999",
         "app.rate-limit.auth-ip-rpm=999999",
         "management.server.port=0",

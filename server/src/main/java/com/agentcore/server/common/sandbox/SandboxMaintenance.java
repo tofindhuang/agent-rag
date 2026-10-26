@@ -1,5 +1,6 @@
 package com.agentcore.server.common.sandbox;
 
+import com.agentcore.server.config.SandboxPoolProperties;
 import com.agentcore.server.config.SandboxProperties;
 import com.agentcore.server.dao.ExecRecordDao;
 import com.github.dockerjava.api.DockerClient;
@@ -21,8 +22,9 @@ import org.springframework.stereotype.Component;
  * Self-healing for run_code (FR-3): mark audit rows orphaned by a JVM crash,
  * remove leftover labeled containers, and purge expired audit rows.
  *
- * <p>The age threshold is always larger than the maximum execution timeout so
- * a live execution is never touched.
+ * <p>One-shot execution containers use max timeout + grace. Pool containers
+ * are skipped until they are older than twice the idle TTL, so a warm pool is
+ * never mistaken for a leak.
  */
 @Component
 public class SandboxMaintenance {
@@ -30,16 +32,23 @@ public class SandboxMaintenance {
     private static final Logger log = LoggerFactory.getLogger(SandboxMaintenance.class);
     private static final Duration RECOVERY_GRACE = Duration.ofMinutes(2);
     private static final String SANDBOX_LABEL = "agent-core.sandbox";
+    private static final String ROLE_LABEL = "agent-core.sandbox.role";
+    private static final String POOL_ROLE = "pool";
 
     private final ExecRecordDao recordDao;
     private final DockerClient docker;
     private final SandboxProperties properties;
+    private final SandboxPoolProperties poolProperties;
 
     public SandboxMaintenance(
-            ExecRecordDao recordDao, DockerClient docker, SandboxProperties properties) {
+            ExecRecordDao recordDao,
+            DockerClient docker,
+            SandboxProperties properties,
+            SandboxPoolProperties poolProperties) {
         this.recordDao = recordDao;
         this.docker = docker;
         this.properties = properties;
+        this.poolProperties = poolProperties;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -84,12 +93,17 @@ public class SandboxMaintenance {
         }
     }
 
-    /** Removes labeled containers older than maxTimeout + grace; returns the number removed. */
+    /**
+     * Removes leaked containers: one-shot containers older than maxTimeout +
+     * grace, pool containers older than 2x idle TTL. Returns the number removed.
+     */
     public int removeOrphanContainers() {
-        long cutoffEpoch = Instant.now()
+        Instant now = Instant.now();
+        long executionCutoff = now
                 .minus(properties.maxTimeout())
                 .minus(RECOVERY_GRACE)
                 .getEpochSecond();
+        long poolCutoff = now.minus(poolProperties.idleTtl().multipliedBy(2)).getEpochSecond();
         try {
             List<Container> containers = docker.listContainersCmd()
                     .withShowAll(true)
@@ -98,6 +112,7 @@ public class SandboxMaintenance {
             int removed = 0;
             for (Container container : containers) {
                 Long created = container.getCreated();
+                long cutoffEpoch = isPoolContainer(container) ? poolCutoff : executionCutoff;
                 if (created == null || created >= cutoffEpoch) {
                     continue;
                 }
@@ -117,5 +132,10 @@ public class SandboxMaintenance {
             log.warn("failed to list orphan sandbox containers", ex);
             return 0;
         }
+    }
+
+    private static boolean isPoolContainer(Container container) {
+        Map<String, String> labels = container.getLabels();
+        return labels != null && POOL_ROLE.equals(labels.get(ROLE_LABEL));
     }
 }

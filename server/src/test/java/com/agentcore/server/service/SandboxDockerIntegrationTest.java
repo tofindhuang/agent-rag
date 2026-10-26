@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.agentcore.server.common.identity.ToolIdentity;
 import com.agentcore.server.common.sandbox.CancellationToken;
+import com.agentcore.server.common.sandbox.SandboxContainerFactory;
 import com.agentcore.server.common.sandbox.SandboxEventSink;
 import com.agentcore.server.common.sandbox.SandboxExecResult;
 import com.agentcore.server.config.SandboxProperties;
@@ -16,6 +17,9 @@ import com.agentcore.server.dto.sandbox.SandboxExecution;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import com.agentcore.server.support.AuthTestCalls;
 import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.InspectContainerResponse;
+import com.github.dockerjava.api.model.Capability;
+import com.github.dockerjava.api.model.HostConfig;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -47,6 +51,8 @@ class SandboxDockerIntegrationTest extends AbstractIntegrationTest {
     private SessionDao sessionDao;
     @Autowired
     private DockerClient docker;
+    @Autowired
+    private SandboxContainerFactory containerFactory;
     @Autowired
     private SandboxProperties properties;
     @Autowired
@@ -130,6 +136,48 @@ class SandboxDockerIntegrationTest extends AbstractIntegrationTest {
         ExecRecord row = execRecordDao.findById(execution.execId());
         assertThat(row.getOomKilled()).isTrue();
         assertThat(row.getStatus()).isEqualTo("failed");
+    }
+
+    @Test
+    void poolAndExecutionContainersShareTheSameIsolation() {
+        String poolId = containerFactory.createPoolContainer();
+        String execId = UUID.randomUUID().toString();
+        String executionId = containerFactory.createExecutionContainer(execId);
+        try {
+            InspectContainerResponse pool = docker.inspectContainerCmd(poolId).exec();
+            InspectContainerResponse execution = docker.inspectContainerCmd(executionId).exec();
+
+            assertThat(containerFactory.isRunning(poolId)).isTrue();
+            assertThat(pool.getConfig().getLabels())
+                    .containsEntry("agent-core.sandbox", "1")
+                    .containsEntry("agent-core.sandbox.role", "pool");
+            assertThat(execution.getConfig().getLabels())
+                    .containsEntry("agent-core.sandbox", "1")
+                    .containsEntry("agent-core.exec-id", execId);
+
+            assertThat(pool.getConfig().getUser()).isEqualTo("1000:1000");
+            assertThat(execution.getConfig().getUser()).isEqualTo("1000:1000");
+            HostConfig poolHost = pool.getHostConfig();
+            HostConfig execHost = execution.getHostConfig();
+            assertThat(poolHost.getNetworkMode()).isEqualTo("none");
+            assertThat(execHost.getNetworkMode()).isEqualTo("none");
+            assertThat(poolHost.getReadonlyRootfs()).isTrue();
+            assertThat(execHost.getReadonlyRootfs()).isTrue();
+            assertThat(poolHost.getMemory()).isEqualTo(execHost.getMemory()).isEqualTo(512L * 1024 * 1024);
+            assertThat(poolHost.getNanoCPUs()).isEqualTo(execHost.getNanoCPUs()).isEqualTo(1_000_000_000L);
+            assertThat(poolHost.getPidsLimit()).isEqualTo(execHost.getPidsLimit()).isEqualTo(64L);
+            assertThat(poolHost.getCapDrop()).containsExactly(Capability.ALL);
+            assertThat(execHost.getCapDrop()).containsExactly(Capability.ALL);
+            assertThat(poolHost.getSecurityOpts()).containsExactly("no-new-privileges");
+            assertThat(execHost.getSecurityOpts()).containsExactly("no-new-privileges");
+            assertThat(poolHost.getTmpFs()).containsKey("/work");
+            assertThat(execHost.getTmpFs()).containsKey("/work");
+            assertThat(poolHost.getInit()).isTrue();
+            assertThat(execHost.getInit()).isTrue();
+        } finally {
+            containerFactory.remove(poolId);
+            containerFactory.remove(executionId);
+        }
     }
 
     @Test

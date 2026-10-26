@@ -36,7 +36,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers(disabledWithoutDocker = true)
 @TestPropertySource(properties = {
         "spring.rabbitmq.listener.simple.auto-startup=false",
-        "app.kb.qdrant.url=http://127.0.0.1:1"
+        "app.kb.qdrant.url=http://127.0.0.1:1",
+        "app.sandbox.pool.enabled=false"
 })
 class RedisOutageIntegrationTest {
 

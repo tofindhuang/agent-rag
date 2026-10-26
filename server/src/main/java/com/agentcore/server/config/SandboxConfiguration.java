@@ -1,5 +1,9 @@
 package com.agentcore.server.config;
 
+import com.agentcore.server.common.sandbox.DockerSandboxContainerFactory;
+import com.agentcore.server.common.sandbox.SandboxContainerFactory;
+import com.agentcore.server.common.sandbox.SandboxContainerPool;
+import com.agentcore.server.common.sandbox.SandboxPoolMetrics;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.core.DefaultDockerClientConfig;
 import com.github.dockerjava.core.DockerClientConfig;
@@ -26,7 +30,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 public class SandboxConfiguration {
 
     @Bean(destroyMethod = "close")
-    public DockerClient sandboxDockerClient(SandboxProperties properties) {
+    public DockerClient sandboxDockerClient(
+            SandboxProperties properties, SandboxPoolProperties poolProperties) {
         DefaultDockerClientConfig.Builder builder =
                 DefaultDockerClientConfig.createDefaultConfigBuilder();
         if (properties.dockerHost() != null && !properties.dockerHost().isBlank()) {
@@ -36,11 +41,26 @@ public class SandboxConfiguration {
         DockerHttpClient httpClient = new ZerodepDockerHttpClient.Builder()
                 .dockerHost(config.getDockerHost())
                 .sslConfig(config.getSSLConfig())
-                .maxConnections(properties.globalConcurrency() + 4)
+                // Executions, pool creation and stats/replenish calls share one client.
+                .maxConnections(properties.globalConcurrency() + poolProperties.max() + 8)
                 .connectionTimeout(Duration.ofSeconds(5))
                 .responseTimeout(properties.maxTimeout().plusSeconds(30))
                 .build();
         return DockerClientImpl.getInstance(config, httpClient);
+    }
+
+    @Bean
+    public SandboxContainerFactory sandboxContainerFactory(
+            DockerClient sandboxDockerClient, SandboxProperties properties) {
+        return new DockerSandboxContainerFactory(sandboxDockerClient, properties);
+    }
+
+    @Bean(destroyMethod = "close")
+    public SandboxContainerPool sandboxContainerPool(
+            SandboxContainerFactory factory,
+            SandboxPoolProperties properties,
+            SandboxPoolMetrics metrics) {
+        return new SandboxContainerPool(factory, properties, java.time.Clock.systemUTC(), metrics);
     }
 
     @Bean(destroyMethod = "shutdown")
