@@ -83,6 +83,16 @@ app:
     refresh-ttl: 7d
     # Enable behind HTTPS in production; local dev uses plain http.
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
+  # OIDC login (ADR-0027). Disabled unless OAUTH_ENABLED=true.
+  oauth:
+    enabled: ${OAUTH_ENABLED:false}
+    issuer: ${OAUTH_ISSUER:}
+    client-id: ${OAUTH_CLIENT_ID:}
+    client-secret: ${OAUTH_CLIENT_SECRET:}
+    redirect-uri: ${OAUTH_REDIRECT_URI:}
+    web-base-url: ${OAUTH_WEB_BASE_URL:}
+    provider-name: ${OAUTH_PROVIDER_NAME:OIDC}
+    scopes: ${OAUTH_SCOPES:openid email profile}
   gateway:
     base-url: ${GATEWAY_URL:http://localhost:3001}
     # Static seed list for multi-instance routing (ADR-0024); comma separated.
