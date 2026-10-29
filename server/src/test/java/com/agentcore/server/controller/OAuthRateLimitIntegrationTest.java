@@ -13,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 /** OAuth start/callback share the credential endpoint IP limit. */
 @AutoConfigureMockMvc
@@ -41,10 +42,18 @@ class OAuthRateLimitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void thirdStartFromTheSameIpIsRateLimited() throws Exception {
-        mockMvc.perform(get("/api/auth/oauth/start")).andExpect(status().isFound());
-        mockMvc.perform(get("/api/auth/oauth/start")).andExpect(status().isFound());
-        mockMvc.perform(get("/api/auth/oauth/start"))
+        String ip = "10.42." + (System.nanoTime() % 250) + "." + (System.nanoTime() % 250);
+        mockMvc.perform(startFrom(ip)).andExpect(status().isFound());
+        mockMvc.perform(startFrom(ip)).andExpect(status().isFound());
+        mockMvc.perform(startFrom(ip))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
+    }
+
+    private static MockHttpServletRequestBuilder startFrom(String ip) {
+        return get("/api/auth/oauth/start").with(request -> {
+            request.setRemoteAddr(ip);
+            return request;
+        });
     }
 }

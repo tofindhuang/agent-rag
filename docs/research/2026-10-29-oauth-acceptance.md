@@ -23,6 +23,7 @@
 | `OAuthRateLimitIntegrationTest` | start 共享认证 IP 限流，第 3 次 429 | 1 例通过 |
 | 既有认证回归 | 注册/登录/refresh/改密/logout-all/空密码账号 | 全部通过 |
 | Web | `npm run typecheck`、`npm run build` | 通过 |
+| 完整 server 套件 | 全量回归（含既有 KB/沙箱/认证） | **469 通过 / 0 失败 / 2 skipped** |
 
 关键安全断言：
 
