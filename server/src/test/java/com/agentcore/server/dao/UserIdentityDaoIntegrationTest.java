@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.agentcore.server.domain.UserIdentity;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class UserIdentityDaoIntegrationTest extends AbstractIntegrationTest {
     void updatesOnlyTheLastLoginTimestamp() {
         UserIdentity identity = identity(insertUser(), "keycloak", "user-1");
         identityDao.insert(identity);
-        LocalDateTime loggedIn = LocalDateTime.now();
+        LocalDateTime loggedIn = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS);
 
         int updated = identityDao.updateLastLoginAt(identity.getId(), loggedIn);
 
