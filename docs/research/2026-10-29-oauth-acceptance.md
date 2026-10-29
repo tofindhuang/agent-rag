@@ -36,14 +36,17 @@
 
 ## 真实 provider 冒烟
 
-**尚未执行。** 本机没有可用的 Keycloak/Logto 部署与 client 凭证；本轮使用 JDK `HttpServer` 的 fake OIDC provider 覆盖协议与异常矩阵。
+已用本地 **Keycloak 26.0.8** 完成一次真实 OIDC 冒烟（一次性容器，H2 dev 存储，不触碰本地数据库）：
 
-部署真实 provider 时按以下步骤补一次：
+- realm：`agent-core`；client：`agent-core-web`（confidential，redirect URI `http://localhost:8080/api/auth/oauth/callback`）；用户 `alice`（`alice@example.com`，email verified）。
+- 结果：
+  1. Web 登录页显示「使用 Keycloak 登录」，授权后回到聊天页；
+  2. OAuth-only 账号显示「建议设置本地密码」提醒；设置密码成功后切换为「修改密码」；
+  3. 设置页解绑 Keycloak 成功；重新绑定后回到 `/settings/account?oauth=linked` 并显示成功提示；
+  4. 关闭 `OAUTH_ENABLED` 重启后，登录页不再显示 OAuth 入口，`alice@example.com` + 新密码登录成功。
+- 冒烟中发现并修复：绑定回调固定跳 `/settings/account`，但 Web 只有 `/settings`；已补同内容路由 `web/app/settings/account/page.tsx`。
 
-1. `OAUTH_ENABLED=true`，配置 `OAUTH_ISSUER` / `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET`；
-2. `OAUTH_REDIRECT_URI=http(s)://<server>/api/auth/oauth/callback`，与 provider 注册值一致；
-3. `OAUTH_WEB_BASE_URL=http(s)://<web>`；
-4. 验证：新邮箱登录建号、已有邮箱拒绝并提示绑定、密码账号绑定后可 OAuth 登录、OAuth-only 补设密码后可用密码登录、关闭 `OAUTH_ENABLED` 后密码登录正常。
+未覆盖的 provider 差异（Entra/Apple/Logto 的 claim/issuer 特例）仍需部署时各自冒烟。
 
 ## 残余风险
 
