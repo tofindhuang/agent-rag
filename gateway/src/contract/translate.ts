@@ -376,18 +376,28 @@ export class RunTranslator {
   private translateCompaction(event: PiEventLike): DomainEvent[] {
     const reason = event.reason;
     if (reason !== "manual" && reason !== "threshold" && reason !== "overflow") return [];
+    // An aborted or failed compaction produced no summary: reporting it would
+    // show a fake "compacted" notice and pollute the operations counter.
+    if (event.aborted === true) return [];
 
     const result = event.result as
-      | { tokensBefore?: number; estimatedTokensAfter?: number }
+      | { tokensBefore?: number; estimatedTokensAfter?: number; summary?: unknown }
       | undefined;
+    if (!result) return [];
+
+    const summary =
+      typeof result.summary === "string" && result.summary.trim().length > 0
+        ? result.summary
+        : undefined;
     return [
       {
         type: "compaction",
         data: {
           reason,
-          tokensBefore: typeof result?.tokensBefore === "number" ? result.tokensBefore : 0,
+          tokensBefore: typeof result.tokensBefore === "number" ? result.tokensBefore : 0,
           tokensAfter:
-            typeof result?.estimatedTokensAfter === "number" ? result.estimatedTokensAfter : null,
+            typeof result.estimatedTokensAfter === "number" ? result.estimatedTokensAfter : null,
+          ...(summary === undefined ? {} : { summary }),
         },
       },
     ];

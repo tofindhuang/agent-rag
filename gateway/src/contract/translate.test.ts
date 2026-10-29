@@ -296,3 +296,102 @@ test("prefers provider usage for context_usage and clears it on compaction", () 
   } as unknown as AgentSessionEvent);
   assert.deepEqual(seen, [1_234, null]);
 });
+
+test("compaction carries the pi summary verbatim", () => {
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+  });
+
+  const events = translator.translate({
+    type: "compaction_end",
+    reason: "threshold",
+    result: {
+      summary: "## 事实\n- 用户在北京\n- 偏好中文",
+      firstKeptEntryId: "entry-9",
+      tokensBefore: 12_400,
+      estimatedTokensAfter: 3_100,
+    },
+    aborted: false,
+  } as unknown as AgentSessionEvent);
+
+  assert.deepEqual(events, [
+    {
+      type: "compaction",
+      data: {
+        reason: "threshold",
+        tokensBefore: 12_400,
+        tokensAfter: 3_100,
+        summary: "## 事实\n- 用户在北京\n- 偏好中文",
+      },
+    },
+  ]);
+});
+
+test("compaction omits a blank summary", () => {
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+  });
+
+  const events = translator.translate({
+    type: "compaction_end",
+    reason: "manual",
+    result: { summary: "   \n\t ", tokensBefore: 900, estimatedTokensAfter: 300 },
+    aborted: false,
+  } as unknown as AgentSessionEvent);
+
+  assert.equal(events.length, 1);
+  const event = events[0];
+  assert.equal(event?.type, "compaction");
+  if (event?.type === "compaction") {
+    assert.equal(event.data.summary, undefined);
+    assert.equal(event.data.tokensBefore, 900);
+  }
+});
+
+test("aborted compaction emits no compaction event but still reports context usage", () => {
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+    contextUsage: () => ({ tokens: null, contextWindow: 10_000, source: "estimated" }),
+  });
+
+  const events = translator.translate({
+    type: "compaction_end",
+    reason: "overflow",
+    result: undefined,
+    aborted: true,
+    errorMessage: "aborted by user",
+  } as unknown as AgentSessionEvent);
+
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["context_usage"],
+  );
+});
+
+test("failed compaction without a result emits no compaction event", () => {
+  const translator = new RunTranslator({
+    runId: "run-1",
+    turnId: "turn-1",
+    sessionId: "session-1",
+    contractVersion: "1",
+  });
+
+  const events = translator.translate({
+    type: "compaction_end",
+    reason: "threshold",
+    result: undefined,
+    aborted: false,
+    errorMessage: "summarizer failed",
+  } as unknown as AgentSessionEvent);
+
+  assert.deepEqual(events, []);
+});

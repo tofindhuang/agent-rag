@@ -102,6 +102,8 @@ export type DomainEvent =
         reason: "manual" | "threshold" | "overflow";
         tokensBefore: number;
         tokensAfter: number | null;
+        /** Compaction summary body; absent when pi produced none. */
+        summary?: string;
       };
     }
   | { type: "retry"; data: { attempt: number; maxAttempts: number; delayMs: number; message: string } }

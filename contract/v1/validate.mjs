@@ -93,6 +93,20 @@ for (const kind of ["gateway", "consumer"]) {
         if (typeof frame.data.truncated !== "boolean") fail(path, "tool_result.truncated missing");
         if (typeof frame.data.content !== "string") fail(path, "tool_result.content missing");
       }
+      for (const frame of frames.filter((item) => item.event === "compaction")) {
+        if ("summary" in frame.data) {
+          if (typeof frame.data.summary !== "string") fail(path, "compaction.summary must be a string");
+          if (frame.data.summary.trim().length === 0) {
+            fail(path, "compaction.summary must be omitted when blank");
+          }
+        }
+        for (const key of ["tokensBefore"]) {
+          if (typeof frame.data[key] !== "number") fail(path, `compaction.${key} missing`);
+        }
+        if (frame.data.tokensAfter !== null && typeof frame.data.tokensAfter !== "number") {
+          fail(path, "compaction.tokensAfter must be a number or null");
+        }
+      }
     } else {
       const frames = fixture.input?.frames;
       if (!Array.isArray(frames) || frames.length === 0) fail(path, "input.frames missing");

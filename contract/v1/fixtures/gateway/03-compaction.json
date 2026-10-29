@@ -4,10 +4,19 @@
   "name": "compaction",
   "description": "上下文压缩事件与正常回复",
   "input": {
-    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "run": {
+      "runId": "run-1",
+      "turnId": "turn-1",
+      "sessionId": "session-1"
+    },
     "events": [
-      { "type": "agent_start" },
-      { "type": "compaction_start", "reason": "threshold" },
+      {
+        "type": "agent_start"
+      },
+      {
+        "type": "compaction_start",
+        "reason": "threshold"
+      },
       {
         "type": "compaction_end",
         "reason": "threshold",
@@ -32,7 +41,12 @@
         "type": "message_end",
         "message": {
           "role": "assistant",
-          "content": [{ "type": "text", "text": "已压缩上下文，我们继续。" }],
+          "content": [
+            {
+              "type": "text",
+              "text": "已压缩上下文，我们继续。"
+            }
+          ],
           "usage": {
             "input": 8000,
             "output": 20,
@@ -51,7 +65,10 @@
           "stopReason": "stop"
         }
       },
-      { "type": "agent_settled", "aborted": false }
+      {
+        "type": "agent_settled",
+        "aborted": false
+      }
     ]
   },
   "expected": {
@@ -69,9 +86,20 @@
       {
         "seq": 2,
         "event": "compaction",
-        "data": { "reason": "threshold", "tokensBefore": 10000, "tokensAfter": 2000 }
+        "data": {
+          "reason": "threshold",
+          "tokensBefore": 10000,
+          "tokensAfter": 2000,
+          "summary": "用户之前讨论了北京天气与出行建议。"
+        }
       },
-      { "seq": 3, "event": "text_delta", "data": { "delta": "已压缩上下文，我们继续。" } },
+      {
+        "seq": 3,
+        "event": "text_delta",
+        "data": {
+          "delta": "已压缩上下文，我们继续。"
+        }
+      },
       {
         "seq": 4,
         "event": "message_end",
@@ -99,7 +127,14 @@
           "stopReason": "stop"
         }
       },
-      { "seq": 5, "event": "run_settled", "data": { "status": "completed", "turnId": "turn-1" } }
+      {
+        "seq": 5,
+        "event": "run_settled",
+        "data": {
+          "status": "completed",
+          "turnId": "turn-1"
+        }
+      }
     ],
     "invariants": {
       "firstEvent": "run_started",
