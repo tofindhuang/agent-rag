@@ -3,11 +3,15 @@ package com.agentcore.server.controller;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.domain.CompactionPage;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.domain.SessionCompaction;
 import com.agentcore.server.dto.chat.CreateSessionRequest;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
+import com.agentcore.server.dto.chat.CompactionListResponse;
+import com.agentcore.server.dto.chat.CompactionSummary;
 import com.agentcore.server.dto.chat.MessageListResponse;
 import com.agentcore.server.dto.chat.MessageSummary;
 import com.agentcore.server.dto.chat.RenameSessionRequest;
@@ -176,6 +180,20 @@ public class ChatController {
                 page.nextBeforeId());
     }
 
+    /**
+     * Compaction summaries of an active owned session (ADR-0028). Archived
+     * sessions answer 404 like {@code history}; restore them first.
+     */
+    @GetMapping("/sessions/{sessionId}/compactions")
+    public CompactionListResponse compactions(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId) {
+        CompactionPage page = chatService.compactions(user.userId(), sessionId);
+        return new CompactionListResponse(
+                page.items().stream().map(ChatController::toCompaction).toList(),
+                page.total());
+    }
+
     @PatchMapping("/sessions/{sessionId}")
     public void renameSession(
             @AuthenticationPrincipal AuthenticatedUser user,
@@ -235,6 +253,18 @@ public class ChatController {
                 message.getDeliveryStatus(),
                 toInstant(message.getCreatedAt()),
                 parseDetails(message));
+    }
+
+    private static CompactionSummary toCompaction(SessionCompaction compaction) {
+        return new CompactionSummary(
+                compaction.getId(),
+                compaction.getAfterMessageId(),
+                compaction.getReason(),
+                compaction.getSummary(),
+                Boolean.TRUE.equals(compaction.getTruncated()),
+                compaction.getTokensBefore(),
+                compaction.getTokensAfter(),
+                toInstant(compaction.getCreatedAt()));
     }
 
     private JsonNode parseDetails(Message message) {

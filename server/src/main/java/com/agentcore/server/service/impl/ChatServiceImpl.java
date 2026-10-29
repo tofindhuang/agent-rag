@@ -13,11 +13,14 @@ import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
+import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.dao.SessionModelDao;
+import com.agentcore.server.domain.CompactionPage;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.domain.SessionCompaction;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
 import com.agentcore.server.service.ProfileFactService;
@@ -65,6 +68,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class ChatServiceImpl implements ChatService {
 
+    /** Newest summaries served per session; older ones are subsumed (ADR-0028). */
+    private static final int COMPACTION_PAGE_LIMIT = 50;
+
     private static final Logger log = LoggerFactory.getLogger(ChatServiceImpl.class);
     private static final String STATUS_ACTIVE = "active";
     private static final String STREAM_INTERRUPTED = "STREAM_INTERRUPTED";
@@ -73,6 +79,7 @@ public class ChatServiceImpl implements ChatService {
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
     private final SessionDao sessionDao;
+    private final SessionCompactionDao sessionCompactionDao;
     private final KbSessionKnowledgeBaseDao sessionKbDao;
     private final KbKnowledgeBaseService knowledgeBaseService;
     private final SessionModelDao sessionModelDao;
@@ -91,6 +98,7 @@ public class ChatServiceImpl implements ChatService {
             GatewayProperties gateway,
             ObjectMapper objectMapper,
             SessionDao sessionDao,
+            SessionCompactionDao sessionCompactionDao,
             KbSessionKnowledgeBaseDao sessionKbDao,
             KbKnowledgeBaseService knowledgeBaseService,
             SessionModelDao sessionModelDao,
@@ -107,6 +115,7 @@ public class ChatServiceImpl implements ChatService {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
+        this.sessionCompactionDao = sessionCompactionDao;
         this.sessionKbDao = sessionKbDao;
         this.knowledgeBaseService = knowledgeBaseService;
         this.sessionModelDao = sessionModelDao;
@@ -356,6 +365,18 @@ public class ChatServiceImpl implements ChatService {
         return new MessagePage(ascending(newest), hasMore);
     }
 
+    @Override
+    public CompactionPage compactions(long userId, String sessionId) {
+        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
+        }
+        List<SessionCompaction> newestFirst =
+                sessionCompactionDao.listRecent(sessionId, COMPACTION_PAGE_LIMIT);
+        List<SessionCompaction> items = new ArrayList<>(newestFirst);
+        Collections.reverse(items);
+        return new CompactionPage(items, sessionCompactionDao.countBySession(sessionId));
+    }
+
     private static List<Message> ascending(List<Message> newestFirst) {
         List<Message> items = new ArrayList<>(newestFirst);
         Collections.reverse(items);
@@ -542,7 +563,9 @@ public class ChatServiceImpl implements ChatService {
                             data.hasNonNull("tokensBefore")
                                     ? data.path("tokensBefore").asLong() : null,
                             data.hasNonNull("tokensAfter")
-                                    ? data.path("tokensAfter").asLong() : null);
+                                    ? data.path("tokensAfter").asLong() : null,
+                            data.hasNonNull("summary")
+                                    ? data.path("summary").asText(null) : null);
                     case "run_settled" -> {
                         JsonNode error = data.path("error");
                         projection.settleRun(

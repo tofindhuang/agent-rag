@@ -80,6 +80,10 @@
           AND role = 'user'
     </update>
 
+    <select id="maxIdBySession" resultType="java.lang.Long">
+        SELECT MAX(id) FROM messages WHERE session_id = #{sessionId}
+    </select>
+
     <select id="existsBySession" resultType="boolean">
         SELECT EXISTS (
             SELECT 1 FROM messages

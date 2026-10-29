@@ -35,6 +35,9 @@ public interface MessageDao extends BaseMapper<Message> {
             @Param("turnId") String turnId,
             @Param("deliveryStatus") String deliveryStatus);
 
+    /** Highest projected message id in the session; anchors a compaction summary card. */
+    Long maxIdBySession(@Param("sessionId") String sessionId);
+
     /** True once the session has any projected message; drives requireExisting. */
     boolean existsBySession(@Param("sessionId") String sessionId);
 

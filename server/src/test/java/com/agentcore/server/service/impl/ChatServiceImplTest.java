@@ -14,6 +14,7 @@ import com.agentcore.server.common.ratelimit.RateLimitDecision;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
+import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.KbKnowledgeBaseService;
@@ -96,6 +97,7 @@ class ChatServiceImplTest {
                 properties,
                 mapper,
                 sessionDao,
+                mock(SessionCompactionDao.class),
                 mock(KbSessionKnowledgeBaseDao.class),
                 knowledgeBaseService,
                 mock(SessionModelDao.class),

@@ -16,6 +16,7 @@ import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
+import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.Session;
 import com.agentcore.server.service.ChatProjectionService;
@@ -61,6 +62,9 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SessionDao sessionDao;
+
+    @Autowired
+    private SessionCompactionDao sessionCompactionDao;
 
     @Autowired
     private KbSessionKnowledgeBaseDao sessionKbDao;
@@ -174,6 +178,7 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 gatewayProperties,
                 objectMapper,
                 sessionDao,
+                sessionCompactionDao,
                 sessionKbDao,
                 knowledgeBaseService,
                 sessionModelDao,

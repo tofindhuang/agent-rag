@@ -4,11 +4,13 @@ import com.agentcore.server.dao.CompactionEventDao;
 import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
+import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.domain.CompactionEvent;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.Run;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.domain.SessionCompaction;
 import com.agentcore.server.domain.TurnKey;
 import com.agentcore.server.service.ChatProjectionService;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -30,10 +32,13 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     private static final int TOOL_DETAILS_LIMIT_BYTES = 8_192;
     private static final int ERROR_MESSAGE_LIMIT_BYTES = 1_024;
     private static final int TITLE_LIMIT = 20;
+    /** Guard against a runaway summarizer; real summaries are ~1-2k tokens. */
+    private static final int SUMMARY_LIMIT_CHARS = 200_000;
 
     private final MessageDao messageDao;
     private final RunDao runDao;
     private final CompactionEventDao compactionEventDao;
+    private final SessionCompactionDao sessionCompactionDao;
     private final SessionDao sessionDao;
     private final MessageCache messageCache;
     private final ObjectMapper objectMapper;
@@ -42,12 +47,14 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
             MessageDao messageDao,
             RunDao runDao,
             CompactionEventDao compactionEventDao,
+            SessionCompactionDao sessionCompactionDao,
             SessionDao sessionDao,
             MessageCache messageCache,
             ObjectMapper objectMapper) {
         this.messageDao = messageDao;
         this.runDao = runDao;
         this.compactionEventDao = compactionEventDao;
+        this.sessionCompactionDao = sessionCompactionDao;
         this.sessionDao = sessionDao;
         this.messageCache = messageCache;
         this.objectMapper = objectMapper;
@@ -134,7 +141,8 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
             String requestId,
             String reason,
             Long tokensBefore,
-            Long tokensAfter) {
+            Long tokensAfter,
+            String summary) {
         CompactionEvent event = new CompactionEvent();
         event.setUserId(userId);
         event.setSessionId(turn.sessionId());
@@ -146,6 +154,27 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
         event.setTokensAfter(tokensAfter);
         event.setCreatedAt(nowUtc());
         compactionEventDao.insert(event);
+
+        if (summary == null || summary.isBlank()) {
+            // Older gateways omit the summary; the card is simply absent.
+            return;
+        }
+        SessionCompaction compaction = new SessionCompaction();
+        compaction.setSessionId(turn.sessionId());
+        compaction.setAfterMessageId(messageDao.maxIdBySession(turn.sessionId()));
+        compaction.setReason(reason);
+        boolean truncated = summary.length() > SUMMARY_LIMIT_CHARS;
+        compaction.setSummary(truncated ? safePrefix(summary, SUMMARY_LIMIT_CHARS) : summary);
+        compaction.setTruncated(truncated);
+        compaction.setTokensBefore(tokensBefore);
+        compaction.setTokensAfter(tokensAfter);
+        compaction.setCreatedAt(nowUtc());
+        sessionCompactionDao.insert(compaction);
+        if (truncated) {
+            org.slf4j.LoggerFactory.getLogger(ChatProjectionServiceImpl.class).warn(
+                    "compaction summary truncated to {} chars (session {})",
+                    SUMMARY_LIMIT_CHARS, turn.sessionId());
+        }
     }
 
     @Override
@@ -277,6 +306,15 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
     }
 
     /** Truncates on a UTF-8 byte budget without splitting a code point. */
+    /** Character-count truncation that never splits a surrogate pair. */
+    private static String safePrefix(String value, int maxChars) {
+        int end = maxChars;
+        if (Character.isHighSurrogate(value.charAt(end - 1))) {
+            end -= 1;
+        }
+        return value.substring(0, end);
+    }
+
     private static String truncateUtf8(String value, int maxBytes) {
         if (value == null || value.getBytes(StandardCharsets.UTF_8).length <= maxBytes) {
             return value;

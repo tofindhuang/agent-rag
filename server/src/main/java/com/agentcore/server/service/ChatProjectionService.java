@@ -31,14 +31,18 @@ public interface ChatProjectionService {
     void appendTool(
             TurnKey turn, int ordinal, String content, String toolName, String detailsJson);
 
-    /** Records one compaction reported by the gateway (FR-7). */
+    /**
+     * Records one successful compaction: the FR-7 metrics row always, and the
+     * user-visible summary (ADR-0028) when the gateway sent one.
+     */
     void recordCompaction(
             TurnKey turn,
             long userId,
             String requestId,
             String reason,
             Long tokensBefore,
-            Long tokensAfter);
+            Long tokensAfter,
+            String summary);
 
     /** Settles the run; any settled run means the user message reached the gateway. */
     void settleRun(

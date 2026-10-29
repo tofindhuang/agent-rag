@@ -1,5 +1,6 @@
 package com.agentcore.server.service;
 
+import com.agentcore.server.domain.CompactionPage;
 import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
 import java.io.IOException;
@@ -43,6 +44,9 @@ public interface ChatService {
 
     /** Projected history page (ascending), Redis-first for the newest page. */
     MessagePage history(long userId, String sessionId, Long beforeId, int limit);
+
+    /** Compaction summaries of an active session, oldest first, capped at 50. */
+    CompactionPage compactions(long userId, String sessionId);
 
     /** Switches the session model; effective from the next prompt. */
     void switchModel(long userId, String sessionId, Long modelId);

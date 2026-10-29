@@ -14,6 +14,7 @@ import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
+import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.config.GatewayProperties;
 import com.agentcore.server.domain.Session;
@@ -64,6 +65,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SessionDao sessionDao;
+
+    @Autowired
+    private SessionCompactionDao sessionCompactionDao;
 
     @Autowired
     private KbSessionKnowledgeBaseDao sessionKbDao;
@@ -236,6 +240,30 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
         assertThat(event.get("reason")).isEqualTo("threshold");
         assertThat(((Number) event.get("tokens_before")).longValue()).isEqualTo(1000);
         assertThat(((Number) event.get("tokens_after")).longValue()).isEqualTo(300);
+
+        // The summary is a separate projection: content never enters the metrics table.
+        var summary = jdbc.queryForMap(
+                "SELECT after_message_id, reason, summary, truncated, tokens_before, tokens_after"
+                        + " FROM session_compactions WHERE session_id = ?",
+                sessionId);
+        assertThat(summary.get("summary")).isEqualTo("用户之前讨论了北京天气。");
+        assertThat(summary.get("reason")).isEqualTo("threshold");
+        assertThat(summary.get("truncated")).isEqualTo(false);
+        Long userMessageId = jdbc.queryForObject(
+                "SELECT id FROM messages WHERE session_id = ? AND role = 'user'"
+                        + " ORDER BY id ASC LIMIT 1",
+                Long.class, sessionId);
+        assertThat(((Number) summary.get("after_message_id")).longValue())
+                .isEqualTo(userMessageId);
+
+        String compactions = mockMvc.perform(
+                        get("/api/chat/sessions/" + sessionId + "/compactions")
+                                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat((String) JsonPath.read(compactions, "$.items[0].summary"))
+                .isEqualTo("用户之前讨论了北京天气。");
+        assertThat(((Number) JsonPath.read(compactions, "$.total")).longValue()).isEqualTo(1);
     }
 
     @Test
@@ -354,6 +382,7 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 gatewayProperties,
                 objectMapper,
                 sessionDao,
+                sessionCompactionDao,
                 sessionKbDao,
                 knowledgeBaseService,
                 sessionModelDao,

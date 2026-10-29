@@ -252,7 +252,8 @@ public final class FakeGateway {
             appendFrame(sse, 3, "text_delta", "{\"delta\":\"partial text\"}");
         } else if ("compaction".equals(mode)) {
             appendFrame(sse, 2, "compaction",
-                    "{\"reason\":\"threshold\",\"tokensBefore\":1000,\"tokensAfter\":300}");
+                    "{\"reason\":\"threshold\",\"tokensBefore\":1000,\"tokensAfter\":300,"
+                            + "\"summary\":\"用户之前讨论了北京天气。\"}");
             appendFrame(sse, 3, "message_end",
                     assistantMessage(1, "compacted answer", "stop", "[]", 40, 8));
             appendFrame(sse, 4, "run_settled",
