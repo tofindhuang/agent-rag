@@ -5,9 +5,11 @@ import styles from "./chat.module.css";
 export function ContextUsageMeter({
   usage,
   compacted,
+  onCompactedClick,
 }: {
   usage: ContextUsageData;
   compacted: boolean;
+  onCompactedClick?: () => void;
 }) {
   const percent = usage.percent == null ? null : Math.round(usage.percent);
   const warning =
@@ -46,7 +48,20 @@ export function ContextUsageMeter({
       ) : null}
       <span>
         {label}
-        {compacted ? <span className={styles.contextCompacted}>已压缩</span> : null}
+        {compacted ? (
+          onCompactedClick ? (
+            <button
+              type="button"
+              className={styles.contextCompacted}
+              onClick={onCompactedClick}
+              title="跳到最新的压缩摘要"
+            >
+              已压缩
+            </button>
+          ) : (
+            <span className={styles.contextCompacted}>已压缩</span>
+          )
+        ) : null}
       </span>
     </span>
   );

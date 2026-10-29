@@ -1,6 +1,12 @@
 import { ApiError, toApiError } from "./errors";
 import { authFetch } from "./http";
-import type { HistoryItem, MessagePage, SessionPage, SessionSummary } from "@/types/chat";
+import type {
+  CompactionList,
+  HistoryItem,
+  MessagePage,
+  SessionPage,
+  SessionSummary,
+} from "@/types/chat";
 
 interface CreateSessionResponse {
   sessionId?: unknown;
@@ -143,6 +149,19 @@ export async function fetchHistory(
   );
   if (!response.ok) throw await toApiError(response);
   return parseMessagePage(await response.json());
+}
+
+/** Compaction summaries of an active session, oldest first (ADR-0028). */
+export async function fetchCompactions(sessionId: string): Promise<CompactionList> {
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/compactions`,
+  );
+  if (!response.ok) throw await toApiError(response);
+  const body = (await response.json()) as { items?: unknown; total?: unknown };
+  return {
+    items: Array.isArray(body.items) ? (body.items as CompactionList["items"]) : [],
+    total: typeof body.total === "number" ? body.total : 0,
+  };
 }
 
 /** Opens the SSE prompt stream; the caller owns the returned body. */

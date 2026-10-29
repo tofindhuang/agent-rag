@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   archiveChatSession,
   createChatSession,
+  fetchCompactions,
   fetchHistory,
   listChatSessions,
   openChatStream,
@@ -15,7 +16,13 @@ import {
 } from "@/lib/api/chat";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
-import type { ChatMessage, HistoryItem, SessionSummary, ToolActivity } from "@/types/chat";
+import type {
+  ChatMessage,
+  CompactionSummary,
+  HistoryItem,
+  SessionSummary,
+  ToolActivity,
+} from "@/types/chat";
 import type { ContextUsageData, MessageEndData } from "@/types/gateway";
 import { parseCitationPassages, parseGatewayEvent } from "@/types/gateway";
 import type { CreateSessionOptions } from "@/lib/api/chat";
@@ -107,7 +114,10 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [contextUsage, setContextUsage] = useState<ContextUsageData | null>(null);
   const [contextCompacted, setContextCompacted] = useState(false);
-  const lastContextPercent = useRef<number | null>(null);
+  // Summaries come from the server projection; live ones arrive mid-session.
+  const [compactions, setCompactions] = useState<CompactionSummary[]>([]);
+  const [liveCompactions, setLiveCompactions] = useState<CompactionSummary[]>([]);
+  const latestCompactionRef = useRef<HTMLDivElement | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,6 +164,19 @@ export function useChat() {
     }
   }, [fail]);
 
+  /** Summaries are optional UI data: a failure must never surface as a chat error. */
+  const loadCompactions = useCallback(async (sessionId: string) => {
+    try {
+      const page = await fetchCompactions(sessionId);
+      if (currentIdRef.current !== sessionId) return;
+      setCompactions(page.items);
+      if (page.items.length > 0) setContextCompacted(true);
+    } catch (cause: unknown) {
+      if (currentIdRef.current !== sessionId) return;
+      console.error(cause);
+    }
+  }, []);
+
   const selectSession = useCallback(
     async (sessionId: string) => {
       if (currentIdRef.current === sessionId) return;
@@ -165,14 +188,15 @@ export function useChat() {
       setMessages([]);
       setContextUsage(null);
       setContextCompacted(false);
-      lastContextPercent.current = null;
+      setCompactions([]);
+      setLiveCompactions([]);
       setHistoryHasMore(false);
       setNextBeforeId(null);
       setNotice(null);
       clearError();
-      await loadHistory(sessionId);
+      await Promise.all([loadHistory(sessionId), loadCompactions(sessionId)]);
     },
-    [clearError, loadHistory],
+    [clearError, loadCompactions, loadHistory],
   );
 
   const refreshSessions = useCallback(async (): Promise<SessionSummary[]> => {
@@ -263,7 +287,7 @@ export function useChat() {
         clearError();
         setContextUsage(null);
         setContextCompacted(false);
-        lastContextPercent.current = null;
+        setLiveCompactions([]);
         setNotice("已切换模型，重新发送消息即可使用新模型");
         return true;
       } catch (cause: unknown) {
@@ -511,25 +535,31 @@ export function useChat() {
           case "message_end":
             finalizeMessage(event.data);
             break;
-          case "context_usage": {
-            const previous = lastContextPercent.current;
-            const next = event.data.percent;
-            if (
-              (previous != null && next != null && previous - next >= 15) ||
-              (previous != null && next == null && previous >= event.data.compactionThresholdPercent)
-            ) {
-              // pi may compact between runs, after run_settled; the usage drop is
-              // the only event the next run sees.
-              setContextCompacted(true);
-            }
-            lastContextPercent.current = next;
+          case "context_usage":
             setContextUsage(event.data);
             break;
-          }
-          case "compaction":
+          case "compaction": {
+            // The marker is record-driven: the server has the same row (ADR-0028).
             setContextCompacted(true);
             setNotice("上下文已压缩");
+            const summary = event.data.summary;
+            if (typeof summary === "string" && summary.trim().length > 0) {
+              setLiveCompactions((previous) => [
+                ...previous,
+                {
+                  id: -(previous.length + 1),
+                  afterMessageId: null,
+                  reason: event.data.reason,
+                  summary,
+                  truncated: false,
+                  tokensBefore: event.data.tokensBefore,
+                  tokensAfter: event.data.tokensAfter,
+                  createdAt: new Date().toISOString(),
+                },
+              ]);
+            }
             break;
+          }
           case "retry":
             setNotice(`模型限流，正在重试（${event.data.attempt}/${event.data.maxAttempts}）`);
             break;
@@ -626,6 +656,10 @@ export function useChat() {
       : currentSession.modelLabel
     : null;
 
+  const scrollToLatestCompaction = useCallback(() => {
+    latestCompactionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
   return {
     sessions,
     sessionsLoading,
@@ -641,6 +675,10 @@ export function useChat() {
     currentKbName,
     contextUsage,
     contextCompacted,
+    compactions,
+    liveCompactions,
+    latestCompactionRef,
+    scrollToLatestCompaction,
     messages,
     input,
     setInput,

@@ -14,6 +14,7 @@ interface ComposerProps {
   busy: boolean;
   contextUsage: ContextUsageData | null;
   contextCompacted: boolean;
+  onCompactedClick?: () => void;
 }
 
 const MAX_INPUT_HEIGHT = 200;
@@ -27,6 +28,7 @@ export function Composer({
   busy,
   contextUsage,
   contextCompacted,
+  onCompactedClick,
 }: ComposerProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -68,7 +70,11 @@ export function Composer({
       </div>
       {contextUsage ? (
         <div className={styles.composerFooter}>
-          <ContextUsageMeter usage={contextUsage} compacted={contextCompacted} />
+          <ContextUsageMeter
+            usage={contextUsage}
+            compacted={contextCompacted}
+            onCompactedClick={onCompactedClick}
+          />
         </div>
       ) : null}
     </div>

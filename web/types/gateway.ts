@@ -114,7 +114,13 @@ export type GatewayEvent =
   | { type: "context_usage"; data: ContextUsageData }
   | {
       type: "compaction";
-      data: { reason: string; tokensBefore: number; tokensAfter: number | null };
+      data: {
+        reason: string;
+        tokensBefore: number;
+        tokensAfter: number | null;
+        /** Absent when pi produced no summary (older gateways included). */
+        summary?: string;
+      };
     }
   | { type: "retry"; data: { attempt: number; maxAttempts: number; delayMs: number; message: string } }
   | {

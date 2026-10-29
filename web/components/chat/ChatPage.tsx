@@ -123,6 +123,10 @@ export function ChatPage() {
             error={plainError}
             notice={chat.notice}
             historyLoading={chat.historyLoading}
+            compactions={chat.compactions}
+            liveCompactions={chat.liveCompactions}
+            latestCompactionRef={chat.latestCompactionRef}
+            historyHasMore={chat.historyHasMore}
           />
 
           <Composer
@@ -134,6 +138,7 @@ export function ChatPage() {
             busy={chat.busy}
             contextUsage={chat.contextUsage}
             contextCompacted={chat.contextCompacted}
+            onCompactedClick={chat.scrollToLatestCompaction}
           />
         </main>
       </div>

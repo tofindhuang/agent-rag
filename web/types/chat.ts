@@ -63,3 +63,21 @@ export interface MessagePage {
   hasMore: boolean;
   nextBeforeId: number | null;
 }
+
+/** One compaction summary card (ADR-0028); rendered in the message timeline. */
+export interface CompactionSummary {
+  id: number;
+  /** Message id the card follows; null before the session has any message. */
+  afterMessageId: number | null;
+  reason: string;
+  summary: string;
+  truncated: boolean;
+  tokensBefore: number | null;
+  tokensAfter: number | null;
+  createdAt: string;
+}
+
+export interface CompactionList {
+  items: CompactionSummary[];
+  total: number;
+}
