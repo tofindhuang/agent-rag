@@ -76,7 +76,10 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthResult login(String email, String password) {
         User user = findByEmail(email);
-        String hash = user == null ? DUMMY_HASH : user.getPasswordHash();
+        // An account without a local password (OAuth-only) uses the same
+        // comparison as an unknown account: fail closed without leaking why.
+        String hash = user == null || user.getPasswordHash() == null
+                ? DUMMY_HASH : user.getPasswordHash();
         boolean matches = passwordEncoder.matches(password, hash);
         if (user == null || !matches) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "invalid email or password");
@@ -143,7 +146,8 @@ public class AuthServiceImpl implements AuthService {
         if (user == null) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
         }
-        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+        if (user.getPasswordHash() == null
+                || !passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "current password is incorrect");
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
