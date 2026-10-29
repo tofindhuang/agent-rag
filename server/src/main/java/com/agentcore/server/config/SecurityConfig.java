@@ -63,6 +63,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/health", "/actuator/prometheus").permitAll()
                         .requestMatchers(ToolTokenFilter.PATTERNS).hasAuthority("TOOL")
                         .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/logout-all",
+                                "/api/auth/oauth/link", "/api/auth/identities", "/api/auth/identities/**",
                                 "/api/chat/**", "/api/models/**", "/api/kb/documents/**", "/api/kb/knowledge-bases/**",
                                 "/api/kb/settings/**", "/api/profile/**")
                         .hasAuthority("USER")

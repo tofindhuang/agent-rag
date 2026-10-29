@@ -20,6 +20,9 @@ public interface UserIdentityDao extends BaseMapper<UserIdentity> {
     @Select("SELECT * FROM user_identities WHERE user_id = #{userId} ORDER BY id")
     List<UserIdentity> listByUserId(@Param("userId") long userId);
 
+    @Select("SELECT * FROM user_identities WHERE id = #{id} AND user_id = #{userId}")
+    UserIdentity findByIdAndUserId(@Param("id") long id, @Param("userId") long userId);
+
     @Update("UPDATE user_identities SET last_login_at = #{lastLoginAt} WHERE id = #{id}")
     int updateLastLoginAt(@Param("id") long id, @Param("lastLoginAt") LocalDateTime lastLoginAt);
 

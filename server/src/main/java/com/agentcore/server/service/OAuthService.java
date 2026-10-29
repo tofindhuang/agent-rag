@@ -1,17 +1,27 @@
 package com.agentcore.server.service;
 
+import com.agentcore.server.common.oauth.OAuthIntent;
 import com.agentcore.server.domain.AuthResult;
+import com.agentcore.server.domain.OAuthCallbackResult;
+import com.agentcore.server.domain.OAuthIdentityView;
 import com.agentcore.server.domain.OAuthStartResult;
+import java.util.List;
 
-/** OIDC login use cases (ADR-0027). Controllers depend on this interface. */
+/** OIDC login/link use cases (ADR-0027). Controllers depend on this interface. */
 public interface OAuthService {
 
-    /** Builds the provider redirect and the signed state cookie value. */
     OAuthStartResult startLogin();
 
+    OAuthStartResult startLink(long userId);
+
     /**
-     * Completes the callback: validates state, exchanges the code, verifies the
-     * ID token, resolves/creates the local account and issues a refresh session.
+     * Completes either intent. Login returns a refresh session; link performs the
+     * explicit binding and returns no new session.
      */
-    AuthResult completeLogin(String code, String state, String stateCookie);
+    OAuthCallbackResult complete(
+            String code, String state, String stateCookie, String refreshToken);
+
+    List<OAuthIdentityView> listIdentities(long userId);
+
+    void unlink(long userId, long identityId);
 }

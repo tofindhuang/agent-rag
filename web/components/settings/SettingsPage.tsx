@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { PageShell } from "@/components/ui/PageShell";
 import { AccountSettings } from "./AccountSettings";
+import { IdentitySettings } from "./IdentitySettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { MemorySettings } from "./MemorySettings";
 import { ModelSettings } from "./ModelSettings";
@@ -19,6 +20,7 @@ export function SettingsPage() {
         <MemorySettings />
         <UsageSettings />
         <AccountSettings />
+        <IdentitySettings />
         <AppearanceSettings />
         {user?.role === "admin" ? (
           <section className={styles.section}>

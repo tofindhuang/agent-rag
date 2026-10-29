@@ -103,3 +103,30 @@ export async function oauthConfig(): Promise<OAuthConfig> {
 export function oauthStartUrl(): string {
   return `${API_BASE}/api/auth/oauth/start`;
 }
+
+export interface OAuthIdentity {
+  id: number;
+  issuer: string;
+  providerName: string;
+  linkedAt: string;
+  lastLoginAt: string | null;
+}
+
+export function listIdentities(): Promise<OAuthIdentity[]> {
+  return apiJson<OAuthIdentity[]>("/api/auth/identities");
+}
+
+export async function startOAuthLink(): Promise<{ authorizationUrl: string }> {
+  const response = await authFetch("/api/auth/oauth/link", { method: "POST" });
+  if (!response.ok) throw await toApiError(response);
+  const data = (await response.json()) as { authorizationUrl?: unknown };
+  if (typeof data.authorizationUrl !== "string" || data.authorizationUrl.length === 0) {
+    throw new ApiError("服务响应缺少 OAuth 授权地址", response.status);
+  }
+  return { authorizationUrl: data.authorizationUrl };
+}
+
+export async function unlinkIdentity(id: number): Promise<void> {
+  const response = await authFetch(`/api/auth/identities/${id}`, { method: "DELETE" });
+  if (!response.ok) throw await toApiError(response);
+}

@@ -41,6 +41,7 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
 
     private String email;
     private String subject;
+    private MvcResult lastResponse;
 
     @DynamicPropertySource
     static void oauthProperties(DynamicPropertyRegistry registry) {
@@ -144,6 +145,111 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void linksToAPasswordAccountAndUnlinksIt() throws Exception {
+        AuthTestCalls.register(mockMvc, email, "correct-horse");
+        LoginSession session = loginWithSession();
+        LinkStart link = linkStart(session);
+
+        MvcResult linked = completeLink(link, session);
+
+        assertThat(linked.getResponse().getHeader(HttpHeaders.LOCATION))
+                .isEqualTo("http://localhost:3000/settings/account?oauth=linked");
+        Long userId = jdbc.queryForObject(
+                "SELECT id FROM users WHERE email = ?", Long.class, email);
+        assertThat(jdbc.queryForObject(
+                "SELECT user_id FROM user_identities WHERE issuer = ? AND subject = ?",
+                Long.class, OIDC.issuer(), subject)).isEqualTo(userId);
+
+        String identities = mockMvc.perform(get("/api/auth/identities")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].providerName").value("Fake OIDC"))
+                .andExpect(jsonPath("$[0].subject").doesNotExist())
+                .andReturn().getResponse().getContentAsString();
+        Number identityId = JsonPath.read(identities, "$[0].id");
+
+        // The linked identity logs into the same local account.
+        complete(start());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM users WHERE email = ?", Integer.class, email)).isEqualTo(1);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/auth/identities/" + identityId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.accessToken()))
+                .andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_identities WHERE issuer = ? AND subject = ?",
+                Integer.class, OIDC.issuer(), subject)).isZero();
+    }
+
+    @Test
+    void linkRejectsAnEmailThatDoesNotMatchTheLocalAccount() throws Exception {
+        AuthTestCalls.register(mockMvc, email, "correct-horse");
+        LoginSession session = loginWithSession();
+        OIDC.email("other-" + UUID.randomUUID() + "@example.com");
+
+        MvcResult linked = completeLink(linkStart(session), session);
+
+        assertThat(linked.getResponse().getHeader(HttpHeaders.LOCATION))
+                .endsWith("/settings/account?oauth_error=OAUTH_EMAIL_MISMATCH");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_identities WHERE issuer = ? AND subject = ?",
+                Integer.class, OIDC.issuer(), subject)).isZero();
+    }
+
+    @Test
+    void linkRejectsAnIdentityOwnedByAnotherAccount() throws Exception {
+        AuthTestCalls.register(mockMvc, email, "correct-horse");
+        LoginSession first = loginWithSession();
+        completeLink(linkStart(first), first);
+
+        String secondEmail = "oauth-second-" + UUID.randomUUID() + "@example.com";
+        AuthTestCalls.register(mockMvc, secondEmail, "correct-horse");
+        LoginSession second = login(secondEmail);
+        OIDC.email(secondEmail);
+
+        MvcResult linked = completeLink(linkStart(second), second);
+
+        assertThat(linked.getResponse().getHeader(HttpHeaders.LOCATION))
+                .endsWith("/settings/account?oauth_error=OAUTH_IDENTITY_IN_USE");
+    }
+
+    @Test
+    void linkRejectsASecondIdentityForTheSameProvider() throws Exception {
+        AuthTestCalls.register(mockMvc, email, "correct-horse");
+        LoginSession session = loginWithSession();
+        completeLink(linkStart(session), session);
+
+        subject = "subject-second-" + UUID.randomUUID();
+        OIDC.subject(subject);
+        MvcResult linked = completeLink(linkStart(session), session);
+
+        assertThat(linked.getResponse().getHeader(HttpHeaders.LOCATION))
+                .endsWith("/settings/account?oauth_error=OAUTH_ALREADY_LINKED");
+    }
+
+    @Test
+    void oauthOnlyUserCannotUnlinkTheLastLoginMethod() throws Exception {
+        complete(start());
+        String refreshToken = cookie(lastResponse.getResponse(), AuthCookies.REFRESH_COOKIE);
+        String accessToken = refresh(refreshToken);
+        String identities = mockMvc.perform(get("/api/auth/identities")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Number identityId = JsonPath.read(identities, "$[0].id");
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/auth/identities/" + identityId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("LAST_LOGIN_METHOD"));
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM user_identities WHERE issuer = ? AND subject = ?",
+                Integer.class, OIDC.issuer(), subject)).isEqualTo(1);
+    }
+
+    @Test
     void rejectsAStateThatDoesNotMatchTheCookie() throws Exception {
         Start start = start();
         OIDC.nonce(start.nonce());
@@ -206,12 +312,13 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
 
     private MvcResult complete(Start start) throws Exception {
         OIDC.nonce(start.nonce());
-        return mockMvc.perform(get("/api/auth/oauth/callback")
+        lastResponse = mockMvc.perform(get("/api/auth/oauth/callback")
                         .param("code", "code-" + UUID.randomUUID())
                         .param("state", start.state())
                         .cookie(new Cookie(AuthCookies.OAUTH_STATE_COOKIE, start.cookie())))
                 .andExpect(status().isFound())
                 .andReturn();
+        return lastResponse;
     }
 
     private String refresh(String refreshToken) throws Exception {
@@ -246,6 +353,52 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
                 {"email":"%s","password":"correct-horse"}
                 """.formatted(email);
     }
+
+    private LoginSession loginWithSession() throws Exception {
+        return login(email);
+    }
+
+    private LoginSession login(String email) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody(email)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = JsonPath.read(
+                result.getResponse().getContentAsString(), "$.accessToken");
+        return new LoginSession(accessToken,
+                cookie(result.getResponse(), AuthCookies.REFRESH_COOKIE));
+    }
+
+    private LinkStart linkStart(LoginSession session) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/oauth/link")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.accessToken()))
+                .andExpect(status().isOk())
+                .andReturn();
+        String authorizationUrl = JsonPath.read(
+                result.getResponse().getContentAsString(), "$.authorizationUrl");
+        String state = UriComponentsBuilder.fromUriString(authorizationUrl)
+                .build().getQueryParams().getFirst("state");
+        String nonce = UriComponentsBuilder.fromUriString(authorizationUrl)
+                .build().getQueryParams().getFirst("nonce");
+        return new LinkStart(state, nonce,
+                cookie(result.getResponse(), AuthCookies.OAUTH_STATE_COOKIE));
+    }
+
+    private MvcResult completeLink(LinkStart link, LoginSession session) throws Exception {
+        OIDC.nonce(link.nonce());
+        return mockMvc.perform(get("/api/auth/oauth/callback")
+                        .param("code", "code-" + UUID.randomUUID())
+                        .param("state", link.state())
+                        .cookie(new Cookie(AuthCookies.OAUTH_STATE_COOKIE, link.cookie()))
+                        .cookie(new Cookie(AuthCookies.REFRESH_COOKIE, session.refreshToken())))
+                .andExpect(status().isFound())
+                .andReturn();
+    }
+
+    private record LoginSession(String accessToken, String refreshToken) {}
+
+    private record LinkStart(String state, String nonce, String cookie) {}
 
     private record Start(String state, String nonce, String cookie) {}
 }

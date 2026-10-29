@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { takeAuthNotice } from "@/lib/auth-notice";
 import { oauthConfig, oauthStartUrl, type OAuthConfig } from "@/lib/api/auth";
 import { userMessage } from "@/lib/api/errors";
+import { oauthErrorMessage } from "@/lib/oauth-errors";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
@@ -14,18 +15,6 @@ import styles from "./auth.module.css";
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  OAUTH_DENIED: "已取消登录。",
-  OAUTH_UNAVAILABLE: "OAuth 提供方暂不可用，请稍后重试或使用密码登录。",
-  OAUTH_STATE_INVALID: "登录状态已失效，请重新登录。",
-  OAUTH_EMAIL_UNVERIFIED: "OAuth 返回的邮箱未验证，无法登录。",
-  OAUTH_EMAIL_MISMATCH: "OAuth 邮箱与当前账号不一致。",
-  OAUTH_ACCOUNT_EXISTS: "该邮箱已注册，请先用邮箱密码登录后在设置页绑定 OAuth。",
-  OAUTH_IDENTITY_IN_USE: "该 OAuth 身份已绑定其他账号。",
-  OAUTH_ALREADY_LINKED: "当前账号已绑定该提供方的另一个身份，请先解绑。",
-  OAUTH_CLAIM_MISMATCH: "OAuth 返回的身份信息不一致，登录已取消。",
-  OAUTH_DISABLED: "OAuth 未启用。",
-};
 
 function passwordBytes(value: string): number {
   return new TextEncoder().encode(value).length;
@@ -69,7 +58,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("oauth_error");
     if (code) {
-      setOauthError(OAUTH_ERROR_MESSAGES[code] ?? "OAuth 登录失败，请重试。");
+      setOauthError(oauthErrorMessage(code) ?? "OAuth 登录失败，请重试。");
     }
   }, []);
 
