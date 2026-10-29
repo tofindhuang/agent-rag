@@ -23,6 +23,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Set<String> AUTH_PATHS = Set.of(AuthPaths.CREDENTIAL_POST);
+    private static final Set<String> AUTH_GET_PATHS = Set.of(AuthPaths.RATE_LIMIT_GET);
     // Internal service callbacks (e.g. /api/profile/candidates) are excluded.
     private static final Set<String> TOOL_PATHS = Set.of("/api/exec", "/api/kb/search");
 
@@ -63,6 +64,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private RateLimitDecision decisionFor(HttpServletRequest request) {
         String path = request.getRequestURI();
         if (AUTH_PATHS.contains(path) && "POST".equals(request.getMethod())) {
+            return rateLimit.checkAuthIpRpm(request.getRemoteAddr());
+        }
+        if (AUTH_GET_PATHS.contains(path) && "GET".equals(request.getMethod())) {
             return rateLimit.checkAuthIpRpm(request.getRemoteAddr());
         }
         if (TOOL_PATHS.contains(path)) {

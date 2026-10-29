@@ -1,11 +1,11 @@
 package com.agentcore.server.controller;
 
+import com.agentcore.server.common.auth.AuthCookies;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.auth.EmailNormalizer;
 import com.agentcore.server.common.auth.PasswordPolicy;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
-import com.agentcore.server.config.AuthProperties;
 import com.agentcore.server.domain.AuthResult;
 import com.agentcore.server.domain.UserProfile;
 import com.agentcore.server.dto.auth.ChangePasswordRequest;
@@ -18,7 +18,6 @@ import com.agentcore.server.service.AuthService;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CookieValue;
@@ -35,14 +34,13 @@ public class AuthController {
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final int MAX_EMAIL_LENGTH = 255;
-    private static final String REFRESH_COOKIE = "agentcore_refresh";
 
     private final AuthService authService;
-    private final AuthProperties authProperties;
+    private final AuthCookies cookies;
 
-    public AuthController(AuthService authService, AuthProperties authProperties) {
+    public AuthController(AuthService authService, AuthCookies cookies) {
         this.authService = authService;
-        this.authProperties = authProperties;
+        this.cookies = cookies;
     }
 
     @PostMapping("/register")
@@ -73,29 +71,29 @@ public class AuthController {
 
         AuthResult result = authService.login(email, request.password());
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, cookies.refresh(result.refreshToken()).toString())
                 .body(loginResponse(result));
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<LoginResponse> refresh(
-            @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
+            @CookieValue(name = AuthCookies.REFRESH_COOKIE, required = false) String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "refresh token is required");
         }
 
         AuthResult result = authService.refresh(refreshToken);
         return ResponseEntity.ok()
-                .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, cookies.refresh(result.refreshToken()).toString())
                 .body(loginResponse(result));
     }
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(
-            @CookieValue(name = REFRESH_COOKIE, required = false) String refreshToken) {
+            @CookieValue(name = AuthCookies.REFRESH_COOKIE, required = false) String refreshToken) {
         authService.logout(refreshToken);
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, cookies.clearRefresh().toString())
                 .build();
     }
 
@@ -120,7 +118,7 @@ public class AuthController {
         }
         authService.changePassword(user.userId(), request.currentPassword(), request.newPassword());
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, cookies.clearRefresh().toString())
                 .build();
     }
 
@@ -129,7 +127,7 @@ public class AuthController {
     public ResponseEntity<Void> logoutAll(@AuthenticationPrincipal AuthenticatedUser user) {
         authService.logoutAll(user.userId());
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, clearedRefreshCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, cookies.clearRefresh().toString())
                 .build();
     }
 
@@ -138,21 +136,4 @@ public class AuthController {
                 result.accessToken().value(), "Bearer", result.accessToken().expiresInSeconds());
     }
 
-    private ResponseCookie refreshCookie(String value) {
-        return refreshCookie(value, authProperties.refreshTtl().toSeconds());
-    }
-
-    private ResponseCookie clearedRefreshCookie() {
-        return refreshCookie("", 0);
-    }
-
-    private ResponseCookie refreshCookie(String value, long maxAgeSeconds) {
-        return ResponseCookie.from(REFRESH_COOKIE, value)
-                .httpOnly(true)
-                .secure(authProperties.cookieSecure())
-                .sameSite("Lax")
-                .path("/api/auth")
-                .maxAge(maxAgeSeconds)
-                .build();
-    }
 }

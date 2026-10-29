@@ -81,6 +81,24 @@ public final class FakeOidcProvider {
         server.start();
     }
 
+    public void reset() {
+        subject = "user-1";
+        email = "user@example.com";
+        emailVerified = true;
+        nonce = "nonce";
+        issuerClaim = null;
+        audience = "client-id";
+        expirationOffsetSeconds = 300;
+        useWrongKey = false;
+        discoveryFailure = false;
+        tokenFailure = false;
+        userinfoFailure = false;
+        userinfoMissing = false;
+        tokenEndpointAuthMethods = List.of("client_secret_basic");
+        includeEmailInIdToken = true;
+        delayMs = 0;
+    }
+
     public String issuer() {
         return issuer;
     }

@@ -44,4 +44,7 @@ public interface AuthService {
 
     /** Revokes every refresh token of the user; access tokens expire naturally. */
     void logoutAll(long userId);
+
+    /** Issues a refresh/access pair for a user authenticated by another mechanism (OAuth). */
+    AuthResult issueSession(long userId);
 }

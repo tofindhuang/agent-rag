@@ -27,6 +27,7 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -58,6 +59,7 @@ public class DefaultOidcProviderClient implements OidcProviderClient {
     private volatile JWKSet jwks;
     private volatile Instant jwksFetchedAt;
 
+    @Autowired
     public DefaultOidcProviderClient(OAuthProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper, DEFAULT_REQUEST_TIMEOUT);
     }
@@ -166,7 +168,7 @@ public class DefaultOidcProviderClient implements OidcProviderClient {
             String email = claims.getStringClaim("email");
             boolean verified = isTrue(claims.getClaim("email_verified"));
             if (email != null && !email.isBlank() && !verified) {
-                throw invalid("ID token email is not verified");
+                throw new OidcEmailUnverifiedException("ID token email is not verified");
             }
             return new OidcProfile(issuer, subject, email, verified);
         } catch (ParseException | JOSEException ex) {
@@ -184,12 +186,12 @@ public class DefaultOidcProviderClient implements OidcProviderClient {
         JsonNode body = getJson(current.userinfoEndpoint(), accessToken);
         String subject = body.path("sub").asText("");
         if (!expectedSubject.equals(subject)) {
-            throw invalid("userinfo subject does not match the ID token");
+            throw new OidcClaimMismatchException("userinfo subject does not match the ID token");
         }
         String email = body.path("email").asText(null);
         boolean verified = isTrue(body.get("email_verified"));
         if (email == null || email.isBlank() || !verified) {
-            throw invalid("userinfo email is missing or unverified");
+            throw new OidcEmailUnverifiedException("userinfo email is missing or unverified");
         }
         return new OidcProfile(current.issuer(), subject, email, true);
     }

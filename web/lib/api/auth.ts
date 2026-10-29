@@ -1,3 +1,4 @@
+import { API_BASE } from "@/lib/env";
 import { ApiError, toApiError } from "./errors";
 import { apiJson, authFetch, publicPost } from "./http";
 import { clearAccessToken, extractAccessToken, setAccessToken } from "./token";
@@ -72,4 +73,33 @@ export async function changePassword(
 export async function logoutAll(): Promise<void> {
   const response = await authFetch("/api/auth/logout-all", { method: "POST" });
   if (!response.ok) throw await toApiError(response);
+}
+
+export interface OAuthConfig {
+  enabled: boolean;
+  providerName: string;
+}
+
+/** Public capability check for the login/register pages. */
+export async function oauthConfig(): Promise<OAuthConfig> {
+  const response = await fetch(`${API_BASE}/api/auth/oauth/config`, {
+    credentials: "include",
+  });
+  if (!response.ok) throw await toApiError(response);
+  const data = (await response.json()) as {
+    enabled?: unknown;
+    providerName?: unknown;
+  };
+  return {
+    enabled: data.enabled === true,
+    providerName:
+      typeof data.providerName === "string" && data.providerName.length > 0
+        ? data.providerName
+        : "OIDC",
+  };
+}
+
+/** Top-level navigation; the callback establishes the refresh session. */
+export function oauthStartUrl(): string {
+  return `${API_BASE}/api/auth/oauth/start`;
 }

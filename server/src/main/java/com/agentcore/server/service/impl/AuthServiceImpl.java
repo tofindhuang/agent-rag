@@ -162,6 +162,13 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenDao.revokeAllForUser(userId, nowUtc());
     }
 
+    @Override
+    public AuthResult issueSession(long userId) {
+        String refreshToken = RefreshTokens.newToken();
+        insertRefreshToken(userId, UUID.randomUUID().toString(), refreshToken);
+        return resultFor(userId, refreshToken);
+    }
+
     private AuthResult resultFor(long userId, String refreshToken) {
         AccessToken accessToken =
                 new AccessToken(jwtService.issue(userId), jwtService.accessTtlSeconds());

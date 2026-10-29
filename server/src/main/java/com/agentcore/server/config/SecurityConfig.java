@@ -58,6 +58,7 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, AuthPaths.CREDENTIAL_POST).permitAll()
+                        .requestMatchers(HttpMethod.GET, AuthPaths.PUBLIC_GET).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/health", "/actuator/prometheus").permitAll()
                         .requestMatchers(ToolTokenFilter.PATTERNS).hasAuthority("TOOL")
