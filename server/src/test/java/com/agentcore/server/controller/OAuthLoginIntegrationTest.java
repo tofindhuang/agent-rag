@@ -53,6 +53,7 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
         registry.add("app.oauth.web-base-url", () -> "http://localhost:3000");
         registry.add("app.oauth.provider-name", () -> "Fake OIDC");
         registry.add("app.oauth.scopes", () -> "openid email profile");
+        registry.add("app.admin.emails", () -> "oauth-admin@example.com");
     }
 
     @BeforeEach
@@ -279,6 +280,51 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"newPassword\":\"another-secret-2\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("PASSWORD_ALREADY_SET"));
+    }
+
+    @Test
+    void rejectsAMissingStateCookie() throws Exception {
+        MvcResult callback = mockMvc.perform(get("/api/auth/oauth/callback")
+                        .param("code", "code")
+                        .param("state", "state"))
+                .andExpect(status().isFound())
+                .andReturn();
+
+        assertThat(callback.getResponse().getHeader(HttpHeaders.LOCATION))
+                .endsWith("/login?oauth_error=OAUTH_STATE_INVALID");
+    }
+
+    @Test
+    void rejectsMissingEmailAfterUserInfoFallback() throws Exception {
+        OIDC.includeEmailInIdToken(false);
+        OIDC.email(null);
+
+        MvcResult callback = complete(start());
+
+        assertThat(callback.getResponse().getHeader(HttpHeaders.LOCATION))
+                .endsWith("/login?oauth_error=OAUTH_EMAIL_UNVERIFIED");
+    }
+
+    @Test
+    void rejectsUserInfoSubjectMismatch() throws Exception {
+        OIDC.includeEmailInIdToken(false);
+        OIDC.userinfoSubject("other-" + UUID.randomUUID());
+
+        MvcResult callback = complete(start());
+
+        assertThat(callback.getResponse().getHeader(HttpHeaders.LOCATION))
+                .endsWith("/login?oauth_error=OAUTH_CLAIM_MISMATCH");
+    }
+
+    @Test
+    void adminEmailFromOAuthBecomesAdmin() throws Exception {
+        email = "oauth-admin@example.com";
+        OIDC.email(email);
+
+        complete(start());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT role FROM users WHERE email = ?", String.class, email)).isEqualTo("admin");
     }
 
     @Test

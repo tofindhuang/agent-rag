@@ -1,7 +1,7 @@
 # OAuth / OIDC 登录与账号绑定
 
 日期：2026-10-26
-状态：Phase 1 已确认并切票（Q1–Q29；工单 `docs/tickets/oauth/01–06`）
+状态：已实现（fake OIDC 全矩阵验收；真实 provider 手动冒烟待部署凭证，见 `docs/research/2026-10-29-oauth-acceptance.md`）
 关联 ADR：[0027](../adrs/0027-oauth-oidc-login.md)、[0007](../adrs/0007-jwt-access-rotating-refresh-auth.md)、[0023](../adrs/0023-observability-mysql-read-only-admin.md)
 关联需求：FR-6（认证、多租户与安全）
 涉及模块：server、web、契约文档（仅内部 API，不改 Java↔gateway 契约）

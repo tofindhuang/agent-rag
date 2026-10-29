@@ -38,6 +38,7 @@ public final class FakeOidcProvider {
     private final String redirectUri;
 
     private volatile String subject = "user-1";
+    private volatile String userinfoSubject = null;
     private volatile String email = "user@example.com";
     private volatile boolean emailVerified = true;
     private volatile String nonce = "nonce";
@@ -83,6 +84,7 @@ public final class FakeOidcProvider {
 
     public void reset() {
         subject = "user-1";
+        userinfoSubject = null;
         email = "user@example.com";
         emailVerified = true;
         nonce = "nonce";
@@ -145,6 +147,10 @@ public final class FakeOidcProvider {
 
     public void email(String email) {
         this.email = email;
+    }
+
+    public void userinfoSubject(String userinfoSubject) {
+        this.userinfoSubject = userinfoSubject;
     }
 
     public void emailVerified(boolean emailVerified) {
@@ -249,7 +255,7 @@ public final class FakeOidcProvider {
             return;
         }
         ObjectNode node = objectMapper.createObjectNode();
-        node.put("sub", subject);
+        node.put("sub", userinfoSubject == null ? subject : userinfoSubject);
         node.put("email", email);
         node.put("email_verified", emailVerified);
         sendJson(exchange, 200, objectMapper.writeValueAsString(node));

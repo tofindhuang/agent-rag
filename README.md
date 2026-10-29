@@ -178,6 +178,7 @@ npm run dev        # Next.js，监听 :3000
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `JWT_SECRET` | 开发占位值 | 必填；长度 ≥32 字节，否则启动失败 |
+| `OAUTH_*` | `OAUTH_ENABLED=false` | OIDC 登录（ADR-0027）；启用时需配 issuer/client-id/client-secret/redirect-uri/web-base-url，登录页出现 OAuth 按钮 |
 | `MODEL_SECRET_KEY` | 开发占位值 | 必填；32 字节 Base64，加密用户 provider key |
 | `GATEWAY_URL` / `GATEWAY_URLS` / `GATEWAY_API_TOKEN` | `http://localhost:3001` / 空 / 空 | Java → gateway；多实例用 `GATEWAY_URLS` 静态种子，`GATEWAY_URL` 保留单实例兼容 |
 | `GATEWAY_INSTANCE_ID` / `GATEWAY_PUBLIC_URL` | hostname:port / 本机地址 | gateway 实例身份与 Java 可达地址 |

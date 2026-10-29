@@ -140,4 +140,14 @@ class AuthLoginIntegrationTest extends AbstractIntegrationTest {
                 {"email":"%s","password":"%s"}
                 """.formatted(email, password);
     }
+
+    @Test
+    void oauthIsDisabledByDefault() throws Exception {
+        mockMvc.perform(get("/api/auth/oauth/config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false));
+        mockMvc.perform(get("/api/auth/oauth/start"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("OAUTH_DISABLED"));
+    }
 }
