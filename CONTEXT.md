@@ -124,6 +124,16 @@ _Avoid_: summarization（那是 Compaction 的手段，不是整体机制）
 当前会话上下文已占模型窗口的比例，以及触发压缩的阈值；只用于实时展示，不进入模型上下文。
 _Avoid_: token 使用率、窗口水位
 
+### 压缩摘要（Compaction Summary）
+
+一次成功 compaction 产出的摘要正文，连同触发原因、压缩前后 token 与时间，投影进 `session_compactions`；累积式覆盖，最新一条即当前生效摘要，仅会话本人可读、admin 不可见。
+_Avoid_: compaction 日志、压缩记录（口语可用）、summary 正文
+
+### 已压缩标记（Compacted Marker）
+
+会话头部「已压缩」提示的存在依据：会话存在压缩摘要记录，或本次连接收到过 `compaction` 事件；它不再由上下文占比下降推断。
+_Avoid_: 压缩状态、上下文已满
+
 ### 消息投影（Message Projection）
 
 业务层从契约事件写入 MySQL 的消息副本，用于展示、历史与统计，不是引擎上下文的来源。
