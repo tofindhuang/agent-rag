@@ -47,4 +47,10 @@ public interface AuthService {
 
     /** Issues a refresh/access pair for a user authenticated by another mechanism (OAuth). */
     AuthResult issueSession(long userId);
+
+    /**
+     * Sets the first local password for an OAuth-only account and revokes every
+     * refresh token except the caller's current one.
+     */
+    void setPassword(long userId, String newPassword, String currentRefreshToken);
 }

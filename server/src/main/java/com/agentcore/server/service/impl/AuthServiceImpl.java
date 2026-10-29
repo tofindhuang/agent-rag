@@ -136,7 +136,8 @@ public class AuthServiceImpl implements AuthService {
         if (user == null) {
             throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
         }
-        return new UserProfile(user.getId(), user.getEmail(), user.getRole());
+        return new UserProfile(user.getId(), user.getEmail(), user.getRole(),
+                user.getPasswordHash() != null);
     }
 
     @Override
@@ -160,6 +161,27 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public void logoutAll(long userId) {
         refreshTokenDao.revokeAllForUser(userId, nowUtc());
+    }
+
+    @Override
+    @Transactional
+    public void setPassword(long userId, String newPassword, String currentRefreshToken) {
+        User user = userDao.selectById(userId);
+        if (user == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
+        }
+        if (user.getPasswordHash() != null) {
+            throw new ApiException(ErrorCode.PASSWORD_ALREADY_SET,
+                    "password is already set; use change-password");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userDao.updateById(user);
+        if (currentRefreshToken == null || currentRefreshToken.isBlank()) {
+            refreshTokenDao.revokeAllForUser(userId, nowUtc());
+        } else {
+            refreshTokenDao.revokeAllForUserExcept(
+                    userId, RefreshTokens.hash(currentRefreshToken), nowUtc());
+        }
     }
 
     @Override

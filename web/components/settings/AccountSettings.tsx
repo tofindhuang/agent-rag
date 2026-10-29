@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
-import { changePassword, logoutAll } from "@/lib/api/auth";
+import { changePassword, logoutAll, setPassword } from "@/lib/api/auth";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import { setAuthNotice } from "@/lib/auth-notice";
 import styles from "./settings.module.css";
@@ -15,19 +15,22 @@ function passwordBytes(value: string): number {
 }
 
 /**
- * Account section: display email, change the password and log out every
- * device. Both actions revoke all refresh tokens server-side, so success ends
- * the local session and hands a one-shot notice to the login page.
+ * Account section: password fallback and log-out-everywhere. OAuth-only
+ * accounts see "set password"; password accounts keep the change-password flow.
  */
 export function AccountSettings() {
-  const { user, endSession } = useAuth();
+  const { user, endSession, refreshUser } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [first, setFirst] = useState("");
+  const [firstConfirm, setFirstConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
+
+  const hasPassword = user?.hasPassword !== false;
 
   const changePasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -56,12 +59,41 @@ export function AccountSettings() {
       endSession();
     } catch (cause: unknown) {
       console.error(cause);
-      // UNAUTHORIZED here means the current password, not the login credentials.
       setError(
         cause instanceof ApiError && cause.code === "UNAUTHORIZED"
           ? "当前密码不正确。"
           : userMessage(cause),
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setPasswordSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+
+    const bytes = passwordBytes(first);
+    if (first !== firstConfirm) {
+      setError("两次输入的密码不一致");
+      return;
+    }
+    if (bytes < 8 || bytes > 72) {
+      setError("密码需为 8–72 字节");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await setPassword(first);
+      await refreshUser();
+      setFirst("");
+      setFirstConfirm("");
+      setNotice("密码已设置，之后可以用邮箱密码登录。");
+    } catch (cause: unknown) {
+      console.error(cause);
+      setError(userMessage(cause));
     } finally {
       setBusy(false);
     }
@@ -94,46 +126,83 @@ export function AccountSettings() {
         当前邮箱：<strong>{user?.email ?? "—"}</strong>
       </p>
 
-      <form className={styles.form} onSubmit={(event) => void changePasswordSubmit(event)}>
-        <h3>修改密码</h3>
-        <TextField
-          label="当前密码"
-          type="password"
-          autoComplete="current-password"
-          value={current}
-          onChange={(event) => setCurrent(event.target.value)}
-          maxLength={72}
-          required
-        />
-        <TextField
-          label="新密码"
-          type="password"
-          autoComplete="new-password"
-          value={next}
-          onChange={(event) => setNext(event.target.value)}
-          maxLength={72}
-          required
-        />
-        <TextField
-          label="确认新密码"
-          type="password"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={(event) => setConfirm(event.target.value)}
-          maxLength={72}
-          required
-        />
+      {hasPassword ? (
+        <form className={styles.form} onSubmit={(event) => void changePasswordSubmit(event)}>
+          <h3>修改密码</h3>
+          <TextField
+            label="当前密码"
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(event) => setCurrent(event.target.value)}
+            maxLength={72}
+            required
+          />
+          <TextField
+            label="新密码"
+            type="password"
+            autoComplete="new-password"
+            value={next}
+            onChange={(event) => setNext(event.target.value)}
+            maxLength={72}
+            required
+          />
+          <TextField
+            label="确认新密码"
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+            maxLength={72}
+            required
+          />
 
-        {notice ? <Banner tone="notice">{notice}</Banner> : null}
-        {error ? <Banner tone="error">{error}</Banner> : null}
+          {notice ? <Banner tone="notice">{notice}</Banner> : null}
+          {error ? <Banner tone="error">{error}</Banner> : null}
 
-        <div className={styles.row}>
-          <Button type="submit" disabled={busy}>
-            {busy ? "处理中…" : "修改密码"}
-          </Button>
-          <span className={styles.hint}>修改后所有设备都需要重新登录</span>
-        </div>
-      </form>
+          <div className={styles.row}>
+            <Button type="submit" disabled={busy}>
+              {busy ? "处理中…" : "修改密码"}
+            </Button>
+            <span className={styles.hint}>修改后所有设备都需要重新登录</span>
+          </div>
+        </form>
+      ) : (
+        <form className={styles.form} onSubmit={(event) => void setPasswordSubmit(event)}>
+          <h3>设置密码</h3>
+          <p className={styles.hint}>
+            当前账号通过 OAuth 登录。设置本地密码后，OAuth 不可用时仍可用邮箱密码登录。
+          </p>
+          <TextField
+            label="新密码"
+            type="password"
+            autoComplete="new-password"
+            value={first}
+            onChange={(event) => setFirst(event.target.value)}
+            maxLength={72}
+            required
+          />
+          <TextField
+            label="确认密码"
+            type="password"
+            autoComplete="new-password"
+            value={firstConfirm}
+            onChange={(event) => setFirstConfirm(event.target.value)}
+            maxLength={72}
+            required
+          />
+
+          {notice ? <Banner tone="notice">{notice}</Banner> : null}
+          {error ? <Banner tone="error">{error}</Banner> : null}
+
+          <div className={styles.row}>
+            <Button type="submit" disabled={busy}>
+              {busy ? "处理中…" : "设置密码"}
+            </Button>
+            <span className={styles.hint}>设置后当前会话保持登录</span>
+          </div>
+        </form>
+      )}
 
       <form
         className={styles.form}

@@ -104,7 +104,8 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(email))
-                .andExpect(jsonPath("$.role").value("user"));
+                .andExpect(jsonPath("$.role").value("user"))
+                .andExpect(jsonPath("$.hasPassword").value(false));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -250,6 +251,37 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void setsFirstPasswordAndKeepsTheCurrentSession() throws Exception {
+        complete(start());
+        String initialRefresh = cookie(lastResponse.getResponse(), AuthCookies.REFRESH_COOKIE);
+        LoginSession session = refreshSession(initialRefresh);
+
+        mockMvc.perform(post("/api/auth/set-password")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.accessToken())
+                        .cookie(new Cookie(AuthCookies.REFRESH_COOKIE, session.refreshToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"new-secret-1\"}"))
+                .andExpect(status().isNoContent());
+
+        // The current browser keeps its refresh session.
+        LoginSession after = refreshSession(session.refreshToken());
+        mockMvc.perform(get("/api/auth/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + after.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPassword").value(true));
+
+        AuthTestCalls.login(mockMvc, email, "new-secret-1");
+
+        mockMvc.perform(post("/api/auth/set-password")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + after.accessToken())
+                        .cookie(new Cookie(AuthCookies.REFRESH_COOKIE, after.refreshToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newPassword\":\"another-secret-2\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("PASSWORD_ALREADY_SET"));
+    }
+
+    @Test
     void rejectsAStateThatDoesNotMatchTheCookie() throws Exception {
         Start start = start();
         OIDC.nonce(start.nonce());
@@ -322,11 +354,18 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
     }
 
     private String refresh(String refreshToken) throws Exception {
-        String body = mockMvc.perform(post("/api/auth/refresh")
+        return refreshSession(refreshToken).accessToken();
+    }
+
+    private LoginSession refreshSession(String refreshToken) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/refresh")
                         .cookie(new Cookie(AuthCookies.REFRESH_COOKIE, refreshToken)))
                 .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        return JsonPath.read(body, "$.accessToken");
+                .andReturn();
+        String accessToken = JsonPath.read(
+                result.getResponse().getContentAsString(), "$.accessToken");
+        return new LoginSession(accessToken,
+                cookie(result.getResponse(), AuthCookies.REFRESH_COOKIE));
     }
 
     private static String cookie(MockHttpServletResponse response, String name) {

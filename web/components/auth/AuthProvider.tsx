@@ -21,6 +21,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Re-fetches /me after account settings change (e.g. password set). */
+  refreshUser: () => Promise<void>;
   /** Drops local auth state after a server-side token revocation. */
   endSession: () => void;
 }
@@ -87,6 +89,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [login],
   );
 
+  const refreshUser = useCallback(async () => {
+    const current = await me();
+    setUser(current);
+    setStatus("authenticated");
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await logoutRequest();
@@ -104,8 +112,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ status, user, error, login, register, logout, endSession }),
-    [status, user, error, login, register, logout, endSession],
+    () => ({ status, user, error, login, register, logout, refreshUser, endSession }),
+    [status, user, error, login, register, logout, refreshUser, endSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -9,6 +9,7 @@ export interface AuthUser {
   userId: number;
   email: string;
   role: UserRole;
+  hasPassword: boolean;
 }
 
 interface RegisterResponse {
@@ -66,6 +67,16 @@ export async function changePassword(
     },
     { expireOn401: false },
   );
+  if (!response.ok) throw await toApiError(response);
+}
+
+/** Sets the first local password for an OAuth-only account. */
+export async function setPassword(newPassword: string): Promise<void> {
+  const response = await authFetch("/api/auth/set-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ newPassword }),
+  });
   if (!response.ok) throw await toApiError(response);
 }
 

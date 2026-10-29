@@ -96,3 +96,15 @@
   border-color: var(--border-strong);
   background: var(--surface-2);
 }
+
+.promptAction {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { AccountMenu } from "@/components/auth/AccountMenu";
+import { PasswordPrompt } from "@/components/auth/PasswordPrompt";
 import { Banner } from "@/components/ui/Banner";
 import { useChat } from "@/hooks/useChat";
 import { Composer } from "./Composer";
@@ -80,6 +81,8 @@ export function ChatPage() {
             </div>
             <AccountMenu />
           </header>
+
+          <PasswordPrompt />
 
           {needsSetup && !creating ? (
             <Banner tone="error">

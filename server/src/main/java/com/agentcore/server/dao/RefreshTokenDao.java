@@ -27,4 +27,10 @@ public interface RefreshTokenDao extends BaseMapper<RefreshToken> {
      * "log out everywhere" (ADR-0007: access tokens expire naturally).
      */
     int revokeAllForUser(@Param("userId") long userId, @Param("revokedAt") LocalDateTime revokedAt);
+
+    /** Revokes every refresh token except the caller's current session. */
+    int revokeAllForUserExcept(
+            @Param("userId") long userId,
+            @Param("keepTokenHash") String keepTokenHash,
+            @Param("revokedAt") LocalDateTime revokedAt);
 }

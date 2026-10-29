@@ -14,6 +14,7 @@ import com.agentcore.server.dto.auth.LoginResponse;
 import com.agentcore.server.dto.auth.MeResponse;
 import com.agentcore.server.dto.auth.RegisterRequest;
 import com.agentcore.server.dto.auth.RegisterResponse;
+import com.agentcore.server.dto.auth.SetPasswordRequest;
 import com.agentcore.server.service.AuthService;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpHeaders;
@@ -100,7 +101,22 @@ public class AuthController {
     @GetMapping("/me")
     public MeResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
         UserProfile profile = authService.profile(user.userId());
-        return new MeResponse(profile.userId(), profile.email(), profile.role());
+        return new MeResponse(
+                profile.userId(), profile.email(), profile.role(), profile.hasPassword());
+    }
+
+    /** First password for an OAuth-only account; keeps the current session. */
+    @PostMapping("/set-password")
+    public ResponseEntity<Void> setPassword(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody SetPasswordRequest request,
+            @CookieValue(name = AuthCookies.REFRESH_COOKIE, required = false)
+                    String refreshToken) {
+        if (!PasswordPolicy.isBcryptCompatible(request.newPassword())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "password must be 8-72 bytes");
+        }
+        authService.setPassword(user.userId(), request.newPassword(), refreshToken);
+        return ResponseEntity.noContent().build();
     }
 
     /** Verifies the current password, rotates it and logs every device out. */
