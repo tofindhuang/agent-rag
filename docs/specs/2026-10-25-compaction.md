@@ -14,7 +14,7 @@ pi 已内置 compaction，但 gateway 目前没有配置它：所有会话使用
 - 触发条件沿用 pi：`contextTokens > contextWindow - reserveTokens`；压缩后保留约 `keepRecentTokens` 原文（pi 按 token，不按轮）。
 - 新增 `context_usage` 契约事件：在 run 开始、每条 assistant `message_end`、compaction 结束时携带当前 `tokens / contextWindow / percent`、压缩阈值与开关；web 在会话头部显示上下文占比与压缩阈值。
 - 原文继续保留在 pi session 文件与 MySQL 消息投影；compaction summary 的内部 usage 不计入 FR-6 TPM。
-- 摘要正文查看仍属 P1，不在本次范围。
+- 摘要正文查看已在 M2 交付（ADR-0028，`docs/specs/2026-10-29-compaction-summary.md`）。
 
 ## User Stories
 
@@ -93,7 +93,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 - 输入框/发送按钮下方显示小胶囊 + 细进度条：`上下文 42% · 压缩阈值 80%`；会话头部只保留模型/知识库。
 - 悬停显示 `tokens / contextWindow` 与数据来源（provider 统计 / pi 估算）；占比达到阈值时变色，但不改变对话行为。
 - `tokens/percent` 为 null 时显示「上下文统计中」；`compactionEnabled=false` 时显示「压缩已关闭」。
-- `compaction` 事件仍显示「上下文已压缩」；若压缩发生在 `run_settled` 之后、没有事件，UI 在 `context_usage` 明显下降（≥15 个百分点）时推断并显示持久的「已压缩」标记；模型/会话切换时重置。摘要正文查看是 P1，不做。
+- `compaction` 事件仍显示「上下文已压缩」；若压缩发生在 `run_settled` 之后、没有事件，UI 在 `context_usage` 明显下降（≥15 个百分点）时推断并显示持久的「已压缩」标记；模型/会话切换时重置。摘要正文查看已交付（ADR-0028）。
 - 刷新后占位隐藏，直到下一次 run。
 
 ### 原文与配额
@@ -121,7 +121,7 @@ data: { tokens, contextWindow, percent, compactionThresholdPercent, compactionEn
 ## Out of Scope
 
 - per-user / per-session compaction 偏好（M1 后评估）。
-- 摘要正文查看页/API（P1）。
+- 摘要正文查看已交付（ADR-0028）；本行保留为历史记录。
 - 自定义摘要 prompt/instructions。
 - 手动「立即压缩」入口。
 - 把上下文占比持久化或刷新后主动查询 gateway。

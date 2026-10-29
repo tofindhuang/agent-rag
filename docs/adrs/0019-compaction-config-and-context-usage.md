@@ -37,4 +37,4 @@ pi 内置 compaction 的旋钮是 `enabled`、`reserveTokens`、`keepRecentToken
 - 压缩后 `tokens/percent` 为 `null`，UI 显示「上下文统计中」直到下一条 assistant 回复；这是 pi 的正常状态。
 - 小窗口模型下 1024 的最低 reserve 可能让触发点低于 80%；这是保底余量的取舍。
 - 占比不持久化，刷新页面后在下一次 run 前不显示。
-- 关闭 compaction 时只停止自动压缩，不删除已有原文；摘要正文查看仍不可用（P1）。
+- 关闭 compaction 时只停止自动压缩，不删除已有原文；摘要正文查看已由 ADR-0028 在 M2 交付。

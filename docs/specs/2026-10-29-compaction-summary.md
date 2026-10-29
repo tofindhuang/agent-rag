@@ -1,7 +1,7 @@
 # 压缩摘要可见（FR-4 P1）
 
 日期：2026-10-29
-状态：Phase 1 已完成（Q1–Q11 逐问确认），待实现
+状态：已实现并验收（见 `docs/research/2026-10-29-compaction-summary-acceptance.md`）
 关联 ADR：[0028](../adrs/0028-compaction-summary-visibility.md)、[0019](../adrs/0019-compaction-config-and-context-usage.md)、[0023](../adrs/0023-observability-mysql-read-only-admin.md)
 关联需求：FR-4（自动总结记忆 / compaction，P1「摘要可见」）、FR-7（admin 不可读对话正文）
 涉及模块：gateway、server、web、契约文档（`contract/v1`，纯增量）
