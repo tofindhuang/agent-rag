@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
-import { runCodeExtension } from "./extensions.js";
+import { kbSearchExtension, runCodeExtension } from "./extensions.js";
 import type { RunIdentity } from "./identity.js";
 
 interface CapturedTool {
@@ -202,6 +202,117 @@ test("aborting the run cancels the request", async () => {
     const result = await pending;
     assert.equal(result.isError, true);
     assert.match(result.content[0]?.text ?? "", /aborted/);
+  } finally {
+    server.close();
+  }
+});
+
+function kbSearchToolFor(url: string): CapturedTool {
+  let captured: CapturedTool | undefined;
+  const pi = {
+    registerTool: (tool: CapturedTool) => {
+      captured = tool;
+    },
+  } as unknown as ExtensionAPI;
+  const config: GatewayConfig = {
+    port: 0,
+    javaApiUrl: url,
+    sandboxApiUrl: url,
+    apiToken: "shared-token",
+    sessionDir: "/tmp",
+    allowPrivateModelEndpoints: false,
+    compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
+    profileExtractMinIntervalMs: 60_000,
+    profileExtractMaxMessages: 30,
+    profileExtractMaxChars: 6_000,
+    profileExtractMaxCandidates: 5,
+    instanceId: "test-ext",
+    instanceIncarnation: "test-inc",
+    publicUrl: "http://127.0.0.1:0",
+    maxSessions: 60,
+    idleEvictMs: 900_000,
+    drainGraceMs: 600_000,
+    registryHeartbeatMs: 60_000,
+    registryTtlSeconds: 15,
+    lockHeartbeatMs: 60_000,
+    lockStaleMs: 30_000,
+  };
+  kbSearchExtension(config, () => identity)(pi);
+  assert.ok(captured);
+  return captured;
+}
+
+test("kb_search formats hits exactly as before", async () => {
+  const { url, server } = await withServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        passages: [
+          {
+            passageId: "p-1",
+            documentId: "doc-1",
+            seq: 2,
+            page: 7,
+            title: "handbook.pdf",
+            content: "段落内容",
+            score: 0.8123,
+            reranked: false,
+            kbId: "kb-1",
+            kbName: "默认",
+          },
+        ],
+        noAnswer: false,
+      }),
+    );
+  });
+
+  try {
+    const result = await kbSearchToolFor(url).execute(
+      "call-1",
+      { query: "问题" } as never,
+      undefined,
+      undefined,
+    );
+
+    assert.equal(result.isError, undefined);
+    assert.equal(
+      result.content[0]?.text,
+      "[1] 《handbook.pdf》 doc=doc-1 seq=2 page=7 score=0.812\n段落内容",
+    );
+    assert.deepEqual(result.details, { count: 1, passages: (result.details as { passages: unknown[] }).passages });
+  } finally {
+    server.close();
+  }
+});
+
+test("kb_search reports a refusal as no-answer instead of an empty hit list", async () => {
+  const { url, server } = await withServer((_req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(
+      JSON.stringify({
+        passages: [],
+        noAnswer: true,
+        maxScore: 0.042,
+        threshold: 0.15,
+      }),
+    );
+  });
+
+  try {
+    const result = await kbSearchToolFor(url).execute(
+      "call-1",
+      { query: "库里没有的问题" } as never,
+      undefined,
+      undefined,
+    );
+
+    assert.equal(result.isError, undefined);
+    const text = result.content[0]?.text ?? "";
+    assert.match(text, /知识库中没有找到/);
+    assert.match(text, /不要凭空回答/);
+    assert.equal((result.details as { noAnswer?: boolean }).noAnswer, true);
+    assert.equal((result.details as { maxScore?: number }).maxScore, 0.042);
+    assert.equal((result.details as { threshold?: number }).threshold, 0.15);
   } finally {
     server.close();
   }

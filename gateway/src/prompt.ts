@@ -20,6 +20,8 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     "",
     "- `kb_search`: search the user's knowledge base for relevant passages. Use it whenever the",
     "  question may relate to the user's documents; cite the passages you relied on.",
+    "  A `noAnswer` result means the knowledge base has nothing relevant: say you could not",
+    "  find it rather than answering from general knowledge.",
     "- `run_code`: execute code in an isolated sandbox (no network, resource-limited). Use it for",
     "  calculations, data processing, or verification. Execution results come back as",
     "  stdout/stderr plus an exit code.",

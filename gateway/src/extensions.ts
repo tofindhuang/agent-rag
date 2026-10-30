@@ -28,6 +28,10 @@ interface KbPassage {
 
 interface KbSearchResponse {
   passages?: KbPassage[];
+  /** True when retrieval succeeded but every score stayed below the threshold. */
+  noAnswer?: boolean;
+  maxScore?: number | null;
+  threshold?: number | null;
   error?: string;
 }
 
@@ -97,7 +101,9 @@ export function kbSearchExtension(
         label: "Knowledge base search",
         description:
           "Search the user's knowledge base. Returns the top matched passages with document " +
-          "references. Use for any question that may relate to the user's documents.",
+          "references. Use for any question that may relate to the user's documents. " +
+          "A noAnswer result means the knowledge base truly has nothing relevant: tell the " +
+          "user you could not find it, never invent passages or retry with rephrasings.",
         parameters: Type.Object({
           query: Type.String({ description: "Search query in the user's language" }),
           topK: Type.Optional(Type.Number({ description: "Number of passages to return (default 5)" })),
@@ -119,19 +125,32 @@ export function kbSearchExtension(
               buildToolHeaders(identity, _toolCallId, config.apiToken),
             );
             const passages = data.passages ?? [];
-            const text =
-              passages.length > 0
-                ? passages
-                    .map((p, i) => {
-                      const title = p.title ? `《${p.title}》 ` : "";
-                      const page = p.page != null ? ` page=${p.page}` : "";
-                      return `[${i + 1}] ${title}doc=${p.documentId} seq=${p.seq}${page} score=${p.score.toFixed(3)}\n${p.content}`;
-                    })
-                    .join("\n\n")
-                : "No matching passages.";
+            const noAnswer = data.noAnswer === true;
+            let text: string;
+            if (noAnswer) {
+              text = "知识库中没有找到与该问题相关的内容，不要凭空回答。";
+            } else if (passages.length > 0) {
+              text = passages
+                .map((p, i) => {
+                  const title = p.title ? `《${p.title}》 ` : "";
+                  const page = p.page != null ? ` page=${p.page}` : "";
+                  return `[${i + 1}] ${title}doc=${p.documentId} seq=${p.seq}${page} score=${p.score.toFixed(3)}\n${p.content}`;
+                })
+                .join("\n\n");
+            } else {
+              text = "No matching passages.";
+            }
             return {
               content: [{ type: "text", text }],
-              details: { count: passages.length, passages },
+              details: noAnswer
+                ? {
+                    count: 0,
+                    passages: [],
+                    noAnswer: true,
+                    maxScore: data.maxScore ?? null,
+                    threshold: data.threshold ?? null,
+                  }
+                : { count: passages.length, passages },
             };
           } catch (err) {
             return {
