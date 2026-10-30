@@ -1,7 +1,7 @@
 # 检索拒答与无答案评测（M2 切片 4）
 
 日期：2026-10-29
-状态：Phase 1 已完成（Q1–Q10 逐问确认），待实现
+状态：已实现并验收（见 `docs/research/2026-10-30-kb-refusal-acceptance.md`）
 关联 ADR：[0029](../adrs/0029-kb-refusal-threshold-and-no-answer-eval.md)、[0022](../adrs/0022-kb-retrieval-quality-assurance.md)、[0005](../adrs/0005-qdrant-external-embedding.md)
 关联需求：FR-2（知识库 / RAG）、FR-7（检索命中率口径）
 涉及模块：server、web、gateway（工具描述与结果文案）、契约（`tool_result.details` 纯增量）

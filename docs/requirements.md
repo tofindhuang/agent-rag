@@ -85,7 +85,7 @@ AC：
 
 - 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与切片文本入 MySQL，原文入 S3 兼容对象存储（默认 Silo，MinIO 兼容 fork，见 ADR-0013），向量入 Qdrant（ADR-0005）
 - 支持格式（首期）：PDF、Markdown、TXT、docx、HTML URL 抓取
-- 检索工具 `kb_search`：模型在对话中按需调用；Java 侧执行向量检索 + 重排（rerank），返回 top-k 片段
+- 检索工具 `kb_search`：模型在对话中按需调用；Java 侧执行向量检索 + 重排（rerank），返回 top-k 片段；配置拒答阈值后，最高分不足时返回「无相关内容」（已交付，见 `docs/tickets/kb-refusal-eval/`）
 - 知识库隔离：按用户/工作区隔离，检索只命中授权范围
 - 引用溯源：回答中被引用的知识片段可展示来源文档与定位
 - 增量更新：文档重新上传后旧切片失效并重建
@@ -230,7 +230,7 @@ Redis key 草案：
 | M1 MVP | 4–6 周 | 全部 P0：多租户认证、RAG 摄取管线、沙箱隔离与审计、compaction 配置化、画像提取/注入/用户可控、MySQL 消息投影 |
 | M2 硬化 | 3–4 周 | 切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测。切片 2：OAuth、摘要正文可见、限流调优、gVisor 评估、沙箱预热/复用、检索评测扩展、无答案拒答。FR-7 可观测看板已提前交付 |
 
-M2 剩余工作拆分（切片 3：摘要可见；切片 4：无答案拒答 + 评测扩容；切片 5：限流调优 + gVisor 评估 + closeout）的范围、依赖与待决问题见 `docs/tickets/m2-remaining-slices/PLAN.md`。这三片完成前 M2 不算收尾。
+M2 剩余工作拆分（切片 3：摘要可见 ✅；切片 4：无答案拒答 + 评测扩容 ✅；切片 5：限流调优 + gVisor 评估 + closeout）的范围、依赖与待决问题见 `docs/tickets/m2-remaining-slices/PLAN.md`。这三片完成前 M2 不算收尾。
 
 ## 8. 风险与开放问题
 
