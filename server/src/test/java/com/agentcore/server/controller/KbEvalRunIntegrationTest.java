@@ -224,6 +224,71 @@ class KbEvalRunIntegrationTest extends AbstractKbIntegrationTest {
         return ((Number) report.get("runId")).longValue();
     }
 
+    @Test
+    void refusalAccuracyComesFromNoAnswerLabelsWhileRecallIgnoresThem() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+        String documentId = seedDocument(user.id(), kbId, 3);
+        enableRerank(user.token());
+        label(user.token(), kbId, "有答案的问题", documentId, 1);
+        noAnswerLabel(user.token(), kbId, "库里没有的问题");
+
+        // No threshold configured: the answer label hits, the no-answer label is answered.
+        Map<?, ?> report = readMap(runEvaluation(user.token(), kbId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.noAnswerCount").value(1))
+                .andExpect(jsonPath("$.complete").value(true))
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(((Number) report.get("executedCount")).intValue()).isEqualTo(2);
+        Map<?, ?> metrics = (Map<?, ?>) report.get("metrics");
+        assertThat(((Number) metrics.get("refusalAccuracy")).doubleValue())
+                .isCloseTo(0.0, EXACT);
+        assertThat(((Number) metrics.get("recall5")).doubleValue()).isCloseTo(1.0, EXACT);
+    }
+
+    @Test
+    void aHighThresholdFlipsBothSidesOfTheTradeOff() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+        String documentId = seedDocument(user.id(), kbId, 3);
+        enableRerank(user.token());
+        label(user.token(), kbId, "有答案的问题", documentId, 1);
+        noAnswerLabel(user.token(), kbId, "库里没有的问题");
+        setRerankThreshold(user.token(), 0.95);
+
+        Map<?, ?> report = readMap(runEvaluation(user.token(), kbId)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        Map<?, ?> metrics = (Map<?, ?>) report.get("metrics");
+        assertThat(((Number) metrics.get("refusalAccuracy")).doubleValue())
+                .isCloseTo(1.0, EXACT);
+        assertThat(((Number) metrics.get("recall5")).doubleValue()).isCloseTo(0.0, EXACT);
+        assertThat(((Number) report.get("thresholdUsed")).doubleValue())
+                .isCloseTo(0.95, EXACT);
+        assertThat((String) report.get("thresholdSource")).isEqualTo("rerank");
+    }
+
+    private void noAnswerLabel(String token, String kbId, String query) throws Exception {
+        mockMvc.perform(post("/api/kb/retrieval/labels")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("kbId", kbId, "query", query,
+                                        "expectation", "no_answer"))))
+                .andExpect(status().isOk());
+    }
+
+    private void setRerankThreshold(String token, double threshold) throws Exception {
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                Map.of("rerankMinScore", threshold))))
+                .andExpect(status().isOk());
+    }
+
     private void label(String token, String kbId, String query, String documentId, int seq)
             throws Exception {
         mockMvc.perform(post("/api/kb/retrieval/labels")

@@ -34,6 +34,7 @@ public class KbRetrievalCore {
     private final KbRerankSettings rerankSettings;
     private final KbRerankClient rerankClient;
     private final VectorStore vectorStore;
+    private final KbScoreThresholdSettings thresholdSettings;
     private final KbProperties properties;
 
     public KbRetrievalCore(
@@ -42,12 +43,14 @@ public class KbRetrievalCore {
             KbRerankSettings rerankSettings,
             KbRerankClient rerankClient,
             VectorStore vectorStore,
+            KbScoreThresholdSettings thresholdSettings,
             KbProperties properties) {
         this.embeddingSettings = embeddingSettings;
         this.embeddingClient = embeddingClient;
         this.rerankSettings = rerankSettings;
         this.rerankClient = rerankClient;
         this.vectorStore = vectorStore;
+        this.thresholdSettings = thresholdSettings;
         this.properties = properties;
     }
 
@@ -56,10 +59,21 @@ public class KbRetrievalCore {
 
     /**
      * @param pool the filtered candidate pool, vector-ordered
-     * @param ranked the final top-k; identical to the pool prefix when rerank is disabled
+     * @param ranked the final top-k; identical to the pool prefix when rerank is disabled.
+     *     Empty when the refusal policy rejected the whole ordering (ADR-0029)
+     * @param noAnswer true when retrieval succeeded but the best score stayed below the
+     *     threshold that belongs to the ordering's score scale
+     * @param maxScore highest score before any refusal, or {@code null} for an empty pool
      */
     public record Outcome(
-            List<VectorHit> pool, List<RankedHit> ranked, boolean reranked, String rerankModel) {}
+            List<VectorHit> pool,
+            List<RankedHit> ranked,
+            boolean reranked,
+            String rerankModel,
+            boolean noAnswer,
+            Double maxScore,
+            Double threshold,
+            String thresholdSource) {}
 
     public KbEmbeddingConfig resolveEmbedding(long userId) {
         try {
@@ -125,7 +139,7 @@ public class KbRetrievalCore {
             own.add(hit);
         }
         if (own.isEmpty()) {
-            return new Outcome(List.of(), List.of(), false, null);
+            return new Outcome(List.of(), List.of(), false, null, false, null, null, null);
         }
 
         Optional<KbRerankConfig> rerank;
@@ -139,7 +153,7 @@ public class KbRetrievalCore {
                     .limit(topK)
                     .map((hit) -> new RankedHit(hit, hit.score(), false))
                     .toList();
-            return new Outcome(own, ranked, false, null);
+            return withRefusal(own, ranked, false, null, userId);
         }
 
         KbRerankResult result;
@@ -157,7 +171,34 @@ public class KbRetrievalCore {
         for (KbRerankHit hit : result.hits()) {
             ranked.add(new RankedHit(own.get(hit.index()), hit.score(), true));
         }
-        return new Outcome(own, List.copyOf(ranked), true, rerank.get().model());
+        return withRefusal(own, List.copyOf(ranked), true, rerank.get().model(), userId);
+    }
+
+    /**
+     * Applies the per-user refusal threshold to the final ordering. A refused
+     * result keeps no passages: callers must not be able to forward rejected
+     * content (ADR-0029).
+     */
+    private Outcome withRefusal(
+            List<VectorHit> pool,
+            List<RankedHit> ranked,
+            boolean reranked,
+            String rerankModel,
+            long userId) {
+        KbScoreThresholds thresholds =
+                ranked.isEmpty() ? KbScoreThresholds.NONE : thresholdSettings.resolve(userId);
+        KbRefusalPolicy.Verdict verdict = KbRefusalPolicy.evaluate(
+                ranked.isEmpty() ? null : ranked.get(0).score(), reranked, thresholds);
+        List<RankedHit> kept = verdict.noAnswer() ? List.of() : ranked;
+        return new Outcome(
+                pool,
+                kept,
+                reranked,
+                rerankModel,
+                verdict.noAnswer(),
+                verdict.maxScore(),
+                verdict.threshold(),
+                verdict.source());
     }
 
     public static int normalizeTopK(Integer topK) {

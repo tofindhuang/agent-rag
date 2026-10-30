@@ -9,6 +9,7 @@ import com.agentcore.server.dto.kb.KbRerankUpdateRequest;
 import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
+import com.agentcore.server.dto.kb.KbThresholdUpdateRequest;
 import com.agentcore.server.service.KbSettingsService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -69,6 +70,14 @@ public class KbSettingsController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody KbRerankUpdateRequest request) {
         return settingsService.updateRerank(user.userId(), request);
+    }
+
+    /** Refusal thresholds only; endpoint configuration is left untouched (ADR-0029). */
+    @PutMapping("/threshold")
+    public KbSettingsView threshold(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody KbThresholdUpdateRequest request) {
+        return settingsService.updateThreshold(user.userId(), request);
     }
 
     @DeleteMapping("/embedding")

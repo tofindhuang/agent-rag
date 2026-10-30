@@ -12,6 +12,8 @@ import com.agentcore.server.dto.kb.KbSearchRequest;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.service.KbService;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -21,6 +23,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class KbServiceImpl implements KbService {
+
+    private static final Logger log = LoggerFactory.getLogger(KbServiceImpl.class);
 
     private final KbIndexGuard indexGuard;
     private final KbRetrievalCore retrievalCore;
@@ -55,10 +59,21 @@ public class KbServiceImpl implements KbService {
         int topK = KbRetrievalCore.normalizeTopK(request.topK());
         KbRetrievalCore.Outcome outcome =
                 retrievalCore.retrieve(userId, kbId, embedding, request.query(), topK);
+        if (outcome.noAnswer()) {
+            log.info("kb_search refused for session {} kb {}: maxScore={} threshold={} source={}",
+                    identity.sessionId(), kbId, outcome.maxScore(), outcome.threshold(),
+                    outcome.thresholdSource());
+        }
         List<KbSearchResponse.Passage> passages = outcome.ranked().stream()
                 .map((hit) -> KbPassageViews.toPassage(hit, kb))
                 .toList();
-        return new KbSearchResponse(passages);
+        // The tool contract stays byte-identical on the happy path: the score
+        // numbers are only meaningful (and only sent) when refusing.
+        return new KbSearchResponse(
+                passages,
+                outcome.noAnswer(),
+                outcome.noAnswer() ? outcome.maxScore() : null,
+                outcome.noAnswer() ? outcome.threshold() : null);
     }
 
     private static long parseUserId(ToolIdentity identity) {

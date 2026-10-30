@@ -10,12 +10,14 @@ import com.agentcore.server.common.kb.KbEmbeddingProbe;
 import com.agentcore.server.common.kb.KbIngestException;
 import com.agentcore.server.common.kb.KbModelsClient;
 import com.agentcore.server.common.kb.KbModelsException;
+import com.agentcore.server.common.kb.KbRefusalPolicy;
 import com.agentcore.server.common.kb.KbRerankClient;
 import com.agentcore.server.common.kb.KbRerankConfig;
 import com.agentcore.server.common.kb.KbRerankException;
 import com.agentcore.server.common.kb.KbRerankHit;
 import com.agentcore.server.common.kb.KbRerankResult;
 import com.agentcore.server.common.kb.KbRerankSettings;
+import com.agentcore.server.common.kb.KbScoreThresholdSettings;
 import com.agentcore.server.common.kb.KbStoreException;
 import com.agentcore.server.common.kb.KbUrlGuard;
 import com.agentcore.server.common.vector.VectorHit;
@@ -34,6 +36,7 @@ import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
 import com.agentcore.server.dto.kb.KbSearchResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
+import com.agentcore.server.dto.kb.KbThresholdUpdateRequest;
 import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.KbSettingsService;
 import java.time.Duration;
@@ -65,6 +68,8 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     private static final String DEFAULT_EMBEDDING_PATH = "/embeddings";
     private static final String DEFAULT_RERANK_PATH = "/rerank";
     private static final String PROBE_QUERY = "knowledge base probe";
+    /** DECIMAL(8,6) bounds for a refusal threshold (ADR-0029). */
+    private static final double MAX_THRESHOLD = 99.999999d;
 
     private final KbAvailability availability;
     private final KbUserSettingsDao settingsDao;
@@ -73,6 +78,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     private final KbRerankClient rerankClient;
     private final KbModelsClient modelsClient;
     private final KbRerankSettings rerankSettings;
+    private final KbScoreThresholdSettings thresholdSettings;
     private final KbKnowledgeBaseService knowledgeBaseService;
     private final KbUrlGuard guard;
     private final ApiKeyCipher cipher;
@@ -88,6 +94,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             KbRerankClient rerankClient,
             KbModelsClient modelsClient,
             KbRerankSettings rerankSettings,
+            KbScoreThresholdSettings thresholdSettings,
             KbKnowledgeBaseService knowledgeBaseService,
             KbUrlGuard guard,
             ApiKeyCipher cipher,
@@ -101,6 +108,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         this.rerankClient = rerankClient;
         this.modelsClient = modelsClient;
         this.rerankSettings = rerankSettings;
+        this.thresholdSettings = thresholdSettings;
         this.knowledgeBaseService = knowledgeBaseService;
         this.guard = guard;
         this.cipher = cipher;
@@ -171,6 +179,19 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             }
         }
 
+        Double rerankThreshold;
+        Double vectorThreshold;
+        if (request.threshold() == null) {
+            // Saving embedding/rerank must not wipe configured thresholds.
+            rerankThreshold = existing == null ? null : existing.getRerankMinScore();
+            vectorThreshold = existing == null ? null : existing.getVectorMinScore();
+        } else {
+            rerankThreshold = normalizeThreshold(
+                    request.threshold().rerankMinScore(), "rerankMinScore");
+            vectorThreshold = normalizeThreshold(
+                    request.threshold().vectorMinScore(), "vectorMinScore");
+        }
+
         KbUserSettings entity = new KbUserSettings();
         entity.setUserId(userId);
         entity.setEmbeddingBaseUrl(baseUrl);
@@ -184,6 +205,8 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         entity.setRerankApiKeyCipher(rerankCipher);
         entity.setRerankModel(rerankModel);
         entity.setRerankPath(rerankPath);
+        entity.setRerankMinScore(rerankThreshold);
+        entity.setVectorMinScore(vectorThreshold);
         boolean modelChanged = !model.equals(previousEmbeddingModel(existing));
         boolean dimensionChanged = dimension != previousEmbeddingDimension(existing);
         // Probes already ran outside the transaction so no DB connection is held
@@ -332,6 +355,33 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     }
 
     @Override
+    public KbSettingsView updateThreshold(long userId, KbThresholdUpdateRequest request) {
+        availability.requireEnabled();
+        Double rerankThreshold = normalizeThreshold(
+                request == null ? null : request.rerankMinScore(), "rerankMinScore");
+        Double vectorThreshold = normalizeThreshold(
+                request == null ? null : request.vectorMinScore(), "vectorMinScore");
+
+        KbUserSettings entity = new KbUserSettings();
+        entity.setUserId(userId);
+        entity.setRerankMinScore(rerankThreshold);
+        entity.setVectorMinScore(vectorThreshold);
+        settingsDao.upsertThresholds(entity);
+        return view(userId);
+    }
+
+    /** Rejects non-finite values and anything a DECIMAL(8,6) column cannot hold. */
+    private static Double normalizeThreshold(Double value, String field) {
+        if (value == null) {
+            return null;
+        }
+        if (!Double.isFinite(value) || Math.abs(value) > MAX_THRESHOLD) {
+            throw invalid(field + " must be a finite number within ±" + MAX_THRESHOLD);
+        }
+        return value;
+    }
+
+    @Override
     public KbSettingsView clearEmbedding(long userId) {
         availability.requireEnabled();
         settingsDao.clearEmbedding(userId);
@@ -410,6 +460,10 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                     .map((hit) -> toPassage(hit, hit.score(), false, kb))
                     .toList();
         }
+        KbRefusalPolicy.Verdict verdict = KbRefusalPolicy.evaluate(
+                passages.isEmpty() ? null : passages.get(0).score(),
+                reranked,
+                thresholdSettings.resolve(userId));
         return new KbRetrievalTestResponse(
                 query,
                 embedding.model(),
@@ -420,7 +474,11 @@ public class KbSettingsServiceImpl implements KbSettingsService {
                 reranked,
                 rerankModel,
                 rerankLatencyMs,
-                passages);
+                verdict.noAnswer() ? List.of() : passages,
+                verdict.noAnswer(),
+                verdict.maxScore(),
+                verdict.threshold(),
+                verdict.source());
     }
 
     private static KbSearchResponse.Passage toPassage(
@@ -489,7 +547,15 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     }
 
     private KbSettingsView toView(long userId, KbUserSettings row) {
-        return new KbSettingsView(embeddingView(userId, row), rerankView(userId, row));
+        return new KbSettingsView(
+                embeddingView(userId, row), rerankView(userId, row), thresholdView(row));
+    }
+
+    private static KbSettingsView.Threshold thresholdView(KbUserSettings row) {
+        return row == null
+                ? new KbSettingsView.Threshold(null, null)
+                : new KbSettingsView.Threshold(
+                        row.getRerankMinScore(), row.getVectorMinScore());
     }
 
     private KbSettingsView.Embedding embeddingView(long userId, KbUserSettings row) {

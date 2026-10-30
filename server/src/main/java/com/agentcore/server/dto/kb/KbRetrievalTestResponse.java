@@ -13,4 +13,8 @@ public record KbRetrievalTestResponse(
         boolean reranked,
         String rerankModel,
         Long rerankLatencyMs,
-        List<KbSearchResponse.Passage> passages) {}
+        List<KbSearchResponse.Passage> passages,
+        boolean noAnswer,
+        Double maxScore,
+        Double threshold,
+        String thresholdSource) {}

@@ -170,6 +170,89 @@ class KbEvalLabelIntegrationTest extends AbstractKbIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
     }
 
+    @Test
+    void createsANoAnswerLabelWithoutAPassageTarget() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+        seedDocument(user.id(), kbId, 1);
+
+        postNoAnswerLabel(user.token(), kbId, "库里没有的问题")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.expectation").value("no_answer"))
+                .andExpect(jsonPath("$.state").value("ok"))
+                .andExpect(jsonPath("$.documentId").doesNotExist())
+                .andExpect(jsonPath("$.seq").doesNotExist());
+
+        listLabels(user.token(), kbId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].expectation").value("no_answer"))
+                .andExpect(jsonPath("$.items[0].state").value("ok"));
+    }
+
+    @Test
+    void rejectsANoAnswerLabelThatCarriesATarget() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+        String documentId = seedDocument(user.id(), kbId, 1);
+
+        String body = objectMapper.writeValueAsString(Map.of(
+                "kbId", kbId,
+                "query", "矛盾的标注",
+                "expectation", "no_answer",
+                "documentId", documentId,
+                "seq", 1));
+        mockMvc.perform(post("/api/kb/retrieval/labels")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void requiresATargetForAnAnswerLabel() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+
+        String body = objectMapper.writeValueAsString(
+                Map.of("kbId", kbId, "query", "缺少目标"));
+        mockMvc.perform(post("/api/kb/retrieval/labels")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void reusesTheSameQuerySlotWhenSwitchingToNoAnswer() throws Exception {
+        User user = newUser();
+        String kbId = knowledgeBaseService.defaultId(user.id());
+        String documentId = seedDocument(user.id(), kbId, 2);
+
+        postLabel(user.token(), kbId, "同一个问题", documentId, 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.expectation").value("answer"));
+        postNoAnswerLabel(user.token(), kbId, "同一个问题")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.expectation").value("no_answer"));
+
+        listLabels(user.token(), kbId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].expectation").value("no_answer"));
+    }
+
+    private ResultActions postNoAnswerLabel(String token, String kbId, String query)
+            throws Exception {
+        String body = objectMapper.writeValueAsString(
+                Map.of("kbId", kbId, "query", query, "expectation", "no_answer"));
+        return mockMvc.perform(post("/api/kb/retrieval/labels")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
     private ResultActions postLabel(
             String token, String kbId, String query, String documentId, int seq) throws Exception {
         String body = objectMapper.writeValueAsString(

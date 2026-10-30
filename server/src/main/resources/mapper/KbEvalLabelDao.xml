@@ -4,7 +4,8 @@
 <mapper namespace="com.agentcore.server.dao.KbEvalLabelDao">
 
     <sql id="labelColumns">
-        id, user_id, kb_id, query, document_id, seq, passage_sha256, created_at, updated_at
+        id, user_id, kb_id, query, expectation, document_id, seq, passage_sha256,
+        created_at, updated_at
     </sql>
 
     <select id="listByKb" resultType="com.agentcore.server.domain.KbEvalLabel">
@@ -31,9 +32,13 @@
     </select>
 
     <insert id="upsert">
-        INSERT INTO kb_eval_labels (user_id, kb_id, query, document_id, seq, passage_sha256)
-        VALUES (#{userId}, #{kbId}, #{query}, #{documentId}, #{seq}, #{passageSha256}) AS new
+        INSERT INTO kb_eval_labels
+            (user_id, kb_id, query, expectation, document_id, seq, passage_sha256)
+        VALUES
+            (#{userId}, #{kbId}, #{query}, #{expectation}, #{documentId}, #{seq},
+             #{passageSha256}) AS new
         ON DUPLICATE KEY UPDATE
+            expectation = new.expectation,
             document_id = new.document_id,
             seq = new.seq,
             passage_sha256 = new.passage_sha256,

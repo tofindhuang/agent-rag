@@ -8,6 +8,7 @@ import com.agentcore.server.dto.kb.KbRerankUpdateRequest;
 import com.agentcore.server.dto.kb.KbRetrievalTestResponse;
 import com.agentcore.server.dto.kb.KbSettingsUpdateRequest;
 import com.agentcore.server.dto.kb.KbSettingsView;
+import com.agentcore.server.dto.kb.KbThresholdUpdateRequest;
 
 /** Per-user KB embedding/rerank settings, probing and outbound validation (FR-2). */
 public interface KbSettingsService {
@@ -28,6 +29,9 @@ public interface KbSettingsService {
 
     /** Rerank-only toggle or full replace, without touching embedding settings. */
     KbSettingsView updateRerank(long userId, KbRerankUpdateRequest request);
+
+    /** Replaces the refusal thresholds without touching endpoint configuration. */
+    KbSettingsView updateThreshold(long userId, KbThresholdUpdateRequest request);
 
     /** Clears the user's embedding override; rerank stays untouched. */
     KbSettingsView clearEmbedding(long userId);

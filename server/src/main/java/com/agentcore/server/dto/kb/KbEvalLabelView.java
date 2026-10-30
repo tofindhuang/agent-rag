@@ -4,13 +4,15 @@ import java.time.Instant;
 
 /**
  * A label as shown in the management UI. {@code state=rotten} means the target
- * passage is gone or its text fingerprint changed after a rebuild.
+ * passage is gone or its text fingerprint changed after a rebuild; no-answer
+ * labels have no target and therefore stay {@code ok}.
  */
 public record KbEvalLabelView(
         long id,
         String query,
+        String expectation,
         String documentId,
-        int seq,
+        Integer seq,
         String title,
         Integer page,
         String state,

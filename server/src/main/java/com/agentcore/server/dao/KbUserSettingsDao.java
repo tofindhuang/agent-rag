@@ -12,6 +12,9 @@ public interface KbUserSettingsDao extends BaseMapper<KbUserSettings> {
     /** Full replace of the user's settings row; null columns clear stored values. */
     int upsert(KbUserSettings settings);
 
+    /** Replaces only the refusal thresholds, preserving endpoint configuration. */
+    int upsertThresholds(KbUserSettings settings);
+
     /** Replaces only rerank columns, preserving the embedding configuration. */
     int upsertRerank(KbUserSettings settings);
 

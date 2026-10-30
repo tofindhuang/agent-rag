@@ -13,11 +13,16 @@ import java.time.LocalDateTime;
 @TableName("kb_eval_labels")
 public class KbEvalLabel {
 
+    public static final String EXPECTATION_ANSWER = "answer";
+    public static final String EXPECTATION_NO_ANSWER = "no_answer";
+
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
     private String kbId;
     private String query;
+    /** {@code answer} labels point at a passage; {@code no_answer} labels do not. */
+    private String expectation;
     private String documentId;
     private Integer seq;
     private String passageSha256;
@@ -54,6 +59,18 @@ public class KbEvalLabel {
 
     public void setQuery(String query) {
         this.query = query;
+    }
+
+    public String getExpectation() {
+        return expectation;
+    }
+
+    public void setExpectation(String expectation) {
+        this.expectation = expectation;
+    }
+
+    public boolean expectsNoAnswer() {
+        return EXPECTATION_NO_ANSWER.equals(expectation);
     }
 
     public String getDocumentId() {

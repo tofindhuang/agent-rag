@@ -300,6 +300,103 @@ class KbSearchIntegrationTest extends AbstractKbIntegrationTest {
         return vector;
     }
 
+    @Test
+    void refusesWhenTheRerankScoreStaysBelowTheThreshold() throws Exception {
+        User user = newUser();
+        enableRerank(user.token());
+        setThresholds(user.token(), 0.95, null);
+        seedDocument(user.id(), "refuse.txt", 3, null);
+
+        KbSearchResponse response = readSearch(search(user.id(), "rerank candidate", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(response.passages()).isEmpty();
+        assertThat(response.noAnswer()).isTrue();
+        assertThat(response.threshold()).isEqualTo(0.95);
+        assertThat(response.maxScore()).isNotNull();
+    }
+
+    @Test
+    void keepsResultsWhenTheRerankScoreClearsTheThreshold() throws Exception {
+        User user = newUser();
+        enableRerank(user.token());
+        setThresholds(user.token(), 0.50, null);
+        seedDocument(user.id(), "keep.txt", 3, null);
+
+        KbSearchResponse response = readSearch(search(user.id(), "rerank candidate", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(response.noAnswer()).isFalse();
+        assertThat(response.passages()).isNotEmpty();
+        assertThat(response.passages().get(0).score()).isCloseTo(0.9, Offset.offset(0.001));
+    }
+
+    @Test
+    void refusesOnTheVectorThresholdWhenRerankIsDisabled() throws Exception {
+        User user = newUser();
+        setThresholds(user.token(), null, 1.5);
+        seedDocument(user.id(), "vector-refuse.txt", 3, null);
+
+        KbSearchResponse response = readSearch(search(user.id(), "任何问题", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(response.passages()).isEmpty();
+        assertThat(response.noAnswer()).isTrue();
+        assertThat(response.threshold()).isEqualTo(1.5);
+    }
+
+    @Test
+    void neverAppliesTheVectorThresholdToRerankedScores() throws Exception {
+        User user = newUser();
+        enableRerank(user.token());
+        // The reranked score is 0.9; a vector threshold of 2.0 must not filter it.
+        setThresholds(user.token(), null, 2.0);
+        seedDocument(user.id(), "rerank-wins.txt", 3, null);
+
+        KbSearchResponse response = readSearch(search(user.id(), "rerank candidate", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(response.noAnswer()).isFalse();
+        assertThat(response.passages()).isNotEmpty();
+        assertThat(response.passages().get(0).reranked()).isTrue();
+    }
+
+    @Test
+    void keepsTheHistoricalShapeWhenRefusalIsOff() throws Exception {
+        User user = newUser();
+        seedDocument(user.id(), "no-threshold.txt", 3, null);
+
+        KbSearchResponse response = readSearch(search(user.id(), "知识库检索测试", null)
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(response.noAnswer()).isFalse();
+        assertThat(response.maxScore()).isNull();
+        assertThat(response.threshold()).isNull();
+        assertThat(response.passages()).isNotEmpty();
+    }
+
+    private void setThresholds(String token, Double rerank, Double vector) throws Exception {
+        StringBuilder body = new StringBuilder("{");
+        if (rerank != null) {
+            body.append("\"rerankMinScore\":").append(rerank);
+        }
+        if (vector != null) {
+            if (rerank != null) body.append(",");
+            body.append("\"vectorMinScore\":").append(vector);
+        }
+        body.append("}");
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.toString()))
+                .andExpect(status().isOk());
+    }
+
     private void enableRerank(String token) throws Exception {
         String body = """
                 {

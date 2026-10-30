@@ -24,8 +24,9 @@ public interface KbEvalLabelDao extends BaseMapper<KbEvalLabel> {
             @Param("userId") long userId,
             @Param("kbId") String kbId,
             @Param("query") String query,
+            @Param("expectation") String expectation,
             @Param("documentId") String documentId,
-            @Param("seq") int seq,
+            @Param("seq") Integer seq,
             @Param("passageSha256") String passageSha256);
 
     int deleteOwned(@Param("id") long id, @Param("userId") long userId);

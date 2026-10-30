@@ -4,19 +4,22 @@
 <mapper namespace="com.agentcore.server.dao.KbEvalRunDao">
 
     <sql id="runColumns">
-        id, user_id, kb_id, complete, label_count, executed_count, rotten_count,
-        skipped_count, embedding_model, embedding_dim, rerank_model, duration_ms,
-        recall5, mrr5, pool_recall10, baseline_recall5, baseline_mrr5, created_at
+        id, user_id, kb_id, complete, label_count, no_answer_count, executed_count,
+        rotten_count, skipped_count, embedding_model, embedding_dim, rerank_model,
+        duration_ms, recall5, mrr5, pool_recall10, baseline_recall5, baseline_mrr5,
+        refusal_accuracy, threshold_used, threshold_source, created_at
     </sql>
 
     <insert id="insertRun" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO kb_eval_runs (user_id, kb_id, complete, label_count, executed_count,
-            rotten_count, skipped_count, embedding_model, embedding_dim, rerank_model,
-            duration_ms, recall5, mrr5, pool_recall10, baseline_recall5, baseline_mrr5)
-        VALUES (#{userId}, #{kbId}, #{complete}, #{labelCount}, #{executedCount},
-            #{rottenCount}, #{skippedCount}, #{embeddingModel}, #{embeddingDim},
-            #{rerankModel}, #{durationMs}, #{recall5}, #{mrr5}, #{poolRecall10},
-            #{baselineRecall5}, #{baselineMrr5})
+        INSERT INTO kb_eval_runs (user_id, kb_id, complete, label_count, no_answer_count,
+            executed_count, rotten_count, skipped_count, embedding_model, embedding_dim,
+            rerank_model, duration_ms, recall5, mrr5, pool_recall10, baseline_recall5,
+            baseline_mrr5, refusal_accuracy, threshold_used, threshold_source)
+        VALUES (#{userId}, #{kbId}, #{complete}, #{labelCount}, #{noAnswerCount},
+            #{executedCount}, #{rottenCount}, #{skippedCount}, #{embeddingModel},
+            #{embeddingDim}, #{rerankModel}, #{durationMs}, #{recall5}, #{mrr5},
+            #{poolRecall10}, #{baselineRecall5}, #{baselineMrr5}, #{refusalAccuracy},
+            #{thresholdUsed}, #{thresholdSource})
     </insert>
 
     <select id="findOwned" resultType="com.agentcore.server.domain.KbEvalRun">

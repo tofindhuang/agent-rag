@@ -1,7 +1,13 @@
 package com.agentcore.server.dto.kb;
 
 /** Effective KB settings; secrets are never echoed, only their last four characters. */
-public record KbSettingsView(Embedding embedding, Rerank rerank) {
+public record KbSettingsView(Embedding embedding, Rerank rerank, Threshold threshold) {
+
+    /**
+     * Refusal thresholds (ADR-0029); {@code null} means "do not refuse". Each
+     * value applies to its own score scale.
+     */
+    public record Threshold(Double rerankMinScore, Double vectorMinScore) {}
 
     /** {@code source} is {@code user}, {@code system} or {@code none}. */
     public record Embedding(

@@ -50,6 +50,14 @@ public class KbRetrievalServiceImpl implements KbRetrievalService {
                 .map((hit) -> KbPassageViews.toPassage(hit, hit.score(), false, kb))
                 .toList();
         return new KbRetrievalQueryResponse(
-                request.query(), outcome.reranked(), outcome.rerankModel(), current, vector);
+                request.query(),
+                outcome.reranked(),
+                outcome.rerankModel(),
+                current,
+                vector,
+                outcome.noAnswer(),
+                outcome.maxScore(),
+                outcome.threshold(),
+                outcome.thresholdSource());
     }
 }

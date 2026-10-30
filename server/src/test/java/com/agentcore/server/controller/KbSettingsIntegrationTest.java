@@ -532,6 +532,70 @@ class KbSettingsIntegrationTest extends AbstractKbIntegrationTest {
                 "SELECT status FROM kb_documents WHERE id = ?", String.class, documentId);
     }
 
+    @Test
+    void savesRefusalThresholdsWithoutTouchingEndpoints() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+        String embeddingCipher = embeddingCipher(user.userId());
+
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rerankMinScore\":0.15,\"vectorMinScore\":0.30}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.threshold.rerankMinScore").value(0.15))
+                .andExpect(jsonPath("$.threshold.vectorMinScore").value(0.30))
+                .andExpect(jsonPath("$.embedding.source").value("user"))
+                .andExpect(jsonPath("$.rerank.source").value("user"));
+
+        assertThat(embeddingCipher(user.userId())).isEqualTo(embeddingCipher);
+    }
+
+    @Test
+    void clearingThresholdsRestoresTheNoRefusalDefault() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rerankMinScore\":0.15}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.threshold.rerankMinScore").doesNotExist())
+                .andExpect(jsonPath("$.threshold.vectorMinScore").doesNotExist());
+    }
+
+    @Test
+    void savingEmbeddingKeepsConfiguredThresholds() throws Exception {
+        User user = newUser();
+        putSettings(user.token(), settingsBodyWithRerank()).andExpect(status().isOk());
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rerankMinScore\":0.15,\"vectorMinScore\":0.30}"))
+                .andExpect(status().isOk());
+
+        putSettings(user.token(), embeddingBody("sk-test", EMBEDDING_MODEL, 1024))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.threshold.rerankMinScore").value(0.15))
+                .andExpect(jsonPath("$.threshold.vectorMinScore").value(0.30));
+    }
+
+    @Test
+    void rejectsNonFiniteThresholds() throws Exception {
+        User user = newUser();
+        mockMvc.perform(put("/api/kb/settings/threshold")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + user.token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rerankMinScore\":1000}"))
+                .andExpect(status().isBadRequest());
+    }
+
     private User newUser() throws Exception {
         String email = "kb-settings-" + UUID.randomUUID() + "@example.com";
         long userId = AuthTestCalls.register(mockMvc, email, "correct-horse");

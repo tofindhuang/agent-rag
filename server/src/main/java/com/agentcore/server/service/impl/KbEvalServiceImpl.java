@@ -7,7 +7,10 @@ import com.agentcore.server.common.kb.KbEvalMetrics;
 import com.agentcore.server.common.kb.KbEvalMetricsCalculator;
 import com.agentcore.server.common.kb.KbEmbeddingConfig;
 import com.agentcore.server.common.kb.KbIndexGuard;
+import com.agentcore.server.common.kb.KbRefusalPolicy;
 import com.agentcore.server.common.kb.KbRetrievalCore;
+import com.agentcore.server.common.kb.KbScoreThresholdSettings;
+import com.agentcore.server.common.kb.KbScoreThresholds;
 import com.agentcore.server.common.kb.KbRetrievalCore.RankedHit;
 import com.agentcore.server.common.vector.VectorHit;
 import com.agentcore.server.config.KbProperties;
@@ -66,6 +69,7 @@ public class KbEvalServiceImpl implements KbEvalService {
 
     private final KbIndexGuard indexGuard;
     private final KbRetrievalCore retrievalCore;
+    private final KbScoreThresholdSettings thresholdSettings;
     private final KbKnowledgeBaseService knowledgeBaseService;
     private final KbEvalLabelDao labelDao;
     private final KbPassageDao passageDao;
@@ -78,6 +82,7 @@ public class KbEvalServiceImpl implements KbEvalService {
     public KbEvalServiceImpl(
             KbIndexGuard indexGuard,
             KbRetrievalCore retrievalCore,
+            KbScoreThresholdSettings thresholdSettings,
             KbKnowledgeBaseService knowledgeBaseService,
             KbEvalLabelDao labelDao,
             KbPassageDao passageDao,
@@ -88,6 +93,7 @@ public class KbEvalServiceImpl implements KbEvalService {
             PlatformTransactionManager transactionManager) {
         this.indexGuard = indexGuard;
         this.retrievalCore = retrievalCore;
+        this.thresholdSettings = thresholdSettings;
         this.knowledgeBaseService = knowledgeBaseService;
         this.labelDao = labelDao;
         this.passageDao = passageDao;
@@ -116,6 +122,11 @@ public class KbEvalServiceImpl implements KbEvalService {
         Map<String, String> titles = documentTitles(userId, kb.getId());
         List<Work> work = new ArrayList<>(labels.size());
         for (KbEvalLabel label : labels) {
+            if (label.expectsNoAnswer()) {
+                // No passage target: nothing can rot, the refusal verdict is the score.
+                work.add(new Work(label, null, true));
+                continue;
+            }
             KbPassage passage = passageDao.findByDocumentAndSeq(
                     label.getDocumentId(), label.getSeq());
             boolean fresh = passage != null
@@ -129,6 +140,7 @@ public class KbEvalServiceImpl implements KbEvalService {
         Map<Long, Outcome> outcomes = execute(userId, kb.getId(), embedding, work, deadline);
 
         int executed = 0;
+        int noAnswerExecuted = 0;
         int rotten = 0;
         int skipped = 0;
         List<KbEvalMetricsCalculator.Observation> observations = new ArrayList<>();
@@ -140,8 +152,20 @@ public class KbEvalServiceImpl implements KbEvalService {
                 rotten++;
             } else {
                 executed++;
-                observations.add(new KbEvalMetricsCalculator.Observation(
-                        outcome.item().getRankFinal(), outcome.item().getRankVector()));
+                if (entry.label().expectsNoAnswer()) {
+                    noAnswerExecuted++;
+                    observations.add(new KbEvalMetricsCalculator.Observation(
+                            true,
+                            KbEvalItem.STATUS_HIT.equals(outcome.item().getStatus()),
+                            null,
+                            null));
+                } else {
+                    observations.add(new KbEvalMetricsCalculator.Observation(
+                            false,
+                            false,
+                            outcome.item().getRankFinal(),
+                            outcome.item().getRankVector()));
+                }
             }
         }
         if (executed == 0) {
@@ -159,6 +183,7 @@ public class KbEvalServiceImpl implements KbEvalService {
         run.setKbId(kb.getId());
         run.setComplete(complete);
         run.setLabelCount(labels.size());
+        run.setNoAnswerCount(noAnswerExecuted);
         run.setExecutedCount(executed);
         run.setRottenCount(rotten);
         run.setSkippedCount(skipped);
@@ -171,6 +196,13 @@ public class KbEvalServiceImpl implements KbEvalService {
         run.setPoolRecall10(metrics.poolRecall10());
         run.setBaselineRecall5(metrics.baselineRecall5());
         run.setBaselineMrr5(metrics.baselineMrr5());
+        run.setRefusalAccuracy(metrics.refusalAccuracy());
+        KbScoreThresholds thresholds = thresholdSettings.resolve(userId);
+        run.setThresholdUsed(rerankModel == null ? thresholds.vector() : thresholds.rerank());
+        run.setThresholdSource(
+                rerankModel == null
+                        ? (thresholds.vector() == null ? null : KbRefusalPolicy.SOURCE_VECTOR)
+                        : (thresholds.rerank() == null ? null : KbRefusalPolicy.SOURCE_RERANK));
 
         List<KbEvalItem> items = new ArrayList<>(work.size());
         for (Work entry : work) {
@@ -244,6 +276,7 @@ public class KbEvalServiceImpl implements KbEvalService {
                 run.getId(),
                 Boolean.TRUE.equals(run.getComplete()),
                 value(run.getLabelCount()),
+                value(run.getNoAnswerCount()),
                 value(run.getExecutedCount()),
                 value(run.getRottenCount()),
                 value(run.getSkippedCount()),
@@ -251,12 +284,15 @@ public class KbEvalServiceImpl implements KbEvalService {
                 value(run.getEmbeddingDim()),
                 run.getRerankModel(),
                 value(run.getDurationMs()),
+                run.getThresholdUsed(),
+                run.getThresholdSource(),
                 new KbEvalMetrics(
-                        value(run.getRecall5()),
-                        value(run.getMrr5()),
-                        value(run.getPoolRecall10()),
-                        value(run.getBaselineRecall5()),
-                        value(run.getBaselineMrr5())),
+                        run.getRecall5(),
+                        run.getMrr5(),
+                        run.getPoolRecall10(),
+                        run.getBaselineRecall5(),
+                        run.getBaselineMrr5(),
+                        run.getRefusalAccuracy()),
                 items,
                 rotten,
                 skipped);
@@ -351,6 +387,13 @@ public class KbEvalServiceImpl implements KbEvalService {
                 return baseItem(entry.label(), KbEvalItem.STATUS_SKIPPED);
             }
             throw e;
+        }
+        if (entry.label().expectsNoAnswer()) {
+            KbEvalItem item = baseItem(
+                    entry.label(),
+                    outcome.noAnswer() ? KbEvalItem.STATUS_HIT : KbEvalItem.STATUS_MISS);
+            item.setScoreFinal(outcome.maxScore());
+            return item;
         }
         Integer rankVector = rankInPool(outcome.pool(), entry.label());
         Integer rankFinal = rankInRanked(outcome.ranked(), entry.label());
@@ -450,6 +493,7 @@ public class KbEvalServiceImpl implements KbEvalService {
                 run.getId(),
                 Boolean.TRUE.equals(run.getComplete()),
                 value(run.getLabelCount()),
+                value(run.getNoAnswerCount()),
                 value(run.getExecutedCount()),
                 value(run.getRottenCount()),
                 value(run.getSkippedCount()),
@@ -457,6 +501,8 @@ public class KbEvalServiceImpl implements KbEvalService {
                 value(run.getEmbeddingDim()),
                 run.getRerankModel(),
                 value(run.getDurationMs()),
+                run.getThresholdUsed(),
+                run.getThresholdSource(),
                 metrics,
                 items,
                 rotten,
@@ -477,6 +523,7 @@ public class KbEvalServiceImpl implements KbEvalService {
                 toInstant(run.getCreatedAt()),
                 Boolean.TRUE.equals(run.getComplete()),
                 value(run.getLabelCount()),
+                value(run.getNoAnswerCount()),
                 value(run.getExecutedCount()),
                 value(run.getRottenCount()),
                 value(run.getSkippedCount()),
@@ -484,12 +531,15 @@ public class KbEvalServiceImpl implements KbEvalService {
                 value(run.getEmbeddingDim()),
                 run.getRerankModel(),
                 value(run.getDurationMs()),
+                run.getThresholdUsed(),
+                run.getThresholdSource(),
                 new KbEvalMetrics(
-                        value(run.getRecall5()),
-                        value(run.getMrr5()),
-                        value(run.getPoolRecall10()),
-                        value(run.getBaselineRecall5()),
-                        value(run.getBaselineMrr5())));
+                        run.getRecall5(),
+                        run.getMrr5(),
+                        run.getPoolRecall10(),
+                        run.getBaselineRecall5(),
+                        run.getBaselineMrr5(),
+                        run.getRefusalAccuracy()));
     }
 
     private static KbEvalMetrics round(KbEvalMetrics metrics) {
@@ -498,10 +548,14 @@ public class KbEvalServiceImpl implements KbEvalService {
                 round(metrics.mrr5()),
                 round(metrics.poolRecall10()),
                 round(metrics.baselineRecall5()),
-                round(metrics.baselineMrr5()));
+                round(metrics.baselineMrr5()),
+                round(metrics.refusalAccuracy()));
     }
 
-    private static double round(double value) {
+    private static Double round(Double value) {
+        if (value == null) {
+            return null;
+        }
         return BigDecimal.valueOf(value).setScale(SCALE, RoundingMode.HALF_UP).doubleValue();
     }
 

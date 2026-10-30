@@ -12,4 +12,8 @@ public record KbRetrievalQueryResponse(
         boolean reranked,
         String rerankModel,
         List<KbSearchResponse.Passage> current,
-        List<KbSearchResponse.Passage> vector) {}
+        List<KbSearchResponse.Passage> vector,
+        boolean noAnswer,
+        Double maxScore,
+        Double threshold,
+        String thresholdSource) {}

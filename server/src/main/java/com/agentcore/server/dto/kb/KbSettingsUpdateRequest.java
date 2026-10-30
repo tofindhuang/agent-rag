@@ -5,7 +5,10 @@ package com.agentcore.server.dto.kb;
  * keeps the stored cipher (so a form can save without re-entering it), while
  * an empty string clears it.
  */
-public record KbSettingsUpdateRequest(Embedding embedding, Rerank rerank) {
+public record KbSettingsUpdateRequest(Embedding embedding, Rerank rerank, Threshold threshold) {
+
+    /** Omitted keeps the stored thresholds; null values inside clear them. */
+    public record Threshold(Double rerankMinScore, Double vectorMinScore) {}
 
     public record Embedding(
             String baseUrl, String apiKey, String model, Integer dimension, String path) {}

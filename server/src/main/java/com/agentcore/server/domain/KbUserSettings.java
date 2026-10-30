@@ -26,6 +26,9 @@ public class KbUserSettings {
     private String rerankApiKeyCipher;
     private String rerankModel;
     private String rerankPath;
+    /** Refusal thresholds (ADR-0029); null means "do not refuse". */
+    private Double rerankMinScore;
+    private Double vectorMinScore;
     private LocalDateTime updatedAt;
 
     public Long getUserId() {
@@ -122,6 +125,22 @@ public class KbUserSettings {
 
     public void setRerankPath(String rerankPath) {
         this.rerankPath = rerankPath;
+    }
+
+    public Double getRerankMinScore() {
+        return rerankMinScore;
+    }
+
+    public void setRerankMinScore(Double rerankMinScore) {
+        this.rerankMinScore = rerankMinScore;
+    }
+
+    public Double getVectorMinScore() {
+        return vectorMinScore;
+    }
+
+    public void setVectorMinScore(Double vectorMinScore) {
+        this.vectorMinScore = vectorMinScore;
     }
 
     public LocalDateTime getUpdatedAt() {

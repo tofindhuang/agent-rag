@@ -14,6 +14,7 @@ import com.agentcore.server.common.kb.KbEmbeddingClient;
 import com.agentcore.server.common.kb.KbModelsClient;
 import com.agentcore.server.common.kb.KbRerankClient;
 import com.agentcore.server.common.kb.KbRerankSettings;
+import com.agentcore.server.common.kb.KbScoreThresholdSettings;
 import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.common.kb.KbUrlGuard;
 import com.agentcore.server.common.vector.VectorStore;
@@ -77,6 +78,7 @@ class KbSettingsServiceImplTest {
         return new KbSettingsUpdateRequest(
                 new KbSettingsUpdateRequest.Embedding(
                         baseUrl, "sk-test", "test-embedding-model", 1024, "/embeddings"),
+                null,
                 null);
     }
 
@@ -103,6 +105,7 @@ class KbSettingsServiceImplTest {
                 new KbModelsClient(objectMapper),
                 new KbRerankSettings(properties, settingsDao, new ApiKeyCipher(new ModelProperties(
                         "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", false))),
+                new KbScoreThresholdSettings(settingsDao),
                 mock(KbKnowledgeBaseService.class),
                 guard,
                 new ApiKeyCipher(new ModelProperties(

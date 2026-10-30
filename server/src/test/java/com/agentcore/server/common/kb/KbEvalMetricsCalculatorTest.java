@@ -11,26 +11,36 @@ class KbEvalMetricsCalculatorTest {
 
     private static final Offset<Double> EXACT = Offset.offset(0.0001);
 
+    private static KbEvalMetricsCalculator.Observation answer(
+            Integer rankFinal, Integer rankVector) {
+        return new KbEvalMetricsCalculator.Observation(false, false, rankFinal, rankVector);
+    }
+
+    private static KbEvalMetricsCalculator.Observation noAnswer(boolean refused) {
+        return new KbEvalMetricsCalculator.Observation(true, refused, null, null);
+    }
+
     @Test
     void splitsEmbeddingCeilingFromFinalOrdering() {
         KbEvalMetrics metrics = KbEvalMetricsCalculator.compute(List.of(
-                new KbEvalMetricsCalculator.Observation(1, 1),
-                new KbEvalMetricsCalculator.Observation(3, 2),
-                new KbEvalMetricsCalculator.Observation(null, 6)));
+                answer(1, 1),
+                answer(3, 2),
+                answer(null, 6)));
 
         assertThat(metrics.recall5()).isCloseTo(2.0 / 3.0, EXACT);
         assertThat(metrics.mrr5()).isCloseTo(4.0 / 9.0, EXACT);
         assertThat(metrics.poolRecall10()).isCloseTo(1.0, EXACT);
         assertThat(metrics.baselineRecall5()).isCloseTo(2.0 / 3.0, EXACT);
         assertThat(metrics.baselineMrr5()).isCloseTo(0.5, EXACT);
+        assertThat(metrics.refusalAccuracy()).isNull();
     }
 
     @Test
     void isIdenticalWhenRerankIsDisabled() {
         KbEvalMetrics metrics = KbEvalMetricsCalculator.compute(List.of(
-                new KbEvalMetricsCalculator.Observation(1, 1),
-                new KbEvalMetricsCalculator.Observation(2, 2),
-                new KbEvalMetricsCalculator.Observation(null, 8)));
+                answer(1, 1),
+                answer(2, 2),
+                answer(null, 8)));
 
         assertThat(metrics.recall5()).isEqualTo(metrics.baselineRecall5());
         assertThat(metrics.mrr5()).isEqualTo(metrics.baselineMrr5());
@@ -39,13 +49,36 @@ class KbEvalMetricsCalculatorTest {
 
     @Test
     void countsOnlyObservationsThatWereExecuted() {
-        KbEvalMetrics metrics = KbEvalMetricsCalculator.compute(List.of(
-                new KbEvalMetricsCalculator.Observation(null, null)));
+        KbEvalMetrics metrics = KbEvalMetricsCalculator.compute(List.of(answer(null, null)));
 
         assertThat(metrics.recall5()).isZero();
         assertThat(metrics.mrr5()).isZero();
         assertThat(metrics.poolRecall10()).isZero();
         assertThat(metrics.baselineRecall5()).isZero();
         assertThat(metrics.baselineMrr5()).isZero();
+    }
+
+    @Test
+    void keepsNoAnswerSamplesOutOfTheRecallDenominator() {
+        KbEvalMetrics metrics = KbEvalMetricsCalculator.compute(List.of(
+                answer(1, 1),
+                noAnswer(true),
+                noAnswer(false)));
+
+        assertThat(metrics.recall5()).isEqualTo(1.0);
+        assertThat(metrics.mrr5()).isEqualTo(1.0);
+        assertThat(metrics.refusalAccuracy()).isCloseTo(0.5, EXACT);
+    }
+
+    @Test
+    void reportsNullRecallWhenOnlyNoAnswerSamplesRan() {
+        KbEvalMetrics metrics = KbEvalMetricsCalculator.compute(List.of(noAnswer(true)));
+
+        assertThat(metrics.recall5()).isNull();
+        assertThat(metrics.mrr5()).isNull();
+        assertThat(metrics.poolRecall10()).isNull();
+        assertThat(metrics.baselineRecall5()).isNull();
+        assertThat(metrics.baselineMrr5()).isNull();
+        assertThat(metrics.refusalAccuracy()).isEqualTo(1.0);
     }
 }

@@ -71,31 +71,38 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
                     "query must be between 1 and " + KbRetrievalCore.MAX_QUERY_CHARS
                             + " characters");
         }
-        if (request.documentId() == null || request.documentId().isBlank()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "documentId is required");
-        }
-        int seq = request.seq() == null ? 0 : request.seq();
-        if (seq < 1) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "seq must be positive");
-        }
-
-        KbDocument document = documentDao.findOwned(request.documentId(), userId);
-        if (document == null || !kb.getId().equals(document.getKbId())) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "document not found in this knowledge base");
-        }
-        KbPassage passage = passageDao.findByDocumentAndSeq(request.documentId(), seq);
-        if (passage == null || passage.getUserId() == null || passage.getUserId() != userId) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "passage not found");
-        }
-
+        String expectation = normalizeExpectation(request.expectation());
         KbEvalLabel existing = labelDao.findByKbAndQuery(userId, kb.getId(), query);
         if (existing == null && labelDao.countByKb(userId, kb.getId()) >= LABEL_LIMIT) {
             throw new ApiException(ErrorCode.KB_EVAL_LABEL_LIMIT,
                     "a knowledge base can hold at most " + LABEL_LIMIT + " evaluation labels");
         }
 
+        if (KbEvalLabel.EXPECTATION_NO_ANSWER.equals(expectation)) {
+            if (notBlank(request.documentId()) || request.seq() != null) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST,
+                        "a no-answer label must not carry a passage target");
+            }
+            labelDao.upsert(userId, kb.getId(), query, expectation, null, null, null);
+            KbEvalLabel saved = labelDao.findByKbAndQuery(userId, kb.getId(), query);
+            return toView(null, null, saved);
+        }
+
+        if (!notBlank(request.documentId()) || request.seq() == null || request.seq() < 1) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "documentId and a positive seq are required for an answer label");
+        }
+        KbDocument document = documentDao.findOwned(request.documentId(), userId);
+        if (document == null || !kb.getId().equals(document.getKbId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "document not found in this knowledge base");
+        }
+        KbPassage passage = passageDao.findByDocumentAndSeq(request.documentId(), request.seq());
+        if (passage == null || passage.getUserId() == null || passage.getUserId() != userId) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "passage not found");
+        }
+
         labelDao.upsert(
-                userId, kb.getId(), query, request.documentId(), seq,
+                userId, kb.getId(), query, expectation, request.documentId(), request.seq(),
                 KbDigests.sha256(passage.getContent()));
         KbEvalLabel saved = labelDao.findByKbAndQuery(userId, kb.getId(), query);
         return toView(document, passage, saved);
@@ -109,6 +116,9 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
     }
 
     private KbEvalLabelView toView(long userId, KbEvalLabel label) {
+        if (label.expectsNoAnswer()) {
+            return toView(null, null, label);
+        }
         KbDocument document = documentDao.findOwned(label.getDocumentId(), userId);
         KbPassage passage =
                 passageDao.findByDocumentAndSeq(label.getDocumentId(), label.getSeq());
@@ -117,18 +127,37 @@ public class KbEvalLabelServiceImpl implements KbEvalLabelService {
 
     private static KbEvalLabelView toView(
             KbDocument document, KbPassage passage, KbEvalLabel label) {
+        boolean noAnswer = label.expectsNoAnswer();
         boolean fresh = passage != null
                 && passage.getContent() != null
                 && KbDigests.sha256(passage.getContent()).equals(label.getPassageSha256());
         return new KbEvalLabelView(
                 label.getId(),
                 label.getQuery(),
+                noAnswer ? KbEvalLabel.EXPECTATION_NO_ANSWER : KbEvalLabel.EXPECTATION_ANSWER,
                 label.getDocumentId(),
                 label.getSeq(),
                 document == null ? null : document.getTitle(),
                 passage == null ? null : passage.getPage(),
-                fresh ? KbEvalLabelView.STATE_OK : KbEvalLabelView.STATE_ROTTEN,
+                noAnswer || fresh ? KbEvalLabelView.STATE_OK : KbEvalLabelView.STATE_ROTTEN,
                 toInstant(label.getCreatedAt()));
+    }
+
+    private static String normalizeExpectation(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return KbEvalLabel.EXPECTATION_ANSWER;
+        }
+        String value = raw.trim();
+        if (!KbEvalLabel.EXPECTATION_ANSWER.equals(value)
+                && !KbEvalLabel.EXPECTATION_NO_ANSWER.equals(value)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "expectation must be answer or no_answer");
+        }
+        return value;
+    }
+
+    private static boolean notBlank(String value) {
+        return value != null && !value.isBlank();
     }
 
     private static Instant toInstant(LocalDateTime value) {

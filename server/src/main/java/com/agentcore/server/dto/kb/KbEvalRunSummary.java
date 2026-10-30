@@ -9,6 +9,7 @@ public record KbEvalRunSummary(
         Instant createdAt,
         boolean complete,
         int labelCount,
+        int noAnswerCount,
         int executedCount,
         int rottenCount,
         int skippedCount,
@@ -16,4 +17,6 @@ public record KbEvalRunSummary(
         int embeddingDim,
         String rerankModel,
         int durationMs,
+        Double thresholdUsed,
+        String thresholdSource,
         KbEvalMetrics metrics) {}

@@ -6,7 +6,13 @@ import java.util.List;
  * Response of the kb_search tool callback. The passage shape mirrors the
  * Java↔gateway contract v1 and is the unit of citation (see CONTEXT.md).
  */
-public record KbSearchResponse(List<Passage> passages) {
+public record KbSearchResponse(
+        List<Passage> passages, boolean noAnswer, Double maxScore, Double threshold) {
+
+    /** Normal hit / no-KB / zero-hit responses keep the historical shape. */
+    public KbSearchResponse(List<Passage> passages) {
+        this(passages, false, null, null);
+    }
 
     public record Passage(
             String passageId,

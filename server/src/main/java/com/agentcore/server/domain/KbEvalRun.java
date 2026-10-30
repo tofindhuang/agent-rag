@@ -15,6 +15,7 @@ public class KbEvalRun {
     private String kbId;
     private Boolean complete;
     private Integer labelCount;
+    private Integer noAnswerCount;
     private Integer executedCount;
     private Integer rottenCount;
     private Integer skippedCount;
@@ -27,6 +28,9 @@ public class KbEvalRun {
     private Double poolRecall10;
     private Double baselineRecall5;
     private Double baselineMrr5;
+    private Double refusalAccuracy;
+    private Double thresholdUsed;
+    private String thresholdSource;
     private LocalDateTime createdAt;
 
     public Long getId() {
@@ -67,6 +71,38 @@ public class KbEvalRun {
 
     public void setLabelCount(Integer labelCount) {
         this.labelCount = labelCount;
+    }
+
+    public Integer getNoAnswerCount() {
+        return noAnswerCount;
+    }
+
+    public void setNoAnswerCount(Integer noAnswerCount) {
+        this.noAnswerCount = noAnswerCount;
+    }
+
+    public Double getRefusalAccuracy() {
+        return refusalAccuracy;
+    }
+
+    public void setRefusalAccuracy(Double refusalAccuracy) {
+        this.refusalAccuracy = refusalAccuracy;
+    }
+
+    public Double getThresholdUsed() {
+        return thresholdUsed;
+    }
+
+    public void setThresholdUsed(Double thresholdUsed) {
+        this.thresholdUsed = thresholdUsed;
+    }
+
+    public String getThresholdSource() {
+        return thresholdSource;
+    }
+
+    public void setThresholdSource(String thresholdSource) {
+        this.thresholdSource = thresholdSource;
     }
 
     public Integer getExecutedCount() {
