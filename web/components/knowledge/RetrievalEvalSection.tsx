@@ -69,7 +69,8 @@ export function RetrievalEvalSection({
                 <th>recall@5</th>
                 <th>MRR@5</th>
                 <th>池 recall@10</th>
-                <th>直搜 recall@5</th>
+                <th>拒答准确率</th>
+                <th>阈值</th>
                 <th>状态</th>
                 <th />
               </tr>
@@ -87,15 +88,16 @@ export function RetrievalEvalSection({
                         {run.rerankModel ? ` + ${run.rerankModel}` : " · 无 rerank"}
                       </td>
                       <td>
-                        {run.metrics.recall5.toFixed(2)}{" "}
+                        {formatMetric(run.metrics.recall5)}{" "}
                         <Delta current={run} baseline={baseline} field="recall5" />
                       </td>
                       <td>
-                        {run.metrics.mrr5.toFixed(2)}{" "}
+                        {formatMetric(run.metrics.mrr5)}{" "}
                         <Delta current={run} baseline={baseline} field="mrr5" />
                       </td>
-                      <td>{run.metrics.poolRecall10.toFixed(2)}</td>
-                      <td>{run.metrics.baselineRecall5.toFixed(2)}</td>
+                      <td>{formatMetric(run.metrics.poolRecall10)}</td>
+                      <td>{formatMetric(run.metrics.refusalAccuracy)}</td>
+                      <td>{formatThreshold(run)}</td>
                       <td>
                         {run.complete ? (
                           "完整"
@@ -117,7 +119,7 @@ export function RetrievalEvalSection({
                     </tr>
                     {expanded ? (
                       <tr>
-                        <td colSpan={8} className={styles.evalDiffCell}>
+                        <td colSpan={9} className={styles.evalDiffCell}>
                           <RunDiff
                             current={quality.runDetails[run.runId]}
                             baseline={
@@ -155,6 +157,15 @@ function RunReport({ run }: { run: KbEvalRun }) {
         <MetricCard label="候选池 recall@10" value={run.metrics.poolRecall10} hint="embedding 上限" />
         <MetricCard label="直搜 recall@5" value={run.metrics.baselineRecall5} hint="rerank 关闭对照" />
         <MetricCard label="直搜 MRR@5" value={run.metrics.baselineMrr5} hint="rerank 关闭对照" />
+        <MetricCard
+          label="拒答准确率"
+          value={run.metrics.refusalAccuracy}
+          hint={
+            run.noAnswerCount > 0
+              ? `本次 ${run.noAnswerCount} 条无答案标注`
+              : "暂无无答案样本"
+          }
+        />
       </div>
       {run.rerankModel == null ? (
         <p className={styles.hint}>rerank 未启用，当前配置指标等于直搜指标。</p>
@@ -184,7 +195,10 @@ function Delta({
   field: "recall5" | "mrr5";
 }) {
   if (!current.complete || !baseline) return null;
-  const delta = current.metrics[field] - baseline.metrics[field];
+  const currentValue = current.metrics[field];
+  const baselineValue = baseline.metrics[field];
+  if (currentValue == null || baselineValue == null) return null;
+  const delta = currentValue - baselineValue;
   if (Math.abs(delta) < 0.005) return <span className={styles.deltaFlat}>±0.00</span>;
   return (
     <span className={delta > 0 ? styles.deltaUp : styles.deltaDown}>
@@ -200,12 +214,14 @@ function MetricCard({
   hint,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   hint: string;
 }) {
   return (
     <div className={styles.metricCard}>
-      <span className={styles.metricValue}>{value.toFixed(2)}</span>
+      <span className={styles.metricValue}>
+        {value == null ? "—" : value.toFixed(2)}
+      </span>
       <span className={styles.metricLabel}>{label}</span>
       <span className={styles.metricHint}>{hint}</span>
     </div>
@@ -287,6 +303,16 @@ function rankText(item?: KbEvalItem): string {
   if (item.status === "hit" && item.rankFinal != null) return `#${item.rankFinal}`;
   if (item.rankVector != null) return `池 #${item.rankVector}`;
   return "未命中";
+}
+
+function formatMetric(value: number | null): string {
+  return value == null ? "—" : value.toFixed(2);
+}
+
+function formatThreshold(run: KbEvalRunSummary): string {
+  if (run.thresholdUsed == null) return "未启用";
+  const source = run.thresholdSource === "rerank" ? "rerank" : "向量";
+  return `${run.thresholdUsed.toFixed(2)}（${source}）`;
 }
 
 function formatTime(value: string): string {

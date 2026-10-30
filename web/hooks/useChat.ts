@@ -24,7 +24,7 @@ import type {
   ToolActivity,
 } from "@/types/chat";
 import type { ContextUsageData, MessageEndData } from "@/types/gateway";
-import { parseCitationPassages, parseGatewayEvent } from "@/types/gateway";
+import { parseCitationPassages, parseGatewayEvent, parseNoAnswer } from "@/types/gateway";
 import type { CreateSessionOptions } from "@/lib/api/chat";
 
 const HISTORY_PAGE_SIZE = 50;
@@ -62,6 +62,7 @@ function toHistoryMessages(items: HistoryItem[]): ChatMessage[] {
         output: item.content ?? "",
         status: item.status === "error" ? "error" : "done",
         passages: parseCitationPassages(item.details),
+        noAnswer: parseNoAnswer(item.details),
       };
       const previous = messages[messages.length - 1];
       if (previous && previous.role === "assistant") {
@@ -530,6 +531,7 @@ export function useChat() {
               output: event.data.content.length > 0 ? event.data.content : tool.output,
               status: event.data.isError ? "error" : "done",
               passages: parseCitationPassages(event.data.details),
+              noAnswer: parseNoAnswer(event.data.details),
             }));
             break;
           case "message_end":

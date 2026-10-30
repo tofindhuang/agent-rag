@@ -31,6 +31,7 @@ export function RetrievalPanel({ kbId, processingCount, staleCount }: RetrievalP
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KbRetrievalQueryResult | null>(null);
+  const [noAnswerQuery, setNoAnswerQuery] = useState("");
   const quality = useRetrievalQuality(kbId);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -57,6 +58,13 @@ export function RetrievalPanel({ kbId, processingCount, staleCount }: RetrievalP
       documentId: passage.documentId,
       seq: passage.seq,
     });
+  };
+
+  const addNoAnswerLabel = async () => {
+    const trimmed = noAnswerQuery.trim();
+    if (!kbId || trimmed.length === 0) return;
+    await quality.createLabel({ query: trimmed, expectation: "no_answer" });
+    setNoAnswerQuery("");
   };
 
   const labelForQuery = (queryText: string): KbEvalLabel | null =>
@@ -93,6 +101,21 @@ export function RetrievalPanel({ kbId, processingCount, staleCount }: RetrievalP
 
           {result ? (
             <div className={styles.retrievalResults}>
+              <p
+                className={[
+                  styles.verdictLine,
+                  result.noAnswer ? styles.verdictRefused : "",
+                ].join(" ")}
+                role="status"
+              >
+                {result.threshold == null
+                  ? "未启用拒答阈值。"
+                  : `阈值 ${result.threshold.toFixed(3)}（${
+                      result.thresholdSource === "rerank" ? "rerank" : "向量"
+                    }）· 最高分 ${
+                      result.maxScore == null ? "—" : result.maxScore.toFixed(3)
+                    } → ${result.noAnswer ? "会被拒答" : "通过"}`}
+              </p>
               {result.reranked ? (
                 <div className={styles.retrievalGrid}>
                   <PassageColumn
@@ -132,19 +155,53 @@ export function RetrievalPanel({ kbId, processingCount, staleCount }: RetrievalP
               </span>
             </div>
             {quality.labelError ? <Banner tone="error">{quality.labelError}</Banner> : null}
+            <div className={styles.noAnswerForm}>
+              <input
+                className={styles.noAnswerInput}
+                placeholder="输入一个库里确实没有答案的问题"
+                value={noAnswerQuery}
+                maxLength={512}
+                disabled={quality.labelBusy}
+                onChange={(event) => setNoAnswerQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void addNoAnswerLabel();
+                  }
+                }}
+              />
+              <Button
+                variant="secondary"
+                type="button"
+                size="sm"
+                disabled={quality.labelBusy || noAnswerQuery.trim().length === 0}
+                onClick={() => void addNoAnswerLabel()}
+              >
+                标为无答案
+              </Button>
+            </div>
             {!quality.labels || quality.labels.items.length === 0 ? (
               <p className={styles.hint}>
-                还没有标注。查询后，把正确片段标为期望答案；重建导致的目标变化会标为「过期待确认」。
+                还没有标注。查询后把正确片段标为期望答案，或用上面的输入框标「无答案」样本；
+                重建导致的目标变化会标为「过期待确认」。
               </p>
             ) : (
               <ul className={styles.labelList}>
                 {quality.labels.items.map((label) => (
                   <li key={label.id} className={styles.labelItem}>
                     <div className={styles.labelMain}>
-                      <span className={styles.labelQuery}>{label.query}</span>
+                      <span className={styles.labelQuery}>
+                        {label.expectation === "no_answer" ? (
+                          <span className={styles.labelTypeBadge}>无答案</span>
+                        ) : null}
+                        {label.query}
+                      </span>
                       <span className={styles.labelMeta}>
-                        {label.title ?? "（文档已删除）"}
-                        {label.page != null ? ` · 第 ${label.page} 页` : ""} · #{label.seq}
+                        {label.expectation === "no_answer"
+                          ? "库里应当没有答案"
+                          : `${label.title ?? "（文档已删除）"}${
+                              label.page != null ? ` · 第 ${label.page} 页` : ""
+                            } · #${label.seq ?? "?"}`}
                       </span>
                     </div>
                     <span

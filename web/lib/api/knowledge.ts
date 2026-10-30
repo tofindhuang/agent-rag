@@ -24,6 +24,7 @@ import type {
   KbRetrievalPassage,
   KbRetrievalQueryResult,
   KbRetrievalTestResult,
+  KbScoreThresholds,
   KbSettings,
   KbSettingsInput,
   KbSourceType,
@@ -170,8 +171,9 @@ function parseEvalLabel(raw: unknown): KbEvalLabel {
   return {
     id: asNumber(label.id),
     query: asString(label.query),
-    documentId: asString(label.documentId),
-    seq: asNumber(label.seq),
+    expectation: label.expectation === "no_answer" ? "no_answer" : "answer",
+    documentId: asNullableString(label.documentId),
+    seq: asNullableNumber(label.seq),
     title: asNullableString(label.title),
     page: asNullableNumber(label.page),
     state: label.state === "rotten" ? "rotten" : "ok",
@@ -213,11 +215,12 @@ export async function deleteKbEvalLabel(id: number): Promise<void> {
 function parseEvalMetrics(raw: unknown): KbEvalMetrics {
   const metrics = asRecord(raw);
   return {
-    recall5: asNumber(metrics.recall5),
-    mrr5: asNumber(metrics.mrr5),
-    poolRecall10: asNumber(metrics.poolRecall10),
-    baselineRecall5: asNumber(metrics.baselineRecall5),
-    baselineMrr5: asNumber(metrics.baselineMrr5),
+    recall5: asNullableNumber(metrics.recall5),
+    mrr5: asNullableNumber(metrics.mrr5),
+    poolRecall10: asNullableNumber(metrics.poolRecall10),
+    baselineRecall5: asNullableNumber(metrics.baselineRecall5),
+    baselineMrr5: asNullableNumber(metrics.baselineMrr5),
+    refusalAccuracy: asNullableNumber(metrics.refusalAccuracy),
   };
 }
 
@@ -231,8 +234,8 @@ function parseEvalItem(raw: unknown): KbEvalItem {
   return {
     labelId: asNumber(item.labelId),
     query: asString(item.query),
-    documentId: asString(item.documentId),
-    seq: asNumber(item.seq),
+    documentId: asNullableString(item.documentId),
+    seq: asNullableNumber(item.seq),
     title: asNullableString(item.title),
     page: asNullableNumber(item.page),
     status,
@@ -257,6 +260,7 @@ function parseEvalRun(raw: unknown): KbEvalRun {
     runId: asNumber(run.runId),
     complete: run.complete === true,
     labelCount: asNumber(run.labelCount),
+    noAnswerCount: asNumber(run.noAnswerCount),
     executedCount: asNumber(run.executedCount),
     rottenCount: asNumber(run.rottenCount),
     skippedCount: asNumber(run.skippedCount),
@@ -264,6 +268,8 @@ function parseEvalRun(raw: unknown): KbEvalRun {
     embeddingDim: asNumber(run.embeddingDim),
     rerankModel: asNullableString(run.rerankModel),
     durationMs: asNumber(run.durationMs),
+    thresholdUsed: asNullableNumber(run.thresholdUsed),
+    thresholdSource: asNullableString(run.thresholdSource),
     metrics: parseEvalMetrics(run.metrics),
     items: Array.isArray(run.items) ? run.items.map(parseEvalItem) : [],
     rotten: Array.isArray(run.rotten) ? run.rotten.map(parseEvalIssue) : [],
@@ -278,6 +284,7 @@ function parseEvalRunSummary(raw: unknown): KbEvalRunSummary {
     createdAt: asString(run.createdAt),
     complete: run.complete === true,
     labelCount: asNumber(run.labelCount),
+    noAnswerCount: asNumber(run.noAnswerCount),
     executedCount: asNumber(run.executedCount),
     rottenCount: asNumber(run.rottenCount),
     skippedCount: asNumber(run.skippedCount),
@@ -285,6 +292,8 @@ function parseEvalRunSummary(raw: unknown): KbEvalRunSummary {
     embeddingDim: asNumber(run.embeddingDim),
     rerankModel: asNullableString(run.rerankModel),
     durationMs: asNumber(run.durationMs),
+    thresholdUsed: asNullableNumber(run.thresholdUsed),
+    thresholdSource: asNullableString(run.thresholdSource),
     metrics: parseEvalMetrics(run.metrics),
   };
 }
@@ -426,12 +435,34 @@ function parseRerankSettings(value: unknown): KbRerankSettings {
   };
 }
 
+function parseThresholds(value: unknown): KbScoreThresholds {
+  const body = asRecord(value);
+  return {
+    rerankMinScore: asNullableNumber(body.rerankMinScore),
+    vectorMinScore: asNullableNumber(body.vectorMinScore),
+  };
+}
+
 function parseSettings(value: unknown): KbSettings {
   const body = asRecord(value);
   return {
     embedding: parseEmbeddingSettings(body.embedding),
     rerank: parseRerankSettings(body.rerank),
+    threshold: parseThresholds(body.threshold),
   };
+}
+
+/** Refusal thresholds only; endpoints are untouched (ADR-0029). */
+export async function saveKbThresholds(input: {
+  rerankMinScore: number | null;
+  vectorMinScore: number | null;
+}): Promise<KbSettings> {
+  const response = await authFetch("/api/kb/settings/threshold", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return parseSettings(await readJson(response));
 }
 
 export async function fetchKbSettings(): Promise<KbSettings> {
@@ -504,6 +535,10 @@ export async function queryKbRetrieval(
     rerankModel: asNullableString(body.rerankModel),
     current: Array.isArray(body.current) ? body.current.map(parseRetrievalPassage) : [],
     vector: Array.isArray(body.vector) ? body.vector.map(parseRetrievalPassage) : [],
+    noAnswer: body.noAnswer === true,
+    maxScore: asNullableNumber(body.maxScore),
+    threshold: asNullableNumber(body.threshold),
+    thresholdSource: asNullableString(body.thresholdSource),
   };
 }
 

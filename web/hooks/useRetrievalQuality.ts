@@ -20,8 +20,10 @@ import type {
 
 export interface NewLabelInput {
   query: string;
-  documentId: string;
-  seq: number;
+  /** Omitted for a no-answer label: it declares the KB has no answer. */
+  expectation?: "answer" | "no_answer";
+  documentId?: string;
+  seq?: number;
 }
 
 /**

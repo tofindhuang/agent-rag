@@ -82,9 +82,16 @@ export interface KbRerankSettings {
   path: string | null;
 }
 
+export interface KbScoreThresholds {
+  /** null means refusal is off for that score scale. */
+  rerankMinScore: number | null;
+  vectorMinScore: number | null;
+}
+
 export interface KbSettings {
   embedding: KbEmbeddingSettings;
   rerank: KbRerankSettings;
+  threshold: KbScoreThresholds;
 }
 
 export interface KbEmbeddingInput {
@@ -176,7 +183,14 @@ export interface KbRetrievalPassage {
 }
 
 /** Two orderings of one candidate pool: vector order and the effective configuration. */
-export interface KbRetrievalQueryResult {
+export interface KbRefusalVerdict {
+  noAnswer: boolean;
+  maxScore: number | null;
+  threshold: number | null;
+  thresholdSource: string | null;
+}
+
+export interface KbRetrievalQueryResult extends KbRefusalVerdict {
   query: string;
   reranked: boolean;
   rerankModel: string | null;
@@ -186,12 +200,18 @@ export interface KbRetrievalQueryResult {
 
 export type KbEvalLabelState = "ok" | "rotten";
 
-/** One "question → expected passage" label; rotten means the target changed after a rebuild. */
+export type KbEvalExpectation = "answer" | "no_answer";
+
+/**
+ * One evaluation label: an "answer" label points at an expected passage and can
+ * rot after a rebuild; a "no_answer" label declares the KB has no answer.
+ */
 export interface KbEvalLabel {
   id: number;
   query: string;
-  documentId: string;
-  seq: number;
+  expectation: KbEvalExpectation;
+  documentId: string | null;
+  seq: number | null;
   title: string | null;
   page: number | null;
   state: KbEvalLabelState;
@@ -207,16 +227,20 @@ export interface KbEvalLabelList {
 export interface KbEvalLabelInput {
   kbId: string;
   query: string;
-  documentId: string;
-  seq: number;
+  expectation?: KbEvalExpectation;
+  documentId?: string;
+  seq?: number;
 }
 
+/** Recall-family values are null when the run executed no answer labels. */
 export interface KbEvalMetrics {
-  recall5: number;
-  mrr5: number;
-  poolRecall10: number;
-  baselineRecall5: number;
-  baselineMrr5: number;
+  recall5: number | null;
+  mrr5: number | null;
+  poolRecall10: number | null;
+  baselineRecall5: number | null;
+  baselineMrr5: number | null;
+  /** Null when the run executed no "no answer" labels. */
+  refusalAccuracy: number | null;
 }
 
 export type KbEvalItemStatus = "hit" | "miss" | "rotten" | "skipped";
@@ -224,8 +248,8 @@ export type KbEvalItemStatus = "hit" | "miss" | "rotten" | "skipped";
 export interface KbEvalItem {
   labelId: number;
   query: string;
-  documentId: string;
-  seq: number;
+  documentId: string | null;
+  seq: number | null;
   title: string | null;
   page: number | null;
   status: KbEvalItemStatus;
@@ -244,6 +268,7 @@ export interface KbEvalRun {
   runId: number;
   complete: boolean;
   labelCount: number;
+  noAnswerCount: number;
   executedCount: number;
   rottenCount: number;
   skippedCount: number;
@@ -251,6 +276,8 @@ export interface KbEvalRun {
   embeddingDim: number;
   rerankModel: string | null;
   durationMs: number;
+  thresholdUsed: number | null;
+  thresholdSource: string | null;
   metrics: KbEvalMetrics;
   items: KbEvalItem[];
   rotten: KbEvalIssue[];
@@ -262,6 +289,7 @@ export interface KbEvalRunSummary {
   createdAt: string;
   complete: boolean;
   labelCount: number;
+  noAnswerCount: number;
   executedCount: number;
   rottenCount: number;
   skippedCount: number;
@@ -269,6 +297,8 @@ export interface KbEvalRunSummary {
   embeddingDim: number;
   rerankModel: string | null;
   durationMs: number;
+  thresholdUsed: number | null;
+  thresholdSource: string | null;
   metrics: KbEvalMetrics;
 }
 

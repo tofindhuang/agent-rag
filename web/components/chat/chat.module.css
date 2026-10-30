@@ -1093,3 +1093,13 @@ button.contextCompacted {
 .compactionToggle:hover {
   color: var(--text-primary);
 }
+
+/* kb_search refused by the score threshold (ADR-0029) */
+.toolNoAnswer {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 10px;
+}

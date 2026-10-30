@@ -61,6 +61,12 @@ export interface CitationPassage {
  * Reads `tool_result.details.passages` defensively: an older gateway omits
  * details entirely, so callers get an empty list and keep the plain tool card.
  */
+/** True when a kb_search tool result was refused by the score threshold (ADR-0029). */
+export function parseNoAnswer(details: unknown): boolean {
+  if (typeof details !== "object" || details === null) return false;
+  return (details as { noAnswer?: unknown }).noAnswer === true;
+}
+
 export function parseCitationPassages(details: unknown): CitationPassage[] {
   if (typeof details !== "object" || details === null) return [];
   const passages = (details as { passages?: unknown }).passages;

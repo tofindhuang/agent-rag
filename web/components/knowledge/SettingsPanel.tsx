@@ -9,6 +9,7 @@ import {
   knowledgeError,
   resetKbEmbedding,
   resetKbRerank,
+  saveKbThresholds,
   setKbRerankEnabled,
   testKbRetrieval,
 } from "@/lib/api/knowledge";
@@ -38,7 +39,19 @@ const SOURCE_CLASS = {
   disabled: styles.sourceDisabled,
 } as const;
 
-/** Embedding/rerank management cards; services and model choices are separate. */
+function formatThresholdInput(value: number | null): string {
+  return value == null ? "" : String(value);
+}
+
+/** Blank means "off"; a non-numeric string means "invalid" (undefined). */
+function parseThreshold(raw: string): number | null | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** Embedding/rerank/threshold management cards; services and model choices are separate. */
 export function SettingsPanel() {
   const [settings, setSettings] = useState<KbSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,12 +62,17 @@ export function SettingsPanel() {
   const [resetTarget, setResetTarget] = useState<KbModelType | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<KbRetrievalTestResult | null>(null);
+  const [rerankThresholdInput, setRerankThresholdInput] = useState("");
+  const [vectorThresholdInput, setVectorThresholdInput] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     fetchKbSettings()
       .then((loaded) => {
-        if (!cancelled) setSettings(loaded);
+        if (cancelled) return;
+        setSettings(loaded);
+        setRerankThresholdInput(formatThresholdInput(loaded.threshold.rerankMinScore));
+        setVectorThresholdInput(formatThresholdInput(loaded.threshold.vectorMinScore));
       })
       .catch((cause: unknown) => {
         if (!cancelled) setError(knowledgeError(cause));
@@ -72,7 +90,10 @@ export function SettingsPanel() {
     setError(null);
     setNotice(null);
     try {
-      setSettings(await action());
+      const saved = await action();
+      setSettings(saved);
+      setRerankThresholdInput(formatThresholdInput(saved.threshold.rerankMinScore));
+      setVectorThresholdInput(formatThresholdInput(saved.threshold.vectorMinScore));
       setTestResult(null);
       setNotice(success);
     } catch (cause: unknown) {
@@ -114,6 +135,23 @@ export function SettingsPanel() {
         : "已恢复 rerank 部署默认",
     );
   };
+
+  const rerankThresholdValue = parseThreshold(rerankThresholdInput);
+  const vectorThresholdValue = parseThreshold(vectorThresholdInput);
+  const thresholdInvalid =
+    rerankThresholdValue === undefined || vectorThresholdValue === undefined;
+  const thresholdActive =
+    (rerankThresholdValue ?? null) != null || (vectorThresholdValue ?? null) != null;
+
+  const saveThresholds = () =>
+    apply(
+      () =>
+        saveKbThresholds({
+          rerankMinScore: rerankThresholdValue ?? null,
+          vectorMinScore: vectorThresholdValue ?? null,
+        }),
+      "拒答阈值已保存。建议到检索调试确认命中没有被误拒。",
+    );
 
   if (loading) {
     return (
@@ -371,6 +409,57 @@ export function SettingsPanel() {
           )}
         </article>
       </div>
+
+        <article className={styles.serviceCard}>
+          <div className={styles.serviceHeader}>
+            <div className={styles.serviceHeading}>
+              <h3>拒答阈值</h3>
+              <span className={styles.sourceBadge}>
+                {thresholdActive ? "已启用" : "未启用"}
+              </span>
+            </div>
+          </div>
+          <p className={styles.hint}>
+            检索最高分低于阈值时，模型会明确回答「没有找到」，而不是硬凑片段。阈值作用于各自的分数尺度：
+            rerank 分只在启用重排时生效，向量分在未启用重排时生效。换 embedding/rerank
+            模型后请到检索调试重跑评测再校准。
+          </p>
+          <div className={styles.thresholdRow}>
+            <label>
+              <span>rerank 分下限</span>
+              <input
+                className={styles.thresholdInput}
+                inputMode="decimal"
+                placeholder="留空 = 不启用"
+                value={rerankThresholdInput}
+                disabled={busy}
+                onChange={(event) => setRerankThresholdInput(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>向量分下限</span>
+              <input
+                className={styles.thresholdInput}
+                inputMode="decimal"
+                placeholder="留空 = 不启用"
+                value={vectorThresholdInput}
+                disabled={busy}
+                onChange={(event) => setVectorThresholdInput(event.target.value)}
+              />
+            </label>
+            <Button
+              size="sm"
+              type="button"
+              disabled={busy || thresholdInvalid}
+              onClick={() => void saveThresholds()}
+            >
+              保存阈值
+            </Button>
+          </div>
+          {thresholdInvalid ? (
+            <p className={styles.hint}>阈值必须是数字，或留空表示不启用。</p>
+          ) : null}
+        </article>
 
       {dialog && dialogInitial ? (
         <ServiceDialog

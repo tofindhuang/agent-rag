@@ -51,6 +51,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             <details key={tool.toolCallId} className={styles.tool}>
               <summary className={styles.toolSummary}>
                 <span className={styles.toolName}>{tool.name}</span>
+                {tool.noAnswer ? (
+                  <span className={styles.toolNoAnswer}>未找到相关内容</span>
+                ) : null}
                 <span
                   className={`${styles.toolStatus} ${
                     tool.status === "error" ? styles.toolError : styles[tool.status]

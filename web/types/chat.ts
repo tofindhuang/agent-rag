@@ -13,6 +13,8 @@ export interface ToolActivity {
   status: ToolStatus;
   /** kb_search citations parsed from tool_result.details; absent on old gateways. */
   passages?: CitationPassage[];
+  /** True when kb_search ran but the KB had nothing above the refusal threshold. */
+  noAnswer?: boolean;
 }
 
 export interface ChatMessage {
