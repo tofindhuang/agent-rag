@@ -1,7 +1,7 @@
 # M1 第一刀：认证 + 持久化地基 + gateway 冷启动 + Redis 最近消息缓存
 
 日期：2026-10-23
-状态：已与用户逐问确认（Phase 1 grilling Q1–Q20）
+状态：已实现并验收（tickets 01–09 done）
 关联 ADR：[0006](../adrs/0006-persistence-ownership.md)、[0007](../adrs/0007-jwt-access-rotating-refresh-auth.md)、[0008](../adrs/0008-gateway-cold-start-local-session-files.md)、[0009](../adrs/0009-flyway-mybatis-plus-persistence-stack.md)、[0004](../adrs/0004-normalized-gateway-contract.md)
 关联需求：FR-1（会话 CRUD、历史持久化、冷启动恢复）、FR-6（认证、会话隔离）
 

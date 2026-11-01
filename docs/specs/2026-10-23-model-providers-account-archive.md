@@ -1,7 +1,7 @@
 # 模型供应商接入 + 账号安全 + 归档闭环
 
 日期：2026-10-23
-状态：Phase 1 grilling 已完成（Q1–Q19）
+状态：已实现并验收（tickets 01–10 done）
 关联需求：FR-1（会话 CRUD/历史）、FR-6（认证/安全）
 关联 ADR：[0007](../adrs/0007-jwt-access-rotating-refresh-auth.md)、[0008](../adrs/0008-gateway-cold-start-local-session-files.md)、[0010](../adrs/0010-user-supplied-model-providers.md)、[0011](../adrs/0011-user-initiated-session-purge.md)、[0005](../adrs/0005-qdrant-external-embedding.md)
 

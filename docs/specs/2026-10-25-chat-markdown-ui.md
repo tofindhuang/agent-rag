@@ -1,7 +1,7 @@
 # 聊天界面 Markdown 渲染与排版优化
 
 日期：2026-10-25
-状态：已与用户对齐（Phase 1 完成），待实现
+状态：已实现并验收（ticket done；Playwright 真实栈验收通过）
 关联：ADR-0012（设计 token / 对比度门禁）；`web/README.md`（分层规范）
 
 ## Problem Statement

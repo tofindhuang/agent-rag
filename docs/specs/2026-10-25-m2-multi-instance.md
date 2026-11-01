@@ -1,7 +1,7 @@
 # M2 切片 1：gateway 多实例与会话生命周期
 
 日期：2026-10-25
-状态：待实现
+状态：已实现并验收（tickets 01–10 done；压测报告 `docs/research/2026-10-25-m2-multi-instance-loadtest-report.md`）
 关联：`docs/requirements.md` §4/§7；ADR-0006/0008（修订）、ADR-0024、ADR-0025；`CONTEXT.md`
 
 ## Problem Statement
