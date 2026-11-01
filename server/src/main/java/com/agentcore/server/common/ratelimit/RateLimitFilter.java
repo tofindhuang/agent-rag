@@ -30,14 +30,17 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final RateLimitService rateLimit;
     private final RateLimitProperties properties;
     private final ObjectMapper objectMapper;
+    private final ClientIpResolver clientIp;
 
     public RateLimitFilter(
             RateLimitService rateLimit,
             RateLimitProperties properties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            ClientIpResolver clientIp) {
         this.rateLimit = rateLimit;
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.clientIp = clientIp;
     }
 
     @Override
@@ -64,10 +67,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private RateLimitDecision decisionFor(HttpServletRequest request) {
         String path = request.getRequestURI();
         if (AUTH_PATHS.contains(path) && "POST".equals(request.getMethod())) {
-            return rateLimit.checkAuthIpRpm(request.getRemoteAddr());
+            return rateLimit.checkAuthIpRpm(clientIp.resolve(request));
         }
         if (AUTH_GET_PATHS.contains(path) && "GET".equals(request.getMethod())) {
-            return rateLimit.checkAuthIpRpm(request.getRemoteAddr());
+            return rateLimit.checkAuthIpRpm(clientIp.resolve(request));
         }
         if (TOOL_PATHS.contains(path)) {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

@@ -228,9 +228,9 @@ Redis key 草案：
 |---|---|---|
 | M0 PoC | 1–2 周 | 端到端 demo：单 gateway 进程 + prompt 整体替换（验证 forceSystemPrompt 定制程度）+ kb_search / run_code extension 打通 + SSE 链路；冻结 Java↔gateway 事件契约 v1；定向量库与 embedding 选型 |
 | M1 MVP | 4–6 周 | 全部 P0：多租户认证、RAG 摄取管线、沙箱隔离与审计、compaction 配置化、画像提取/注入/用户可控、MySQL 消息投影 |
-| M2 硬化 | 3–4 周 | 切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测。切片 2：OAuth、摘要正文可见、限流调优、gVisor 评估、沙箱预热/复用、检索评测扩展、无答案拒答。FR-7 可观测看板已提前交付 |
+| M2 硬化 | 3–4 周 | **已完成**。切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测。切片 2：OAuth、摘要正文可见、沙箱预热/复用、检索评测扩展、无答案拒答。切片 3–5：摘要可见、无答案拒答与评测扩容、限流令牌桶与可信代理、gVisor 评估（结论：暂不启用）。FR-7 可观测看板已提前交付 |
 
-M2 剩余工作拆分（切片 3：摘要可见 ✅；切片 4：无答案拒答 + 评测扩容 ✅；切片 5：限流调优 + gVisor 评估 + closeout）的范围、依赖与待决问题见 `docs/tickets/m2-remaining-slices/PLAN.md`。这三片完成前 M2 不算收尾。
+M2 已收尾（closeout 见 `docs/specs/2026-10-30-m2-closeout.md`，含证据索引、承诺边界与移出项）。剩余 P2 / 后续项：会话分支 UI、多语言沙箱（O3）、AIO Sandbox workspace 层（O4）、gVisor 实测启用、跨主机会话迁移。
 
 ## 8. 风险与开放问题
 

@@ -14,31 +14,57 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
 /**
- * Redis fixed-window limiter (ADR-0018). One Lua script increments and sets the
- * remaining-window TTL atomically; failures fail open and are counted.
+ * Redis token bucket (ADR-0030). One Lua script refills by elapsed time and
+ * either peeks, consumes or debits the bucket atomically, so the same numbers
+ * hold across instances. Redis failures fail open and are counted.
  */
 @Service
 public class RedisRateLimitService implements RateLimitService {
 
     private static final Logger log = LoggerFactory.getLogger(RedisRateLimitService.class);
     private static final long WARN_INTERVAL_MS = 10_000L;
-    private static final String INCR_SCRIPT_TEXT = """
-            local count = redis.call('INCRBY', KEYS[1], ARGV[1])
-            local ttl = redis.call('PTTL', KEYS[1])
-            if ttl < 0 then
-              redis.call('PEXPIRE', KEYS[1], ARGV[2])
-              ttl = tonumber(ARGV[2])
+    private static final String BUCKET_SCRIPT_TEXT = """
+            local capacity = tonumber(ARGV[1])
+            local ratePerSec = tonumber(ARGV[2])
+            local now = tonumber(ARGV[3])
+            local cost = tonumber(ARGV[4])
+            local ttl = tonumber(ARGV[5])
+            local floor = tonumber(ARGV[6])
+            local mode = ARGV[7]
+            local data = redis.call('HMGET', KEYS[1], 'tokens', 'ts')
+            local tokens = tonumber(data[1])
+            local ts = tonumber(data[2])
+            if tokens == nil or ts == nil then
+              tokens = capacity
+              ts = now
             end
-            return {count, ttl}
+            if now > ts then
+              tokens = math.min(capacity, tokens + (now - ts) * ratePerSec / 1000.0)
+              ts = now
+            end
+            local allowed = 1
+            if mode == 'peek' then
+              if tokens <= 0 then allowed = 0 end
+            elseif mode == 'consume' then
+              if tokens < cost then
+                allowed = 0
+              else
+                tokens = tokens - cost
+              end
+            else
+              tokens = tokens - cost
+              if tokens < floor then tokens = floor end
+            end
+            redis.call('HSET', KEYS[1], 'tokens', tostring(tokens), 'ts', tostring(ts))
+            redis.call('PEXPIRE', KEYS[1], ttl)
+            local retryMs = 0
+            if allowed == 0 and ratePerSec > 0 then
+              retryMs = math.ceil((cost - tokens) * 1000.0 / ratePerSec)
+            end
+            return {allowed, math.floor(tokens), retryMs}
             """;
-    private static final String READ_SCRIPT_TEXT = """
-            local value = tonumber(redis.call('GET', KEYS[1]) or '0')
-            return {value, redis.call('PTTL', KEYS[1])}
-            """;
-    private static final DefaultRedisScript<List> INCR_SCRIPT =
-            new DefaultRedisScript<>(INCR_SCRIPT_TEXT, List.class);
-    private static final DefaultRedisScript<List> READ_SCRIPT =
-            new DefaultRedisScript<>(READ_SCRIPT_TEXT, List.class);
+    private static final DefaultRedisScript<List> BUCKET_SCRIPT =
+            new DefaultRedisScript<>(BUCKET_SCRIPT_TEXT, List.class);
 
     private final StringRedisTemplate redis;
     private final RateLimitProperties properties;
@@ -56,17 +82,17 @@ public class RedisRateLimitService implements RateLimitService {
 
     @Override
     public RateLimitDecision checkUserRpm(long userId) {
-        return check("user-rpm", "rl:rpm:user:" + userId, properties.userRpm(), true);
+        return consume("user-rpm", "rl:bucket:user-rpm:" + userId, properties.userRpm());
     }
 
     @Override
     public RateLimitDecision checkAuthIpRpm(String clientIp) {
-        return check("ip-rpm", "rl:rpm:ip:" + clientIp, properties.authIpRpm(), true);
+        return consume("ip-rpm", "rl:bucket:ip-rpm:" + clientIp, properties.authIpRpm());
     }
 
     @Override
     public RateLimitDecision checkUserTpm(long userId) {
-        return check("user-tpm", "rl:tpm:user:" + userId, properties.userTpm(), false);
+        return peek("user-tpm", "rl:bucket:user-tpm:" + userId, properties.userTpm());
     }
 
     @Override
@@ -74,13 +100,8 @@ public class RedisRateLimitService implements RateLimitService {
         if (!enabled() || tokens <= 0) {
             return;
         }
-        Window window = window();
         try {
-            redis.execute(
-                    INCR_SCRIPT,
-                    List.of(window.key("rl:tpm:user:" + userId)),
-                    String.valueOf(tokens),
-                    String.valueOf(window.ttlMillis()));
+            apply("user-tpm", "rl:bucket:user-tpm:" + userId, properties.userTpm(), tokens, Mode.DEBIT);
         } catch (RuntimeException ex) {
             recordFailOpen("user-tpm");
             warnThrottled("fail-open:user-tpm",
@@ -92,34 +113,31 @@ public class RedisRateLimitService implements RateLimitService {
         return properties.enabled();
     }
 
-    private RateLimitDecision check(String scope, String keyPrefix, int limit, boolean increment) {
+    private RateLimitDecision consume(String scope, String key, int limit) {
+        return check(scope, key, limit, 1, Mode.CONSUME);
+    }
+
+    private RateLimitDecision peek(String scope, String key, int limit) {
+        return check(scope, key, limit, 1, Mode.PEEK);
+    }
+
+    private RateLimitDecision check(
+            String scope, String key, int limit, long cost, Mode mode) {
         if (!enabled()) {
             return RateLimitDecision.permit();
         }
-        Window window = window();
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            List<?> result = increment
-                    ? redis.execute(
-                            INCR_SCRIPT,
-                            List.of(window.key(keyPrefix)),
-                            "1",
-                            String.valueOf(window.ttlMillis()))
-                    : redis.execute(READ_SCRIPT, List.of(window.key(keyPrefix)));
-            long count = result == null || result.isEmpty() ? 0 : number(result.get(0));
-            long ttl = result == null || result.size() < 2 ? window.ttlMillis() : number(result.get(1));
-            if (ttl <= 0) {
-                ttl = window.ttlMillis();
-            }
-            boolean allowed = increment ? count <= limit : count < limit;
-            long retryAfter = retryAfterSeconds(ttl);
+            Bucket bucket = apply(scope, key, limit, cost, mode);
+            boolean allowed = bucket.allowed();
+            long retryAfter = allowed ? 0 : retryAfterSeconds(bucket.retryAfterMs());
             recordCheck(scope, allowed);
             if (!allowed) {
                 recordRejection(scope);
                 warnThrottled(scope, "rate limit exceeded scope=" + scope
-                        + " count=" + count + " limit=" + limit + " retryAfter=" + retryAfter + "s");
+                        + " limit=" + limit + " retryAfter=" + retryAfter + "s");
             }
-            return new RateLimitDecision(allowed, allowed ? 0 : retryAfter);
+            return new RateLimitDecision(allowed, retryAfter);
         } catch (RuntimeException ex) {
             recordFailOpen(scope);
             warnThrottled("fail-open:" + scope,
@@ -130,6 +148,24 @@ public class RedisRateLimitService implements RateLimitService {
                     .tag("scope", scope)
                     .register(meterRegistry));
         }
+    }
+
+    private Bucket apply(String scope, String key, int limit, long cost, Mode mode) {
+        long windowMs = Math.max(1_000L, properties.window().toMillis());
+        double ratePerSec = (double) limit * 1_000.0 / windowMs;
+        List<?> result = redis.execute(
+                BUCKET_SCRIPT,
+                List.of(key),
+                String.valueOf(limit),
+                String.valueOf(ratePerSec),
+                String.valueOf(System.currentTimeMillis()),
+                String.valueOf(cost),
+                String.valueOf(windowMs),
+                String.valueOf(-limit),
+                mode.name().toLowerCase());
+        boolean allowed = result != null && !result.isEmpty() && number(result.get(0)) > 0;
+        long retryAfterMs = result != null && result.size() > 2 ? number(result.get(2)) : 0;
+        return new Bucket(allowed, Math.max(0, retryAfterMs));
     }
 
     private void recordCheck(String scope, boolean allowed) {
@@ -163,27 +199,22 @@ public class RedisRateLimitService implements RateLimitService {
         }
     }
 
-    private Window window() {
-        long windowMs = Math.max(1_000L, properties.window().toMillis());
-        long now = System.currentTimeMillis();
-        long start = now - (now % windowMs);
-        long index = start / windowMs;
-        long ttl = Math.max(1L, start + windowMs - now);
-        return new Window(index, ttl);
-    }
-
     private static long number(Object value) {
         return value instanceof Number number ? number.longValue() : Long.parseLong(value.toString());
     }
 
-    private static long retryAfterSeconds(long ttlMillis) {
-        return Math.max(1L, (ttlMillis + 999L) / 1_000L);
+    private static long retryAfterSeconds(long retryAfterMs) {
+        return Math.max(1L, (retryAfterMs + 999L) / 1_000L);
     }
 
-    private record Window(long index, long ttlMillis) {
-
-        String key(String prefix) {
-            return prefix + ":" + index;
-        }
+    private enum Mode {
+        /** Report whether any budget is left without spending it (TPM pre-check). */
+        PEEK,
+        /** Spend {@code cost} when the bucket has it (RPM and auth IP). */
+        CONSUME,
+        /** Account real usage even past empty; debt is capped at one capacity. */
+        DEBIT
     }
+
+    private record Bucket(boolean allowed, long retryAfterMs) {}
 }

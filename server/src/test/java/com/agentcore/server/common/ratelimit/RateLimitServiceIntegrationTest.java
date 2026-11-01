@@ -6,6 +6,7 @@ import com.agentcore.server.config.RateLimitProperties;
 import com.agentcore.server.support.AbstractIntegrationTest;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,7 +88,7 @@ class RateLimitServiceIntegrationTest extends AbstractIntegrationTest {
         try {
             RedisRateLimitService service = new RedisRateLimitService(
                     broken,
-                    new RateLimitProperties(true, 1, 100, 1, Duration.ofSeconds(60)),
+                    new RateLimitProperties(true, 1, 100, 1, Duration.ofSeconds(60), List.of()),
                     registry);
 
             assertThat(service.checkUserRpm(randomUserId()).allowed()).isTrue();
@@ -119,8 +120,38 @@ class RateLimitServiceIntegrationTest extends AbstractIntegrationTest {
             Duration window) {
         return new RedisRateLimitService(
                 redis,
-                new RateLimitProperties(enabled, userRpm, userTpm, authIpRpm, window),
+                new RateLimitProperties(enabled, userRpm, userTpm, authIpRpm, window, List.of()),
                 registry);
+    }
+
+    @Test
+    void refillsGraduallyInsteadOfResettingAtTheWindowBoundary() throws Exception {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        // Capacity 2 refilling over 2s: one token is back after ~1s, long before
+        // a 2s fixed window would have reset.
+        RateLimitService service = service(registry, true, 2, 100, 10, Duration.ofSeconds(2));
+        long userId = randomUserId();
+        assertThat(service.checkUserRpm(userId).allowed()).isTrue();
+        assertThat(service.checkUserRpm(userId).allowed()).isTrue();
+        assertThat(service.checkUserRpm(userId).allowed()).isFalse();
+
+        Thread.sleep(1_100L);
+
+        assertThat(service.checkUserRpm(userId).allowed()).isTrue();
+    }
+
+    @Test
+    void tpmDebtIsCappedAtOneCapacitySoARunCannotDeadlockTheUser() throws Exception {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        RateLimitService service = service(registry, true, 100, 10, 10, Duration.ofSeconds(1));
+        long userId = randomUserId();
+
+        service.addUserTokens(userId, 10_000L);
+        assertThat(service.checkUserTpm(userId).allowed()).isFalse();
+
+        Thread.sleep(1_100L);
+        // One full window of refill clears the capped debt.
+        assertThat(service.checkUserTpm(userId).allowed()).isTrue();
     }
 
     private static double counter(

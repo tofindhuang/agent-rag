@@ -6,6 +6,7 @@ import com.agentcore.server.common.auth.JwtService;
 import com.agentcore.server.common.auth.ToolTokenFilter;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.error.ErrorResponseWriter;
+import com.agentcore.server.common.ratelimit.ClientIpResolver;
 import com.agentcore.server.common.ratelimit.RateLimitFilter;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -50,7 +51,9 @@ public class SecurityConfig {
         JwtAuthenticationFilter jwtFilter = new JwtAuthenticationFilter(jwtService);
         ToolTokenFilter toolFilter = new ToolTokenFilter(gateway, environment);
         RateLimitFilter rateLimitFilter =
-                new RateLimitFilter(rateLimitService, rateLimitProperties, objectMapper);
+                new RateLimitFilter(
+                        rateLimitService, rateLimitProperties, objectMapper,
+                        new ClientIpResolver(rateLimitProperties));
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
