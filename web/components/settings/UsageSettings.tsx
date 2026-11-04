@@ -15,8 +15,40 @@ import {
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
 import { useUsage } from "@/hooks/useUsage";
-import type { UsageWindowKey } from "@/types/usage";
+import type { UsageQuota, UsageWindowKey } from "@/types/usage";
 import styles from "./usage.module.css";
+
+function formatReset(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+}
+
+function formatTokens(value: number): string {
+  return value.toLocaleString("zh-CN");
+}
+
+/** Monthly token budget (ADR-0032); hidden entirely when no quota is configured. */
+function QuotaSummary({ quota }: { quota: UsageQuota | null }) {
+  if (!quota) return null;
+  if (!quota.enforced || quota.limitTokens == null) {
+    return (
+      <p className={styles.hint}>
+        未设置配额 · 本月已用 {formatTokens(quota.usedTokens)} tokens
+      </p>
+    );
+  }
+  const percent =
+    quota.limitTokens === 0 ? 0 : Math.min(100, (quota.usedTokens / quota.limitTokens) * 100);
+  const reset = quota.resetsAt ? formatReset(quota.resetsAt) : null;
+  return (
+    <p className={styles.quotaLine} role="status">
+      本月额度：已用 {formatTokens(quota.usedTokens)} / {formatTokens(quota.limitTokens)}（
+      {percent.toFixed(1)}%）
+      {reset ? ` · ${reset}重置` : ""}
+    </p>
+  );
+}
 
 /** Self-service usage: today, the selected window and per-session ranking. */
 export function UsageSettings() {
@@ -54,6 +86,7 @@ export function UsageSettings() {
       </div>
 
       {error ? <Banner tone="error">{error}</Banner> : null}
+      <QuotaSummary quota={data?.quota ?? null} />
       {loading && !data ? (
         <p className={styles.hint} role="status">
           用量加载中…

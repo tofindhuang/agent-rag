@@ -57,6 +57,8 @@ const CODE_MESSAGES: Record<string, string> = {
   SESSION_PURGE_FAILED: "删除会话文件失败，请稍后重试。",
   SESSION_PURGE_BLOCKED: "无法确认会话文件的归属，暂时无法删除；请联系管理员。",
   NOT_IMPLEMENTED: "该功能尚未开放。",
+  QUOTA_EXCEEDED: "本月额度已用完，额度重置后即可继续对话。",
+  RATE_LIMITED: "请求过于频繁，请稍后重试。",
   INTERNAL: "服务内部错误，请稍后重试。",
 };
 

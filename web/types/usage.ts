@@ -31,10 +31,19 @@ export interface UsageTopSession {
   executions: number;
 }
 
+export interface UsageQuota {
+  enforced: boolean;
+  limitTokens: number | null;
+  usedTokens: number;
+  remainingTokens: number | null;
+  resetsAt: string | null;
+}
+
 export interface UserUsage {
   currency: string;
   today: UsageTotals;
   window: UsageWindow;
   daily: UsageDaily[];
   topSessions: UsageTopSession[];
+  quota: UsageQuota;
 }

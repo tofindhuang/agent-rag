@@ -14,6 +14,7 @@ import {
   switchChatSessionModel,
   switchSessionKnowledgeBase,
 } from "@/lib/api/chat";
+import { fetchUserUsage } from "@/lib/api/usage";
 import { ApiError, userMessage } from "@/lib/api/errors";
 import { parseSse } from "@/lib/sse/parse-sse";
 import type {
@@ -125,6 +126,8 @@ export function useChat() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorSource, setErrorSource] = useState<ErrorSource | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Non-blocking "you are close to the monthly quota" hint (ADR-0032). */
+  const [quotaWarning, setQuotaWarning] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
@@ -137,6 +140,20 @@ export function useChat() {
   const fail = useCallback((cause: unknown, source: ErrorSource = "other") => {
     console.error(cause);
     setError(userMessage(cause));
+    if (cause instanceof ApiError && cause.code === "QUOTA_EXCEEDED") {
+      // Replace the generic copy with the actual reset date when we can read it.
+      void fetchUserUsage("7d")
+        .then((usage) => {
+          const resetsAt = usage.quota?.resetsAt;
+          if (!resetsAt) return;
+          const reset = new Date(resetsAt).toLocaleDateString("zh-CN", {
+            month: "long",
+            day: "numeric",
+          });
+          setError(`本月额度已用完，将于${reset}恢复。`);
+        })
+        .catch(() => undefined);
+    }
     setErrorCode(cause instanceof ApiError ? (cause.code ?? null) : null);
     setErrorSource(source);
   }, []);
@@ -178,6 +195,31 @@ export function useChat() {
     }
   }, []);
 
+  /** One request per session open: warn once when the budget is nearly spent. */
+  const loadQuotaHint = useCallback(async (sessionId: string) => {
+    try {
+      const usage = await fetchUserUsage("7d");
+      if (currentIdRef.current !== sessionId) return;
+      const quota = usage.quota;
+      if (!quota?.enforced || quota.limitTokens == null || quota.limitTokens <= 0) return;
+      if (quota.usedTokens / quota.limitTokens < 0.9) return;
+      const reset = quota.resetsAt
+        ? new Date(quota.resetsAt).toLocaleDateString("zh-CN", {
+            month: "long",
+            day: "numeric",
+          })
+        : null;
+      setQuotaWarning(
+        `本月额度已用 ${Math.round((quota.usedTokens / quota.limitTokens) * 100)}%` +
+          (reset ? `，${reset}重置` : "") +
+          "；超额后将暂停对话，可在设置 → 用量查看明细。",
+      );
+    } catch (cause: unknown) {
+      // A hint is optional; never surface its failure.
+      console.error(cause);
+    }
+  }, []);
+
   const selectSession = useCallback(
     async (sessionId: string) => {
       if (currentIdRef.current === sessionId) return;
@@ -194,10 +236,15 @@ export function useChat() {
       setHistoryHasMore(false);
       setNextBeforeId(null);
       setNotice(null);
+      setQuotaWarning(null);
       clearError();
-      await Promise.all([loadHistory(sessionId), loadCompactions(sessionId)]);
+      await Promise.all([
+        loadHistory(sessionId),
+        loadCompactions(sessionId),
+        loadQuotaHint(sessionId),
+      ]);
     },
-    [clearError, loadCompactions, loadHistory],
+    [clearError, loadCompactions, loadHistory, loadQuotaHint],
   );
 
   const refreshSessions = useCallback(async (): Promise<SessionSummary[]> => {
@@ -677,6 +724,7 @@ export function useChat() {
     currentKbName,
     contextUsage,
     contextCompacted,
+    quotaWarning,
     compactions,
     liveCompactions,
     latestCompactionRef,

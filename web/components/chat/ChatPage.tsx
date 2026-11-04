@@ -106,6 +106,10 @@ export function ChatPage() {
             </Banner>
           ) : null}
 
+          {chat.quotaWarning ? (
+            <Banner tone="notice">{chat.quotaWarning}</Banner>
+          ) : null}
+
           {chat.historyHasMore ? (
             <button
               className={styles.loadOlder}
