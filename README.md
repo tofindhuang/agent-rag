@@ -188,6 +188,7 @@ npm run dev        # Next.js，监听 :3000
 | `EMBEDDING_*` / `RERANK_*` | 空 | KB 部署级兜底（用户级设置优先） |
 | `KB_ALLOW_PRIVATE_ENDPOINTS` | `false` | 是否允许内网 embedding / 模型端点 |
 | `RATE_LIMIT_USER_RPM` / `USER_TPM` / `AUTH_IP_RPM` | 120 / 100000 / 10 | FR-6 令牌桶限流（容量=配额，按 `RATE_LIMIT_WINDOW` 匀速补充） |
+| `QUOTA_MONTHLY_TOKENS` | 0 | 每用户每月 token 配额（输入+输出+缓存）；0 = 不限制 |
 | `RATE_LIMIT_TRUSTED_PROXIES` | 空 | 反向代理 CIDR 白名单；仅当直连对端命中时才解析 `X-Forwarded-For` 的最右侧非可信地址 |
 | `SANDBOX_GLOBAL_CONCURRENCY` / `SANDBOX_POOL_*` | 12 / target 12, max 16, 10m | run_code 全局并发与预热池（ADR-0026）；`SANDBOX_POOL_ENABLED=false` 回退 M1 冷创建 |
 | `COMPACTION_*` | 见 gateway | 压缩开关与保留预算 |
@@ -265,6 +266,7 @@ bash sandbox/test-isolation.sh
   - 切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测；
   - 切片 2：OAuth 登录（P1）、摘要正文查看、沙箱预热池（保持一执行一容器）、检索评测扩展、无答案拒答；
   - 切片 3–5：限流改令牌桶 + 可信代理白名单、gVisor 评估（结论：暂不启用）、M2 closeout；
+- **M3（进行中）**：运营与商业化 —— 用量配额（已交付）、审计日志、admin 写操作、数据导出；
   - FR-7 可观测（用量统计、`request_id` 全链路 trace、运营看板）已交付。
 
 ## 参与贡献
