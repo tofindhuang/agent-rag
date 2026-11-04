@@ -8,4 +8,5 @@ public record UserUsageResponse(
         UsageTotals today,
         UsageWindow window,
         List<UsageDaily> daily,
-        List<UsageTopSession> topSessions) {}
+        List<UsageTopSession> topSessions,
+        QuotaView quota) {}

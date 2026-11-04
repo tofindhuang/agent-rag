@@ -4,6 +4,7 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.common.gateway.SessionTarget;
+import com.agentcore.server.common.quota.QuotaService;
 import com.agentcore.server.common.ratelimit.RateLimitDecision;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.common.sse.SseFrame;
@@ -91,6 +92,7 @@ public class ChatServiceImpl implements ChatService {
     private final TransactionTemplate transactionTemplate;
     private final GatewayClient client;
     private final RateLimitService rateLimitService;
+    private final QuotaService quotaService;
     private final ProfileFactService profileFactService;
     private final SessionArchiveService sessionArchiveService;
 
@@ -110,6 +112,7 @@ public class ChatServiceImpl implements ChatService {
             PlatformTransactionManager transactionManager,
             GatewayClient client,
             RateLimitService rateLimitService,
+            QuotaService quotaService,
             ProfileFactService profileFactService,
             SessionArchiveService sessionArchiveService) {
         this.gateway = gateway;
@@ -127,6 +130,7 @@ public class ChatServiceImpl implements ChatService {
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.client = client;
         this.rateLimitService = rateLimitService;
+        this.quotaService = quotaService;
         this.profileFactService = profileFactService;
         this.sessionArchiveService = sessionArchiveService;
     }
@@ -390,6 +394,9 @@ public class ChatServiceImpl implements ChatService {
             throw sessionNotFound();
         }
         SessionModelChoice choice = sessionModelService.forExistingSession(userId, sessionId);
+        // Quota first: it is terminal until the month resets, so it is the more
+        // useful error to surface (ADR-0032).
+        quotaService.requireWithinQuota(userId);
         RateLimitDecision tpm = rateLimitService.checkUserTpm(userId);
         if (!tpm.allowed()) {
             throw new ApiException(ErrorCode.RATE_LIMITED,

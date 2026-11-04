@@ -24,6 +24,7 @@ import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionArchiveService;
 import com.agentcore.server.service.SessionModelService;
 import com.agentcore.server.service.impl.ChatServiceImpl;
+import com.agentcore.server.common.quota.QuotaService;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.service.ProfileFactService;
 import com.agentcore.server.support.AbstractIntegrationTest;
@@ -51,6 +52,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private RateLimitService rateLimitService;
+
+    @Autowired
+    private QuotaService quotaService;
     @Autowired
     private ProfileFactService profileFactService;
 
@@ -394,6 +398,7 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 transactionManager,
                 gatewayClient,
                 rateLimitService,
+                quotaService,
                 profileFactService,
                 sessionArchiveService);
 

@@ -72,6 +72,9 @@ app:
     window: ${RATE_LIMIT_WINDOW:60s}
     # CIDR allow-list for reverse proxies (ADR-0030). Empty keeps remoteAddr.
     trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
+  quota:
+    # Monthly token budget per user (ADR-0032). 0 = no quota.
+    monthly-tokens: ${QUOTA_MONTHLY_TOKENS:0}
   profile:
     max-facts: ${PROFILE_MAX_FACTS:20}
     max-chars: ${PROFILE_MAX_CHARS:4000}

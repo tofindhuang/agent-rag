@@ -48,6 +48,8 @@ public enum ErrorCode {
     SANDBOX_CODE_TOO_LARGE(413, false),
     CONFLICT(409, false),
     RATE_LIMITED(429, true),
+    /** Monthly token budget exhausted; retry is meaningful only after the reset. */
+    QUOTA_EXCEEDED(429, true),
     RUN_IN_PROGRESS(409, false),
     NO_ACTIVE_RUN(409, false),
     INTERNAL(500, false),

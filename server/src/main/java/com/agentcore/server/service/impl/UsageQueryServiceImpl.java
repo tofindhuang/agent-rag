@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.quota.QuotaService;
+import com.agentcore.server.common.quota.QuotaStatus;
 import com.agentcore.server.config.UsageProperties;
 import com.agentcore.server.dao.UsageDao;
 import com.agentcore.server.domain.AdminUserCountRow;
@@ -32,6 +34,7 @@ import com.agentcore.server.dto.usage.UsageDaily;
 import com.agentcore.server.dto.usage.UsageTopSession;
 import com.agentcore.server.dto.usage.UsageTotals;
 import com.agentcore.server.dto.usage.UsageWindow;
+import com.agentcore.server.dto.usage.QuotaView;
 import com.agentcore.server.dto.usage.UserUsageResponse;
 import com.agentcore.server.service.UsageQueryService;
 import java.math.BigDecimal;
@@ -59,10 +62,13 @@ public class UsageQueryServiceImpl implements UsageQueryService {
 
     private final UsageDao usageDao;
     private final UsageProperties properties;
+    private final QuotaService quotaService;
 
-    public UsageQueryServiceImpl(UsageDao usageDao, UsageProperties properties) {
+    public UsageQueryServiceImpl(
+            UsageDao usageDao, UsageProperties properties, QuotaService quotaService) {
         this.usageDao = usageDao;
         this.properties = properties;
+        this.quotaService = quotaService;
     }
 
     @Override
@@ -116,7 +122,8 @@ public class UsageQueryServiceImpl implements UsageQueryService {
                 .toList();
 
         return new UserUsageResponse(
-                properties.currency(), todayTotals, window, dailyRows, topSessions(userId, from));
+                properties.currency(), todayTotals, window, dailyRows,
+                topSessions(userId, from), quotaView(userId));
     }
 
     @Override
@@ -353,6 +360,16 @@ public class UsageQueryServiceImpl implements UsageQueryService {
                 usage.daily(),
                 modelRows,
                 new AdminUserSessions(sessionItems, sessionTotal, page, size));
+    }
+
+    private QuotaView quotaView(long userId) {
+        QuotaStatus status = quotaService.status(userId);
+        return new QuotaView(
+                status.enforced(),
+                status.limitTokens(),
+                status.usedTokens(),
+                status.remainingTokens(),
+                status.resetsAt());
     }
 
     private LocalDateTime windowStart(int days) {

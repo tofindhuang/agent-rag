@@ -20,6 +20,12 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface UsageDao {
 
+    /**
+     * Month-to-date tokens for the quota check. Deliberately does not filter
+     * {@code sessions.deleted_at}: archiving a session must not refund budget.
+     */
+    long sumTokensSince(@Param("userId") long userId, @Param("from") LocalDateTime from);
+
     List<UsageDailyRow> dailyTokens(
             @Param("userId") long userId,
             @Param("from") LocalDateTime from,

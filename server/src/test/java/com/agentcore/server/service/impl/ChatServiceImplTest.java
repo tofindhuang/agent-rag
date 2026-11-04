@@ -11,6 +11,7 @@ import com.agentcore.server.dao.MessageCache;
 import com.agentcore.server.dao.MessageDao;
 import com.agentcore.server.common.gateway.GatewayClient;
 import com.agentcore.server.common.ratelimit.RateLimitDecision;
+import com.agentcore.server.common.quota.QuotaService;
 import com.agentcore.server.common.ratelimit.RateLimitService;
 import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
@@ -109,8 +110,20 @@ class ChatServiceImplTest {
                 transactionManager(),
                 new GatewayClient(properties, mapper),
                 rateLimit,
+                noQuota(),
                 profileFacts,
                 mock(SessionArchiveService.class));
+    }
+
+    /** Real service with quota disabled: the hot path returns immediately. */
+    private static QuotaService noQuota() {
+        return new QuotaService(
+                com.agentcore.server.config.QuotaProperties.defaults(),
+                new com.agentcore.server.config.UsageProperties(
+                        "CNY", "+08:00", null, java.util.Map.of()),
+                null,
+                null,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
     }
 
     private static final class TestRateLimitService implements RateLimitService {
