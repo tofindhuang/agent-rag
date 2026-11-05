@@ -29,7 +29,8 @@ public enum AuditAction {
     SESSION_RESTORE("session.restore"),
     KB_DOCUMENT_DELETE("kb.document.delete"),
     KB_DELETE("kb.delete"),
-    MEMORY_FACT_DELETE("memory.fact.delete");
+    MEMORY_FACT_DELETE("memory.fact.delete"),
+    USER_DATA_EXPORT("user.data.export");
 
     private final String wire;
 
