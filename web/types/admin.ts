@@ -73,7 +73,7 @@ export interface AdminOverview {
   daily: AdminDaily[];
 }
 
-export type AdminTab = "overview" | "users" | "trace";
+export type AdminTab = "overview" | "users" | "trace" | "audit";
 
 export type AdminWindow = UsageWindowKey;
 

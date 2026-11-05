@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { PageShell } from "@/components/ui/PageShell";
 import type { AdminTab } from "@/types/admin";
+import { AdminAudit } from "./AdminAudit";
 import { AdminOverview } from "./AdminOverview";
 import { AdminTrace } from "./AdminTrace";
 import { AdminUsers } from "./AdminUsers";
@@ -13,6 +14,7 @@ const TABS: Array<{ key: AdminTab; label: string }> = [
   { key: "overview", label: "总览" },
   { key: "users", label: "用户" },
   { key: "trace", label: "trace" },
+  { key: "audit", label: "审计" },
 ];
 
 /** Read-only admin shell; users and trace tabs land with their own tickets. */
@@ -49,6 +51,7 @@ export function AdminPage() {
           {tab === "overview" ? <AdminOverview /> : null}
           {tab === "users" ? <AdminUsers /> : null}
           {tab === "trace" ? <AdminTrace /> : null}
+          {tab === "audit" ? <AdminAudit /> : null}
         </>
       ) : (
         <p className={styles.denied} role="alert">

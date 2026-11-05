@@ -8,6 +8,7 @@ import { IdentitySettings } from "./IdentitySettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { MemorySettings } from "./MemorySettings";
 import { ModelSettings } from "./ModelSettings";
+import { SecurityEvents } from "./SecurityEvents";
 import { UsageSettings } from "./UsageSettings";
 import styles from "./settings.module.css";
 
@@ -19,6 +20,7 @@ export function SettingsPage() {
         <ModelSettings />
         <MemorySettings />
         <UsageSettings />
+        <SecurityEvents />
         <AccountSettings />
         <IdentitySettings />
         <AppearanceSettings />
