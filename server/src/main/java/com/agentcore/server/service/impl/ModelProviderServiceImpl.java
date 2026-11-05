@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.crypto.ApiKeyCipher;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
@@ -38,6 +40,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ModelProviderServiceImpl implements ModelProviderService {
 
     private final ModelProviderDao providerDao;
+    private final AuditService audit;
     private final ProviderModelDao modelDao;
     private final UserModelDefaultDao defaultDao;
     private final ApiKeyCipher cipher;
@@ -52,8 +55,10 @@ public class ModelProviderServiceImpl implements ModelProviderService {
             ApiKeyCipher cipher,
             ModelProperties modelProperties,
             GatewayClient client,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            AuditService audit) {
         this.providerDao = providerDao;
+        this.audit = audit;
         this.modelDao = modelDao;
         this.defaultDao = defaultDao;
         this.cipher = cipher;
@@ -103,6 +108,8 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         provider.setApiKeyHint(ApiKeyCipher.hint(command.apiKey()));
         providerDao.insert(provider);
         insertModels(provider.getId(), command.models());
+        audit.success(AuditAction.MODEL_PROVIDER_CREATE, userId,
+                "provider", String.valueOf(provider.getId()));
         return provider.getId();
     }
 
@@ -122,6 +129,10 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         if (command.models() != null) {
             replaceModels(providerId, command.models());
         }
+        audit.success(AuditAction.MODEL_PROVIDER_UPDATE, userId,
+                "provider", String.valueOf(providerId),
+                java.util.Map.of("apiKeyChanged", command.apiKey() != null
+                        && !command.apiKey().isBlank()));
     }
 
     @Override
@@ -133,6 +144,8 @@ public class ModelProviderServiceImpl implements ModelProviderService {
         if (deleted == 0) {
             throw notFound();
         }
+        audit.success(AuditAction.MODEL_PROVIDER_DELETE, userId,
+                "provider", String.valueOf(providerId));
     }
 
     @Override
@@ -140,12 +153,16 @@ public class ModelProviderServiceImpl implements ModelProviderService {
     public void setDefault(long userId, Long modelId) {
         if (modelId == null) {
             defaultDao.deleteById(userId);
+            audit.success(AuditAction.MODEL_PROVIDER_DEFAULT, userId,
+                    "model", null);
             return;
         }
         if (modelDao.findOwned(modelId, userId) == null) {
             throw notFound();
         }
         defaultDao.upsert(userId, modelId);
+        audit.success(AuditAction.MODEL_PROVIDER_DEFAULT, userId,
+                "model", String.valueOf(modelId));
     }
 
     @Override

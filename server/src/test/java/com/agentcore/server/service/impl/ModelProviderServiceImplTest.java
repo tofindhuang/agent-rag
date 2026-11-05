@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.support.RecordingAudit;
+import com.agentcore.server.common.audit.AuditService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -31,7 +33,8 @@ class ModelProviderServiceImplTest {
                 modelProperties,
                 new GatewayClient(
                         new GatewayProperties("http://127.0.0.1:1", null, null), new ObjectMapper()),
-                new ObjectMapper());
+                new ObjectMapper(),
+                new RecordingAudit());
 
         assertThatThrownBy(() -> service.probe(1L, new ProbeCommand(
                         "openai-completions", "https://api.example.com/v1", "sk-test", null)))

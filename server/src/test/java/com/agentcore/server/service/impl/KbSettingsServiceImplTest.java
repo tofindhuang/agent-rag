@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.support.RecordingAudit;
+import com.agentcore.server.common.audit.AuditService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -112,7 +114,8 @@ class KbSettingsServiceImplTest {
                         "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", false)),
                 properties,
                 mock(VectorStore.class),
-                mock(org.springframework.transaction.PlatformTransactionManager.class));
+                mock(org.springframework.transaction.PlatformTransactionManager.class),
+                new RecordingAudit());
         return new Fixture(service, settingsDao);
     }
 

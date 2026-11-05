@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.support.RecordingAudit;
+import com.agentcore.server.common.audit.AuditService;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -27,7 +29,9 @@ class KbDocumentDeletionServiceImplTest {
         document.setOriginalKey("7/doc/sha.pdf");
         when(dao.findOwned("doc", 7)).thenReturn(document);
 
-        new KbDocumentDeletionServiceImpl(dao, objectStore, vectorStore).delete(7, "doc");
+        new KbDocumentDeletionServiceImpl(
+                dao, objectStore, vectorStore, new RecordingAudit())
+                .delete(7, "doc");
 
         InOrder order = inOrder(objectStore, vectorStore, dao);
         order.verify(objectStore).delete("7/doc/sha.pdf");
@@ -42,7 +46,7 @@ class KbDocumentDeletionServiceImplTest {
         VectorStore vectorStore = mock(VectorStore.class);
         when(dao.findOwned("doc", 7)).thenReturn(null);
 
-        assertThatCode(() -> new KbDocumentDeletionServiceImpl(dao, objectStore, vectorStore)
+        assertThatCode(() -> new KbDocumentDeletionServiceImpl(dao, objectStore, vectorStore, new RecordingAudit())
                 .delete(7, "doc"))
                 .doesNotThrowAnyException();
 
@@ -60,7 +64,7 @@ class KbDocumentDeletionServiceImplTest {
         document.setStatus(KbDocument.STATUS_READY);
         when(dao.findOwned("doc", 7)).thenReturn(document);
 
-        new KbDocumentDeletionServiceImpl(dao, objectStore, vectorStore).delete(7, "doc");
+        new KbDocumentDeletionServiceImpl(dao, objectStore, vectorStore, new RecordingAudit()).delete(7, "doc");
 
         verifyNoInteractions(objectStore, vectorStore);
     }

@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.gateway.GatewayClient;
@@ -80,6 +82,7 @@ public class ChatServiceImpl implements ChatService {
     private final GatewayProperties gateway;
     private final ObjectMapper objectMapper;
     private final SessionDao sessionDao;
+    private final AuditService audit;
     private final SessionCompactionDao sessionCompactionDao;
     private final KbSessionKnowledgeBaseDao sessionKbDao;
     private final KbKnowledgeBaseService knowledgeBaseService;
@@ -114,10 +117,12 @@ public class ChatServiceImpl implements ChatService {
             RateLimitService rateLimitService,
             QuotaService quotaService,
             ProfileFactService profileFactService,
-            SessionArchiveService sessionArchiveService) {
+            SessionArchiveService sessionArchiveService,
+            AuditService audit) {
         this.gateway = gateway;
         this.objectMapper = objectMapper;
         this.sessionDao = sessionDao;
+        this.audit = audit;
         this.sessionCompactionDao = sessionCompactionDao;
         this.sessionKbDao = sessionKbDao;
         this.knowledgeBaseService = knowledgeBaseService;
@@ -258,6 +263,7 @@ public class ChatServiceImpl implements ChatService {
         if (sessionDao.restore(sessionId, userId, nowUtc()) == 0) {
             throw sessionNotFound();
         }
+        audit.success(AuditAction.SESSION_RESTORE, userId, "session", sessionId);
     }
 
     @Override
@@ -280,6 +286,7 @@ public class ChatServiceImpl implements ChatService {
         });
         // Redis may still hold the recent window of the deleted session.
         messageCache.clear(sessionId);
+        audit.success(AuditAction.SESSION_PURGE, userId, "session", sessionId);
     }
 
     private void deleteGatewayFiles(String sessionId, long userId) {
@@ -326,6 +333,7 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void archiveSession(long userId, String sessionId) {
+        audit.success(AuditAction.SESSION_ARCHIVE, userId, "session", sessionId);
         if (sessionDao.archive(sessionId, userId, nowUtc()) == 0) {
             throw sessionNotFound();
         }

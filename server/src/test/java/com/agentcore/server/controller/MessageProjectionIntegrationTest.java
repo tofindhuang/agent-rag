@@ -1,5 +1,6 @@
 package com.agentcore.server.controller;
 
+import com.agentcore.server.common.audit.AuditService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -69,6 +70,9 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SessionDao sessionDao;
+
+    @Autowired
+    private AuditService auditService;
 
     @Autowired
     private SessionCompactionDao sessionCompactionDao;
@@ -400,7 +404,8 @@ class MessageProjectionIntegrationTest extends AbstractIntegrationTest {
                 rateLimitService,
                 quotaService,
                 profileFactService,
-                sessionArchiveService);
+                sessionArchiveService,
+                auditService);
 
         assertThat(fresh.history(userId, sessionId, null, 50).items()).hasSize(2);
     }

@@ -1,5 +1,6 @@
 package com.agentcore.server.controller;
 
+import com.agentcore.server.common.audit.AuditService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -66,6 +67,9 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SessionDao sessionDao;
+
+    @Autowired
+    private AuditService auditService;
 
     @Autowired
     private SessionCompactionDao sessionCompactionDao;
@@ -196,7 +200,8 @@ class SessionCrudIntegrationTest extends AbstractIntegrationTest {
                 rateLimitService,
                 quotaService,
                 profileFactService,
-                sessionArchiveService);
+                sessionArchiveService,
+                auditService);
         List<Session> listed = fresh.listSessions(userId, "active", null, null, 50);
 
         assertThat(listed).extracting(Session::getId).contains(sessionId);

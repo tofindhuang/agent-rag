@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.crypto.ApiKeyCipher;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
@@ -72,6 +74,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
     private static final double MAX_THRESHOLD = 99.999999d;
 
     private final KbAvailability availability;
+    private final AuditService audit;
     private final KbUserSettingsDao settingsDao;
     private final KbDocumentDao documentDao;
     private final KbEmbeddingClient embeddingClient;
@@ -100,8 +103,10 @@ public class KbSettingsServiceImpl implements KbSettingsService {
             ApiKeyCipher cipher,
             KbProperties properties,
             VectorStore vectorStore,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            AuditService audit) {
         this.availability = availability;
+        this.audit = audit;
         this.settingsDao = settingsDao;
         this.documentDao = documentDao;
         this.embeddingClient = embeddingClient;
@@ -207,6 +212,12 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         entity.setRerankPath(rerankPath);
         entity.setRerankMinScore(rerankThreshold);
         entity.setVectorMinScore(vectorThreshold);
+        audit.success(AuditAction.KB_SETTINGS_UPDATE, userId, "kb_settings", null,
+                java.util.Map.of(
+                        "embeddingModel", model,
+                        "modelsChanged", !model.equals(previousEmbeddingModel(existing))
+                                || dimension != previousEmbeddingDimension(existing),
+                        "rerankEnabled", rerankEnabled));
         boolean modelChanged = !model.equals(previousEmbeddingModel(existing));
         boolean dimensionChanged = dimension != previousEmbeddingDimension(existing);
         // Probes already ran outside the transaction so no DB connection is held
@@ -367,6 +378,10 @@ public class KbSettingsServiceImpl implements KbSettingsService {
         entity.setRerankMinScore(rerankThreshold);
         entity.setVectorMinScore(vectorThreshold);
         settingsDao.upsertThresholds(entity);
+        audit.success(AuditAction.KB_THRESHOLD_UPDATE, userId, "kb_settings", null,
+                java.util.Map.of(
+                        "rerankMinScore", String.valueOf(rerankThreshold),
+                        "vectorMinScore", String.valueOf(vectorThreshold)));
         return view(userId);
     }
 
@@ -383,6 +398,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
 
     @Override
     public KbSettingsView clearEmbedding(long userId) {
+        audit.success(AuditAction.KB_SETTINGS_RESET, userId, "kb_settings", "embedding");
         availability.requireEnabled();
         settingsDao.clearEmbedding(userId);
         return toView(userId, settingsDao.selectById(userId));
@@ -390,6 +406,7 @@ public class KbSettingsServiceImpl implements KbSettingsService {
 
     @Override
     public KbSettingsView clearRerank(long userId) {
+        audit.success(AuditAction.KB_SETTINGS_RESET, userId, "kb_settings", "rerank");
         availability.requireEnabled();
         settingsDao.clearRerank(userId);
         return toView(userId, settingsDao.selectById(userId));

@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.support.RecordingAudit;
+import com.agentcore.server.common.audit.AuditService;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -112,7 +114,8 @@ class ChatServiceImplTest {
                 rateLimit,
                 noQuota(),
                 profileFacts,
-                mock(SessionArchiveService.class));
+                mock(SessionArchiveService.class),
+                new RecordingAudit());
     }
 
     /** Real service with quota disabled: the hot path returns immediately. */

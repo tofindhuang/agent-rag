@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.dao.KbDocumentDao;
@@ -23,14 +25,17 @@ public class KbKnowledgeBaseServiceImpl implements KbKnowledgeBaseService {
     private final KbKnowledgeBaseDao kbDao;
     private final KbDocumentDao documentDao;
     private final KbSessionKnowledgeBaseDao sessionKbDao;
+    private final AuditService audit;
 
     public KbKnowledgeBaseServiceImpl(
             KbKnowledgeBaseDao kbDao,
             KbDocumentDao documentDao,
-            KbSessionKnowledgeBaseDao sessionKbDao) {
+            KbSessionKnowledgeBaseDao sessionKbDao,
+            AuditService audit) {
         this.kbDao = kbDao;
         this.documentDao = documentDao;
         this.sessionKbDao = sessionKbDao;
+        this.audit = audit;
     }
 
     @Override
@@ -76,6 +81,7 @@ public class KbKnowledgeBaseServiceImpl implements KbKnowledgeBaseService {
     @Override
     @Transactional
     public void delete(long userId, String id) {
+        audit.success(AuditAction.KB_DELETE, userId, "kb", id);
         KbKnowledgeBase kb = requireOwned(userId, id);
         if (Boolean.TRUE.equals(kb.getIsDefault())) {
             throw new ApiException(ErrorCode.CONFLICT, "the default knowledge base cannot be deleted");

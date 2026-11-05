@@ -1,6 +1,10 @@
 package com.agentcore.server.controller;
 
 import com.agentcore.server.common.auth.AdminGuard;
+import com.agentcore.server.dao.AuditEventDao;
+import com.agentcore.server.domain.AuditEvent;
+import com.agentcore.server.dto.admin.AuditEventView;
+import com.agentcore.server.dto.admin.AuditPage;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.usage.UsageWindows;
 import com.agentcore.server.common.error.ApiException;
@@ -31,20 +35,54 @@ public class AdminController {
     private final AdminGuard adminGuard;
     private final UsageQueryService usageQueryService;
     private final AdminTraceService traceService;
+    private final AuditEventDao auditEventDao;
 
     public AdminController(
             AdminGuard adminGuard,
             UsageQueryService usageQueryService,
-            AdminTraceService traceService) {
+            AdminTraceService traceService,
+            AuditEventDao auditEventDao) {
         this.adminGuard = adminGuard;
         this.usageQueryService = usageQueryService;
         this.traceService = traceService;
+        this.auditEventDao = auditEventDao;
     }
 
     @GetMapping("/ping")
     public AdminPingResponse ping(@AuthenticationPrincipal AuthenticatedUser user) {
         adminGuard.requireAdmin(user.userId());
         return new AdminPingResponse(AdminGuard.ROLE_ADMIN);
+    }
+
+    /** Read-only audit trail (ADR-0033); metadata only, newest first. */
+    @GetMapping("/audit")
+    public AuditPage audit(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(required = false) Long beforeId,
+            @RequestParam(required = false) String action) {
+        adminGuard.requireAdmin(user.userId());
+        int capped = Math.min(Math.max(limit, 1), 200);
+        java.util.List<AuditEvent> rows = auditEventDao.listAll(action, beforeId, capped);
+        return new AuditPage(
+                rows.stream().map(AdminController::auditView).toList(),
+                rows.size() < capped ? null : rows.get(rows.size() - 1).getId());
+    }
+
+    private static AuditEventView auditView(AuditEvent event) {
+        return new AuditEventView(
+                event.getId(),
+                event.getActorUserId(),
+                event.getActorType(),
+                event.getAction(),
+                event.getTargetType(),
+                event.getTargetId(),
+                event.getOutcome(),
+                event.getIp(),
+                event.getCreatedAt() == null
+                        ? null
+                        : event.getCreatedAt().toInstant(java.time.ZoneOffset.UTC),
+                event.getDetail());
     }
 
     @GetMapping("/overview")

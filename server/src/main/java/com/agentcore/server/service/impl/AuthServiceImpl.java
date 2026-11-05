@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.auth.AdminGuard;
 import com.agentcore.server.common.auth.JwtService;
 import com.agentcore.server.common.auth.RefreshTokens;
@@ -33,6 +35,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserDao userDao;
     private final RefreshTokenDao refreshTokenDao;
+    private final AuditService audit;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthProperties authProperties;
@@ -44,9 +47,11 @@ public class AuthServiceImpl implements AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             AuthProperties authProperties,
-            AdminProperties adminProperties) {
+            AdminProperties adminProperties,
+            AuditService audit) {
         this.userDao = userDao;
         this.refreshTokenDao = refreshTokenDao;
+        this.audit = audit;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authProperties = authProperties;
@@ -70,6 +75,8 @@ public class AuthServiceImpl implements AuthService {
         } catch (DuplicateKeyException ex) {
             throw new ApiException(ErrorCode.EMAIL_ALREADY_EXISTS, "email is already registered");
         }
+        audit.success(AuditAction.AUTH_REGISTER, user.getId(),
+                "user", String.valueOf(user.getId()));
         return user.getId();
     }
 
@@ -82,8 +89,13 @@ public class AuthServiceImpl implements AuthService {
                 ? DUMMY_HASH : user.getPasswordHash();
         boolean matches = passwordEncoder.matches(password, hash);
         if (user == null || !matches) {
+            audit.record(AuditAction.AUTH_LOGIN_FAILED, AuditService.Outcome.FAILED,
+                    user == null ? null : user.getId(), "email", email,
+                    java.util.Map.of("reason", "invalid_credentials"));
             throw new ApiException(ErrorCode.UNAUTHORIZED, "invalid email or password");
         }
+        audit.success(AuditAction.AUTH_LOGIN, user.getId(),
+                "user", String.valueOf(user.getId()));
 
         String refreshToken = RefreshTokens.newToken();
         insertRefreshToken(user.getId(), UUID.randomUUID().toString(), refreshToken);
@@ -105,6 +117,8 @@ public class AuthServiceImpl implements AuthService {
         if (stored.getRevokedAt() != null) {
             // A rotated token came back: treat the whole lineage as compromised.
             refreshTokenDao.revokeFamily(stored.getFamilyId(), nowUtc());
+            audit.record(AuditAction.AUTH_REFRESH_REUSE, AuditService.Outcome.DENIED,
+                    stored.getUserId(), "refresh_family", stored.getFamilyId(), null);
             throw invalidRefreshToken();
         }
         if (!stored.getExpiresAt().isAfter(nowUtc())) {
@@ -155,12 +169,16 @@ public class AuthServiceImpl implements AuthService {
         userDao.updateById(user);
         // Same transaction: a leaked refresh token must die with the old password.
         refreshTokenDao.revokeAllForUser(userId, nowUtc());
+        audit.success(AuditAction.AUTH_PASSWORD_CHANGE, userId,
+                "user", String.valueOf(userId));
     }
 
     @Override
     @Transactional
     public void logoutAll(long userId) {
         refreshTokenDao.revokeAllForUser(userId, nowUtc());
+        audit.success(AuditAction.AUTH_LOGOUT_ALL, userId,
+                "user", String.valueOf(userId));
     }
 
     @Override
@@ -182,6 +200,8 @@ public class AuthServiceImpl implements AuthService {
             refreshTokenDao.revokeAllForUserExcept(
                     userId, RefreshTokens.hash(currentRefreshToken), nowUtc());
         }
+        audit.success(AuditAction.AUTH_PASSWORD_SET, userId,
+                "user", String.valueOf(userId));
     }
 
     @Override

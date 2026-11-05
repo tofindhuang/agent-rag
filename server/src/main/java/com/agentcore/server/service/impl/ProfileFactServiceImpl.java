@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.config.ProfileProperties;
@@ -40,6 +42,7 @@ public class ProfileFactServiceImpl implements ProfileFactService {
             "(?i)(sk-[a-z0-9_-]{16,}|bearer\\s+\\S{16,}|akia[0-9a-z]{16})");
 
     private final ProfileFactDao factDao;
+    private final AuditService audit;
     private final ProfileSettingsDao settingsDao;
     private final ProfileProperties properties;
     private final ProfileCollectionService collections;
@@ -48,8 +51,10 @@ public class ProfileFactServiceImpl implements ProfileFactService {
             ProfileFactDao factDao,
             ProfileSettingsDao settingsDao,
             ProfileProperties properties,
-            ProfileCollectionService collections) {
+            ProfileCollectionService collections,
+            AuditService audit) {
         this.factDao = factDao;
+        this.audit = audit;
         this.settingsDao = settingsDao;
         this.properties = properties;
         this.collections = collections;
@@ -114,6 +119,7 @@ public class ProfileFactServiceImpl implements ProfileFactService {
 
     @Override
     public void delete(long userId, String factId) {
+        audit.success(AuditAction.MEMORY_FACT_DELETE, userId, "profile_fact", factId);
         factDao.markDeleted(factId, userId, now());
         if (factDao.findOwned(factId, userId) == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "profile fact not found");

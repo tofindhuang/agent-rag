@@ -1,5 +1,7 @@
 package com.agentcore.server.service.impl;
 
+import com.agentcore.server.common.audit.AuditAction;
+import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.auth.AdminGuard;
 import com.agentcore.server.common.auth.EmailNormalizer;
 import com.agentcore.server.common.auth.EmailPolicy;
@@ -50,6 +52,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class OAuthServiceImpl implements OAuthService {
 
     private static final Logger log = LoggerFactory.getLogger(OAuthServiceImpl.class);
+    private final AuditService audit;
     private static final int STATE_BYTES = 32;
     private static final int NONCE_BYTES = 16;
     private static final int VERIFIER_BYTES = 32;
@@ -74,7 +77,8 @@ public class OAuthServiceImpl implements OAuthService {
             RefreshTokenDao refreshTokenDao,
             AuthService authService,
             AdminProperties adminProperties,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            AuditService audit) {
         this.properties = properties;
         this.client = client;
         this.stateCodec = stateCodec;
@@ -84,6 +88,7 @@ public class OAuthServiceImpl implements OAuthService {
         this.authService = authService;
         this.adminProperties = adminProperties;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.audit = audit;
     }
 
     @Override
@@ -240,6 +245,8 @@ public class OAuthServiceImpl implements OAuthService {
 
     @Override
     public void unlink(long userId, long identityId) {
+        audit.success(AuditAction.AUTH_IDENTITY_UNLINK, userId,
+                "user_identity", String.valueOf(identityId));
         UserIdentity identity = identityDao.findByIdAndUserId(identityId, userId);
         if (identity == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "identity not found");
