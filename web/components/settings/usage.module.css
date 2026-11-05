@@ -223,3 +223,33 @@
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+
+/* Personal data export (ADR-0034) */
+.exportDialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.exportField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.exportField input {
+  padding: 8px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.exportActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
