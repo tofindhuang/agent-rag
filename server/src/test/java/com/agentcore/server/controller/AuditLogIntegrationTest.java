@@ -12,6 +12,7 @@ import com.agentcore.server.support.AuthTestCalls;
 import com.jayway.jsonpath.JsonPath;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,6 +32,12 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @BeforeEach
+    void resetGatewayMode() {
+        // Other suites use the same JVM-wide fake gateway; start from "ok".
+        GATEWAY.resetDeleteFiles();
+    }
 
     @Test
     void recordsRegistrationLoginFailureLoginAndProviderChanges() throws Exception {
