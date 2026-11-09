@@ -73,7 +73,10 @@ M1 的验收证据（50 并发压测、重启耐久性、延迟指标）见
 └── docker-compose.yml  本地基础设施（MySQL/Redis/Qdrant/RabbitMQ/Silo，OCR 可选）
 ```
 
-## 快速开始
+## 快速开始（本地开发）
+
+> 生产部署（构建产物、必备环境变量、多实例与滚动更新、反代要求、备份与排查）见
+> **[docs/deployment.md](docs/deployment.md)**。
 
 ### 前置依赖
 
@@ -171,6 +174,22 @@ npm run dev        # Next.js，监听 :3000
 > 本地开发若没有真实 embedding 供应商，可以只使用纯对话；知识库上传会因 embedding 未配置而返回明确错误。
 > `tools/loadtest/scripts/` 提供了带确定性假 embedding 的一次性栈，仅用于压测/验收。
 
+## 部署
+
+完整指南见 **[docs/deployment.md](docs/deployment.md)**。要点：
+
+| 关注点 | 结论 |
+|---|---|
+| 进程 | web(:3000) 对外；server(:8080) 只在内网；gateway(:3001+) 可多实例，共享 `GATEWAY_SESSION_DIR`；Prometheus 在 `:9091` |
+| 构建 | `mvn -DskipTests package` → `server/target/server-0.1.0-SNAPSHOT.jar`；`npm ci`（gateway，含 tsx）；`npm run build`（web）；`docker build -t agent-core-sandbox:python-3.12 -f sandbox/Dockerfile.python sandbox` |
+| 首次上线 | 基础设施 → server（Flyway 自动迁移）→ gateway → web → 注册账号 → 配模型供应商 |
+| 必备变量 | `JWT_SECRET`、`MODEL_SECRET_KEY`、MySQL/Redis、`GATEWAY_URLS`、`GATEWAY_API_TOKEN` |
+| HTTPS | `AUTH_COOKIE_SECURE=true` |
+| 反代 | SSE 必须关缓冲、`proxy_read_timeout ≥ 10m`、转发 `X-Forwarded-For` 并配 `RATE_LIMIT_TRUSTED_PROXIES` |
+| 滚动更新 | `POST /admin/drain` → 等在飞轮次结束 → 替换并重启 → 健康检查 → 下一台；**崩溃/强杀仍是 `partial`** |
+| 备份 | 仓库**未内置**：需自行备份 MySQL、Qdrant、对象存储与 `GATEWAY_SESSION_DIR` |
+| 无 K8s 清单 | 仓库只提供开发用 `docker-compose.yml`，无 Helm/Chart |
+
 ## 配置
 
 完整变量见 [.env.example](.env.example)。常用分组：
@@ -251,6 +270,7 @@ bash sandbox/test-isolation.sh
 | 内容 | 位置 |
 |---|---|
 | 需求（唯一权威） | [docs/requirements.md](docs/requirements.md) |
+| **部署指南** | [docs/deployment.md](docs/deployment.md) |
 | 领域词汇表 | [CONTEXT.md](CONTEXT.md) |
 | 跨模块 specs | [docs/specs/](docs/specs/) |
 | ADR | [docs/adrs/](docs/adrs/) |
@@ -261,13 +281,13 @@ bash sandbox/test-isolation.sh
 
 ## 路线图
 
-- **M1（已完成）**：P0 全量 —— 认证与多租户、RAG 摄取、沙箱隔离与审计、compaction、长期记忆、限流；50 并发验收通过。
-- **M2（切片 1 进行中）**：
-  - 切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测；
-  - 切片 2：OAuth 登录（P1）、摘要正文查看、沙箱预热池（保持一执行一容器）、检索评测扩展、无答案拒答；
-  - 切片 3–5：限流改令牌桶 + 可信代理白名单、gVisor 评估（结论：暂不启用）、M2 closeout；
-- **M3（已完成）**：运营与商业化 —— 用量配额、审计日志、个人数据导出；另交付会话分支「从这里重新开始」（P2）。closeout 见 `docs/specs/2026-11-05-m3-closeout.md`；下一主题建议为生产化（部署/备份/告警）；
-  - FR-7 可观测（用量统计、`request_id` 全链路 trace、运营看板）已交付。
+| 里程碑 | 状态 | 交付 |
+|---|---|---|
+| M0 PoC | ✅ | 契约 v1 冻结、RAG 选型（Qdrant + 可配置 embedding/rerank） |
+| M1 MVP | ✅ | P0 全量：认证与多租户、RAG 摄取、沙箱隔离与审计、compaction、长期记忆、限流；50 并发验收通过 |
+| M2 硬化 | ✅ | 多实例与排空滚动更新、冷归档、OAuth、摘要可见、沙箱预热池、检索评测与无答案拒答、令牌桶限流、gVisor 评估（暂不启用）、closeout |
+| M3 运营 | ✅ | 用量配额、审计日志、个人数据导出、会话分支 UI（P2）；closeout 见 [docs/specs/2026-11-05-m3-closeout.md](docs/specs/2026-11-05-m3-closeout.md) |
+| 下一主题（建议） | — | 生产化：部署交付（Helm/K8s）、备份与灾备、告警与 SLO |
 
 ## 参与贡献
 
