@@ -1,5 +1,7 @@
 # FR-5 用户长期记忆（Profile Facts）
 
+状态：已实现并验收（tickets 01–05 done）
+
 ## Problem Statement
 
 用户每次新开会话都要重复自己的偏好、项目背景与环境事实。当前 system prompt 已预留 `Known facts` 段，但 gateway 固定传空数组，Java 也没有 `profile_facts` 表、提取任务或管理接口。结果是：

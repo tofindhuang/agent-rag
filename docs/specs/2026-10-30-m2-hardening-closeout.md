@@ -1,7 +1,7 @@
 # M2 硬化收尾：限流调优、gVisor 评估与 closeout
 
 日期：2026-10-30
-状态：Phase 1 已完成（Q1–Q4 逐问确认），待实现
+状态：已实现并验收（见 `docs/research/2026-10-30-m2-closeout-acceptance.md`）
 关联 ADR：[0030](../adrs/0030-token-bucket-rate-limit-and-trusted-proxies.md)、[0031](../adrs/0031-gvisor-evaluation.md)、[0018](../adrs/0018-rate-limiting-fixed-window.md)、[0024](../adrs/0024-multi-instance-affinity-and-drain.md)、[0026](../adrs/0026-sandbox-warm-pool.md)
 关联需求：FR-3、FR-6（限流）、§4 非功能（滚动更新）、§7 M2
 涉及模块：server、docs（README/.env.example）

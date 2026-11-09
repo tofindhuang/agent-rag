@@ -1,5 +1,7 @@
 # FR-4 Context Compaction 配置与上下文占比
 
+状态：已实现并验收（tickets 01–03；摘要可见另见 ADR-0028）
+
 ## Problem Statement
 
 pi 已内置 compaction，但 gateway 目前没有配置它：所有会话使用 pi 默认的 `reserveTokens=16384`、`keepRecentTokens=20000`，触发点不随模型窗口比例变化，也没有面向用户的任何可见性。结果是：

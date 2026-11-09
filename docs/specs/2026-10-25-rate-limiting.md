@@ -1,5 +1,7 @@
 # FR-6 限流（Rate Limiting）
 
+状态：已实现；限流算法已升级为令牌桶（ADR-0030，M2 切片 5）
+
 ## Problem Statement
 
 业务层目前对所有已认证 API 没有请求频率或 token 消耗上限。单个用户可以：
