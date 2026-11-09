@@ -113,5 +113,7 @@ export type DomainEvent =
         status: "completed" | "aborted" | "error";
         turnId: string;
         error?: RunError;
+        /** pi entry id of this turn's user message; enables "branch from here". */
+        userEntryId?: string;
       };
     };

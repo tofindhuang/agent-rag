@@ -8,6 +8,13 @@ export interface GatewaySession {
   getContextUsage?():
     | { tokens: number | null; contextWindow: number; percent: number | null }
     | undefined;
+  /** User entries of the active branch, for "branch from here" (ADR-0035). */
+  getUserMessagesForForking?(): Array<{ entryId: string; text: string }>;
+  /** Moves the leaf back to an earlier entry; abandoned history stays on disk. */
+  navigateTree?(
+    targetId: string,
+    options?: { summarize?: boolean },
+  ): Promise<{ editorText?: string; cancelled: boolean }>;
 }
 
 export interface GatewaySessionEntry {

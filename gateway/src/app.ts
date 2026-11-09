@@ -335,8 +335,10 @@ export function createApp({ config, pool, lifecycle, gate }: AppDependencies): E
       });
 
       await pool.run(req.params.id, text);
+      translator.setUserEntryId(lastUserEntryId(running.session));
       for (const event of translator.finish("completed")) sendEvent(event);
     } catch (err) {
+      translator.setUserEntryId(lastUserEntryId(running.session));
       const message = err instanceof Error ? err.message : String(err);
       for (const event of translator.fail("MODEL_ERROR", message)) sendEvent(event);
     } finally {
@@ -344,6 +346,47 @@ export function createApp({ config, pool, lifecycle, gate }: AppDependencies): E
       unsubscribe?.();
       pool.endRun(req.params.id, runId);
       if (!closed && !res.writableEnded) res.end();
+    }
+  });
+
+  /**
+   * Moves the session leaf back to an earlier user entry, so the next prompt
+   * starts a new branch (ADR-0035). Abandoned history stays in the file.
+   */
+  app.post("/sessions/:id/branch", async (req, res) => {
+    const userId = requireUserId(req, res);
+    if (!userId) return;
+    const entry = pool.get(req.params.id);
+    if (!entry) {
+      sendError(res, 404, "SESSION_NOT_FOUND", "session not found");
+      return;
+    }
+    if (entry.userId !== userId) {
+      sendError(res, 403, "USER_MISMATCH", "session belongs to another user");
+      return;
+    }
+    const { entryId } = (req.body ?? {}) as { entryId?: unknown };
+    if (typeof entryId !== "string" || entryId.length === 0) {
+      sendError(res, 400, "INVALID_REQUEST", "entryId is required");
+      return;
+    }
+    if (entry.activeRun) {
+      sendError(res, 409, "SESSION_BUSY", "a run is active for this session", true);
+      return;
+    }
+    try {
+      if (!entry.session.navigateTree) {
+        sendError(res, 400, "INVALID_REQUEST", "branching is not supported by this session");
+        return;
+      }
+      const result = await entry.session.navigateTree(entryId, { summarize: false });
+      res.json({
+        editorText: result.editorText ?? null,
+        cancelled: result.cancelled === true,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, 400, "INVALID_REQUEST", message);
     }
   });
 
@@ -596,6 +639,16 @@ function requireUserId(req: Request, res: Response): string | null {
 
 function ownerDetails(err: SessionBusyError): Record<string, unknown> {
   return err.owner ? { owner: { instanceId: err.owner.instanceId } } : {};
+}
+
+/** Last user entry id of the active branch, or undefined when unavailable. */
+function lastUserEntryId(session: { getUserMessagesForForking?: () => Array<{ entryId: string }> }): string | undefined {
+  try {
+    const entries = session.getUserMessagesForForking?.() ?? [];
+    return entries.length > 0 ? entries[entries.length - 1]?.entryId : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function sendError(

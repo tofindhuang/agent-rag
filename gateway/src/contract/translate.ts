@@ -132,6 +132,7 @@ function toolDetails(result: unknown): unknown | undefined {
 export class RunTranslator {
   private started = false;
   private settled = false;
+  private userEntryId: string | undefined;
   private messageSeqInTurn = 0;
   private hasErrorStop = false;
   private lastErrorMessage: string | undefined;
@@ -437,6 +438,11 @@ export class RunTranslator {
     return this.settle(status, error);
   }
 
+  /** Recorded once the user entry exists; consumed by the terminal event. */
+  setUserEntryId(userEntryId: string | undefined): void {
+    if (userEntryId) this.userEntryId = userEntryId;
+  }
+
   private settle(
     status: "completed" | "aborted" | "error",
     error?: RunError,
@@ -450,6 +456,7 @@ export class RunTranslator {
           status,
           turnId: this.context.turnId,
           ...(error ? { error } : {}),
+          ...(this.userEntryId ? { userEntryId: this.userEntryId } : {}),
         },
       },
     ];

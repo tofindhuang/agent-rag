@@ -90,7 +90,7 @@ data: <单行紧凑 JSON>
 | `context_usage` | `{ tokens, contextWindow, percent, compactionThresholdPercent, compactionEnabled, source }` |
 | `compaction` | `{ reason, tokensBefore, tokensAfter, summary? }` |
 | `retry` | `{ attempt, maxAttempts, delayMs, message }` |
-| `run_settled` | `{ status, turnId, error? }` |
+| `run_settled` | `{ status, turnId, error?, userEntryId? }` |
 
 字段规则：
 
@@ -107,6 +107,7 @@ data: <单行紧凑 JSON>
 - `compaction.summary`：pi 生成的摘要正文，可选——pi 未返回摘要时省略，消费者必须容忍缺失。`compaction` 事件只代表**一次成功的压缩**：`aborted` 或没有 `result` 的压缩不产生该事件（也不产生对应的运营计数），`context_usage` 仍照常发送。
 - `context_usage.tokens`/`percent` 可为 `null`（压缩后、下一条 assistant 回复前无法估算）。`source` 为 `provider` 时取最近一条 assistant `usage.totalTokens`（缺失回退 input+output+cacheRead+cacheWrite）；为 `estimated` 时是 pi 的上下文估算。gateway 在 `run_started` 后、每条 assistant `message_end` 后、`compaction_end` 后发送；它是展示信息，不进入模型上下文，也不落库。
 - `run_settled.status`：`completed`、`aborted`、`error`。`error` 时必须有 `{ code, message, retryable }`。
+- `run_settled.userEntryId`：可选，本轮用户消息的 pi entry id；Java 用它实现「从这里重新开始」（ADR-0035）。老 gateway 不发送时消费者必须容忍缺失。
 - `tool_progress` 只用于展示，不进入模型上下文；模型只认 `tool_result`。
 - `kb_search` 不产生阶段假进度；`run_code` 在流式执行落地后产生进度。
 

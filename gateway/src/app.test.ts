@@ -65,6 +65,20 @@ class FakeSession implements GatewaySession {
   emit(event: AgentSessionEvent): void {
     for (const listener of [...this.listeners]) listener(event);
   }
+
+  navigateCalls: string[] = [];
+
+  getUserMessagesForForking(): Array<{ entryId: string; text: string }> {
+    return [{ entryId: "entry-1", text: "first question" }];
+  }
+
+  async navigateTree(
+    targetId: string,
+    _options?: { summarize?: boolean },
+  ): Promise<{ editorText?: string; cancelled: boolean }> {
+    this.navigateCalls.push(targetId);
+    return { editorText: "first question", cancelled: false };
+  }
 }
 
 interface FakeEntry extends GatewaySessionEntry {
@@ -780,5 +794,55 @@ test("DELETE /sessions/:id/files requires X-User-Id", async () => {
     const response = await fetch(`${base}/sessions/s1/files`, { method: "DELETE" });
     assert.equal(response.status, 400);
     assert.equal(((await response.json()) as ErrorBody).error.code, "INVALID_REQUEST");
+  });
+});
+
+test("branch moves the leaf back and returns the text to edit", async () => {
+  await withServer(async ({ base, pool }) => {
+    await fetch(`${base}/sessions/s1`, { method: "PUT", headers: { "x-user-id": "u1" } });
+
+    const response = await fetch(`${base}/sessions/s1/branch`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ entryId: "entry-1" }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      editorText: "first question",
+      cancelled: false,
+    });
+    assert.deepEqual(pool.get("s1")?.session.navigateCalls, ["entry-1"]);
+  });
+});
+
+test("branch is rejected while a run is active and for other users", async () => {
+  await withServer(async ({ base, pool }) => {
+    await fetch(`${base}/sessions/s1`, { method: "PUT", headers: { "x-user-id": "u1" } });
+    const entry = pool.get("s1");
+    assert.ok(entry);
+    entry.activeRun = {
+      userId: "u1",
+      sessionId: "s1",
+      turnId: "t1",
+      runId: "r1",
+      requestId: "req1",
+    };
+
+    const busy = await fetch(`${base}/sessions/s1/branch`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ entryId: "entry-1" }),
+    });
+    assert.equal(busy.status, 409);
+    const busyBody = (await busy.json()) as ErrorBody;
+    assert.equal(busyBody.error.code, "SESSION_BUSY");
+
+    const foreign = await fetch(`${base}/sessions/s1/branch`, {
+      method: "POST",
+      headers: { "x-user-id": "u2", "content-type": "application/json" },
+      body: JSON.stringify({ entryId: "entry-1" }),
+    });
+    assert.equal(foreign.status, 403);
   });
 });
