@@ -4,8 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { AccountMenu } from "@/components/auth/AccountMenu";
 import { PasswordPrompt } from "@/components/auth/PasswordPrompt";
+import type { ChatMessage } from "@/types/chat";
+import { Dialog } from "@/components/ui/Dialog";
 import { Banner } from "@/components/ui/Banner";
 import { useChat } from "@/hooks/useChat";
+import { Button } from "@/components/ui/Button";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { NewSessionDialog } from "./NewSessionDialog";
@@ -19,6 +22,8 @@ export function ChatPage() {
   const chat = useChat();
   const [creating, setCreating] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [branchTarget, setBranchTarget] = useState<ChatMessage | null>(null);
+  const [branching, setBranching] = useState(false);
   const [tab, setTab] = useState<SessionTab>("active");
 
   const changeTab = (next: SessionTab) => {
@@ -131,6 +136,7 @@ export function ChatPage() {
             liveCompactions={chat.liveCompactions}
             latestCompactionRef={chat.latestCompactionRef}
             historyHasMore={chat.historyHasMore}
+            onBranch={(message) => setBranchTarget(message)}
           />
 
           <Composer
@@ -146,6 +152,36 @@ export function ChatPage() {
           />
         </main>
       </div>
+
+      {branchTarget ? (
+        <Dialog
+          title="从这里重新开始？"
+          description="这条消息之后的内容会从对话中隐藏（仍保留在存档里），你可以修改内容后重新发送。"
+          onClose={() => setBranchTarget(null)}
+        >
+          <div className={styles.branchDialog}>
+            <div className={styles.branchActions}>
+              <Button variant="ghost" size="sm" onClick={() => setBranchTarget(null)}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                disabled={branching}
+                onClick={async () => {
+                  const target = branchTarget;
+                  if (!target?.historyId) return;
+                  setBranching(true);
+                  const ok = await chat.branchFrom(target.historyId);
+                  setBranching(false);
+                  if (ok) setBranchTarget(null);
+                }}
+              >
+                {branching ? "处理中…" : "确认"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
 
       {creating ? (
         <NewSessionDialog

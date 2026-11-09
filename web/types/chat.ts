@@ -25,6 +25,8 @@ export interface ChatMessage {
   status?: ChatStatus;
   /** Stable id for historical messages; live messages use their index. */
   historyId?: number;
+  /** pi entry id; only user messages of new turns can start a branch. */
+  piEntryId?: string | null;
 }
 
 export type HistoryRole = "user" | "assistant" | "tool";
@@ -58,6 +60,8 @@ export interface HistoryItem {
   createdAt: string;
   /** Persisted tool_result.details (kb_search citations); absent on old rows. */
   details?: unknown;
+  /** pi entry id of a user message; absent when branching is unavailable. */
+  piEntryId?: string | null;
 }
 
 export interface MessagePage {

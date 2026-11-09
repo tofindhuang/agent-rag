@@ -5,6 +5,8 @@ import { MarkdownContent } from "./MarkdownContent";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  /** Only user messages of turns that carry a pi entry id can branch. */
+  onBranch?: (message: ChatMessage) => void;
 }
 
 const TOOL_STATUS_LABEL: Record<ToolStatus, string> = {
@@ -28,7 +30,7 @@ function citationsOf(message: ChatMessage): CitationPassage[] {
   return citations;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onBranch }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const roleClass = isUser ? styles.user : styles.assistant;
   const hasBody =
@@ -76,6 +78,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         ) : (
           <MarkdownContent text={message.content} />
         ))}
+      {isUser && onBranch && message.piEntryId ? (
+        <div className={styles.userActions}>
+          <button
+            type="button"
+            className={styles.branchAction}
+            onClick={() => onBranch(message)}
+            title="从这里重新开始；之后的内容会隐藏但保留"
+          >
+            从这里重新开始
+          </button>
+        </div>
+      ) : null}
       {streaming && message.content.length > 0 && (
         <span className={styles.cursor} aria-hidden="true" />
       )}

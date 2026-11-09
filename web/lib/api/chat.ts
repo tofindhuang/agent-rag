@@ -151,6 +151,33 @@ export async function fetchHistory(
   return parseMessagePage(await response.json());
 }
 
+/**
+ * Moves the session back to an earlier user message (ADR-0035); the abandoned
+ * tail is hidden, not deleted. Returns the text to prefill.
+ */
+export async function branchChatSession(
+  sessionId: string,
+  messageId: number,
+): Promise<{ editorText: string | null; hiddenCount: number }> {
+  const response = await authFetch(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/branch`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messageId }),
+    },
+  );
+  if (!response.ok) throw await toApiError(response);
+  const body = (await response.json()) as {
+    editorText?: unknown;
+    hiddenCount?: unknown;
+  };
+  return {
+    editorText: typeof body.editorText === "string" ? body.editorText : null,
+    hiddenCount: typeof body.hiddenCount === "number" ? body.hiddenCount : 0,
+  };
+}
+
 /** Compaction summaries of an active session, oldest first (ADR-0028). */
 export async function fetchCompactions(sessionId: string): Promise<CompactionList> {
   const response = await authFetch(

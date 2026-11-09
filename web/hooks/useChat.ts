@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   archiveChatSession,
+  branchChatSession,
   createChatSession,
   fetchCompactions,
   fetchHistory,
@@ -88,6 +89,7 @@ function toHistoryMessages(items: HistoryItem[]): ChatMessage[] {
         thinking: "",
         tools: [],
         historyId: item.id,
+        piEntryId: item.piEntryId ?? null,
       });
       continue;
     }
@@ -344,6 +346,30 @@ export function useChat() {
       }
     },
     [clearError, fail, refreshSessions],
+  );
+
+  /** Branch from an earlier user message; the tail is hidden, not deleted. */
+  const branchFrom = useCallback(
+    async (messageId: number): Promise<boolean> => {
+      const sessionId = currentIdRef.current;
+      if (!sessionId) return false;
+      try {
+        const result = await branchChatSession(sessionId, messageId);
+        await Promise.all([loadHistory(sessionId), loadCompactions(sessionId)]);
+        if (result.editorText) setInput(result.editorText);
+        setNotice(
+          result.hiddenCount > 0
+            ? `已从这条消息重新开始；之后 ${result.hiddenCount} 条已隐藏保存`
+            : "已从这条消息重新开始",
+        );
+        clearError();
+        return true;
+      } catch (cause: unknown) {
+        fail(cause);
+        return false;
+      }
+    },
+    [clearError, fail, loadCompactions, loadHistory],
   );
 
   const renameSession = useCallback(
@@ -743,6 +769,7 @@ export function useChat() {
     send,
     stop,
     selectSession,
+    branchFrom,
     createSession,
     switchModel,
     switchKnowledgeBase,

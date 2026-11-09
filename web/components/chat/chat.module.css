@@ -1103,3 +1103,34 @@ button.contextCompacted {
   color: var(--text-muted);
   font-size: 10px;
 }
+
+/* "Branch from here" action on user messages (ADR-0035) */
+.userActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.branchAction {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.branchAction:hover {
+  color: var(--text-primary);
+}
+
+.branchDialog {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.branchActions {
+  display: flex;
+  gap: var(--space-2);
+}

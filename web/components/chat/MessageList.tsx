@@ -20,6 +20,7 @@ interface MessageListProps {
   latestCompactionRef?: RefObject<HTMLDivElement | null>;
   /** When false the oldest page is loaded, so unanchored cards go on top. */
   historyHasMore?: boolean;
+  onBranch?: (message: ChatMessage) => void;
 }
 
 export function MessageList({
@@ -32,6 +33,7 @@ export function MessageList({
   liveCompactions = [],
   latestCompactionRef,
   historyHasMore = false,
+  onBranch,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastMessage = messages[messages.length - 1];
@@ -88,7 +90,7 @@ export function MessageList({
           message.historyId == null ? undefined : byAnchor.get(message.historyId);
         return (
           <Fragment key={message.historyId ?? `live-${index}`}>
-            <MessageBubble message={message} />
+            <MessageBubble message={message} onBranch={onBranch} />
             {anchored?.map(renderCard)}
           </Fragment>
         );
