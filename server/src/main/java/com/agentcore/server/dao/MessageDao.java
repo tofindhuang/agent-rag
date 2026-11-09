@@ -35,6 +35,18 @@ public interface MessageDao extends BaseMapper<Message> {
             @Param("turnId") String turnId,
             @Param("deliveryStatus") String deliveryStatus);
 
+    /** Owner-scoped lookup used by the branch endpoint. */
+    Message findOwned(String sessionId, long messageId);
+
+    /** Sets the pi entry id on the user row of one turn (branching support). */
+    int bindPiEntryId(
+            @Param("sessionId") String sessionId,
+            @Param("turnId") String turnId,
+            @Param("piEntryId") String piEntryId);
+
+    /** Hides the abandoned tail after a branch; rows stay in the table. */
+    int deactivateAfter(@Param("sessionId") String sessionId, @Param("afterId") long afterId);
+
     /** Highest projected message id in the session; anchors a compaction summary card. */
     Long maxIdBySession(@Param("sessionId") String sessionId);
 

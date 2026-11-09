@@ -19,6 +19,7 @@ import com.agentcore.server.dao.KbSessionKnowledgeBaseDao;
 import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
 import com.agentcore.server.dao.SessionModelDao;
+import com.agentcore.server.domain.BranchResult;
 import com.agentcore.server.domain.CompactionPage;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.MessagePage;
@@ -378,6 +379,56 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
+    public BranchResult branch(long userId, String sessionId, long messageId) {
+        if (sessionDao.findActiveOwned(sessionId, userId) == null) {
+            throw sessionNotFound();
+        }
+        Message message = messageDao.findOwned(sessionId, messageId);
+        if (message == null) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "message not found");
+        }
+        if (message.getPiEntryId() == null || message.getPiEntryId().isBlank()) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "this message predates branching support");
+        }
+        if (!"user".equals(message.getRole())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST,
+                    "branching is only supported from a user message");
+        }
+
+        SessionTarget target = client.sessionTarget(sessionId);
+        HttpResponse<String> response = client.send(
+                gatewaySession(target, sessionId, userId, "/branch")
+                        .header("content-type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"entryId\":\"" + message.getPiEntryId() + "\"}"))
+                        .build());
+        if (response.statusCode() == 409) {
+            throw new ApiException(ErrorCode.RUN_IN_PROGRESS,
+                    "the session is still running; stop it before branching");
+        }
+        if (response.statusCode() == 404 || response.statusCode() == 403) {
+            throw sessionNotFound();
+        }
+        if (response.statusCode() >= 400) {
+            throw new ApiException(ErrorCode.UPSTREAM_ERROR,
+                    "gateway rejected the branch request");
+        }
+
+        int hidden = messageDao.deactivateAfter(sessionId, messageId);
+        messageCache.clear(sessionId);
+        audit.success(AuditAction.SESSION_BRANCH, userId, "session", sessionId,
+                java.util.Map.of("messageId", messageId, "hiddenCount", hidden));
+        String editorText = null;
+        try {
+            editorText = objectMapper.readTree(response.body()).path("editorText").asText(null);
+        } catch (JsonProcessingException e) {
+            log.warn("branch response was not JSON for session {}", sessionId);
+        }
+        return new BranchResult(editorText, hidden);
+    }
+
+    @Override
     public CompactionPage compactions(long userId, String sessionId) {
         if (sessionDao.findActiveOwned(sessionId, userId) == null) {
             throw sessionNotFound();
@@ -591,7 +642,8 @@ public class ChatServiceImpl implements ChatService {
                                 state.tokensIn,
                                 state.tokensOut,
                                 state.cacheReadTokens,
-                                state.cacheWriteTokens);
+                                state.cacheWriteTokens,
+                                data.path("userEntryId").asText(null));
                         settled = true;
                     }
                     default -> {
@@ -653,7 +705,8 @@ public class ChatServiceImpl implements ChatService {
                     state.tokensIn,
                     state.tokensOut,
                     state.cacheReadTokens,
-                    state.cacheWriteTokens);
+                    state.cacheWriteTokens,
+                    null);
         } catch (RuntimeException ex) {
             log.error("failed to persist interrupted run {}", prompt.turn().runRowId(), ex);
         }

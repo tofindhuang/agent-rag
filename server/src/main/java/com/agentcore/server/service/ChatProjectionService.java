@@ -53,7 +53,8 @@ public interface ChatProjectionService {
             long tokensIn,
             long tokensOut,
             long cacheReadTokens,
-            long cacheWriteTokens);
+            long cacheWriteTokens,
+            String userEntryId);
 
     /** The gateway rejected or was unreachable before a run existed. */
     void failBeforeStream(TurnKey turn, String errorCode, String errorMessage);

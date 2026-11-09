@@ -3,6 +3,7 @@ package com.agentcore.server.controller;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
+import com.agentcore.server.domain.BranchResult;
 import com.agentcore.server.domain.CompactionPage;
 import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.MessagePage;
@@ -10,6 +11,8 @@ import com.agentcore.server.domain.Session;
 import com.agentcore.server.domain.SessionCompaction;
 import com.agentcore.server.dto.chat.CreateSessionRequest;
 import com.agentcore.server.dto.chat.CreateSessionResponse;
+import com.agentcore.server.dto.chat.BranchRequest;
+import com.agentcore.server.dto.chat.BranchResponse;
 import com.agentcore.server.dto.chat.CompactionListResponse;
 import com.agentcore.server.dto.chat.CompactionSummary;
 import com.agentcore.server.dto.chat.MessageListResponse;
@@ -194,6 +197,22 @@ public class ChatController {
                 page.total());
     }
 
+    /**
+     * Moves the session back to an earlier user message (ADR-0035). The
+     * abandoned tail is hidden, never deleted.
+     */
+    @PostMapping("/sessions/{sessionId}/branch")
+    public BranchResponse branch(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable String sessionId,
+            @RequestBody BranchRequest request) {
+        if (request == null || request.messageId() == null) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "messageId is required");
+        }
+        BranchResult result = chatService.branch(user.userId(), sessionId, request.messageId());
+        return new BranchResponse(result.editorText(), result.hiddenCount());
+    }
+
     @PatchMapping("/sessions/{sessionId}")
     public void renameSession(
             @AuthenticationPrincipal AuthenticatedUser user,
@@ -252,7 +271,8 @@ public class ChatController {
                 message.getStatus(),
                 message.getDeliveryStatus(),
                 toInstant(message.getCreatedAt()),
-                parseDetails(message));
+                parseDetails(message),
+                message.getPiEntryId());
     }
 
     private static CompactionSummary toCompaction(SessionCompaction compaction) {

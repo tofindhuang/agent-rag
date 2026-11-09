@@ -187,7 +187,8 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
             long tokensIn,
             long tokensOut,
             long cacheReadTokens,
-            long cacheWriteTokens) {
+            long cacheWriteTokens,
+            String userEntryId) {
         runDao.settle(
                 turn.runRowId(),
                 mapRunStatus(contractStatus),
@@ -199,6 +200,7 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
                 cacheWriteTokens,
                 nowUtc());
         messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "sent");
+        bindUserEntryId(turn, userEntryId);
         cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), 0));
     }
 
@@ -313,6 +315,14 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
             end -= 1;
         }
         return value.substring(0, end);
+    }
+
+    /** Branch support: the user row of this turn learns its pi entry id. */
+    private void bindUserEntryId(TurnKey turn, String userEntryId) {
+        if (userEntryId == null || userEntryId.isBlank()) {
+            return;
+        }
+        messageDao.bindPiEntryId(turn.sessionId(), turn.turnId(), userEntryId);
     }
 
     private static String truncateUtf8(String value, int maxBytes) {

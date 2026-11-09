@@ -37,6 +37,8 @@ public final class FakeGateway {
     private final AtomicInteger deleteFilesCount = new AtomicInteger();
     private final AtomicReference<String> lastDeleteFilesUserId = new AtomicReference<>();
     private final AtomicReference<String> deleteFilesMode = new AtomicReference<>("ok");
+    private final java.util.concurrent.atomic.AtomicInteger branchCalls =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     public FakeGateway() {
         try {
@@ -121,6 +123,10 @@ public final class FakeGateway {
         deleteFilesMode.set(mode);
     }
 
+    public int branchCalls() {
+        return branchCalls.get();
+    }
+
     public void resetDeleteFiles() {
         deleteFilesCount.set(0);
         lastDeleteFilesUserId.set(null);
@@ -164,6 +170,12 @@ public final class FakeGateway {
                         "{\"sessionId\":\"s\",\"created\":true,\"restored\":false,"
                                 + "\"model\":{\"provider\":\"system\",\"id\":\"system-model\","
                                 + "\"name\":\"System Model\"}}");
+                return;
+            }
+            if (path.startsWith("/sessions/") && path.endsWith("/branch")
+                    && method.equals("POST")) {
+                branchCalls.incrementAndGet();
+                sendJson(exchange, 200, "{\"editorText\":\"上一轮的问题\",\"cancelled\":false}");
                 return;
             }
             if (path.startsWith("/sessions/") && path.endsWith("/files") && method.equals("DELETE")) {
@@ -257,12 +269,14 @@ public final class FakeGateway {
             appendFrame(sse, 3, "message_end",
                     assistantMessage(1, "compacted answer", "stop", "[]", 40, 8));
             appendFrame(sse, 4, "run_settled",
-                    "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
+                    "{\"status\":\"completed\",\"turnId\":\"" + turnId
+                            + "\",\"userEntryId\":\"entry-" + turnId + "\"}");
         } else if ("cache".equals(mode)) {
             appendFrame(sse, 2, "message_end",
                     assistantMessage(1, "cached answer", "stop", "[]", 100, 20, 700, 200));
             appendFrame(sse, 3, "run_settled",
-                    "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
+                    "{\"status\":\"completed\",\"turnId\":\"" + turnId
+                            + "\",\"userEntryId\":\"entry-" + turnId + "\"}");
         } else if ("toolInterrupted".equals(mode)) {
             appendFrame(sse, 2, "message_end", assistantMessage(1, "first answer", "toolUse",
                     "[{\"toolCallId\":\"call-1\",\"name\":\"run_code\",\"args\":{}}]", 20, 10));
@@ -285,7 +299,9 @@ public final class FakeGateway {
             appendFrame(sse, 2, "text_delta", "{\"delta\":\"hello \"}");
             appendFrame(sse, 3, "text_delta", "{\"delta\":\"world\"}");
             appendFrame(sse, 4, "message_end", assistantMessage(1, "hello world", "stop", "[]", 10, 5));
-            appendFrame(sse, 5, "run_settled", "{\"status\":\"completed\",\"turnId\":\"" + turnId + "\"}");
+            appendFrame(sse, 5, "run_settled",
+                    "{\"status\":\"completed\",\"turnId\":\"" + turnId
+                            + "\",\"userEntryId\":\"entry-" + turnId + "\"}");
         }
         sendSse(exchange, sse.toString());
     }

@@ -14,4 +14,6 @@ public record MessageSummary(
         String deliveryStatus,
         Instant createdAt,
         /** Tool-specific JSON (kb_search citations); null for old or non-tool rows. */
-        JsonNode details) {}
+        JsonNode details,
+        /** pi entry id of a user message; null when branching is unavailable. */
+        String piEntryId) {}

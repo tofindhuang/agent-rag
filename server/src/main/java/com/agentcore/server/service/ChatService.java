@@ -1,5 +1,6 @@
 package com.agentcore.server.service;
 
+import com.agentcore.server.domain.BranchResult;
 import com.agentcore.server.domain.CompactionPage;
 import com.agentcore.server.domain.MessagePage;
 import com.agentcore.server.domain.Session;
@@ -44,6 +45,9 @@ public interface ChatService {
 
     /** Projected history page (ascending), Redis-first for the newest page. */
     MessagePage history(long userId, String sessionId, Long beforeId, int limit);
+
+    /** Moves the session back to an earlier user message; returns the text to edit. */
+    BranchResult branch(long userId, String sessionId, long messageId);
 
     /** Compaction summaries of an active session, oldest first, capped at 50. */
     CompactionPage compactions(long userId, String sessionId);

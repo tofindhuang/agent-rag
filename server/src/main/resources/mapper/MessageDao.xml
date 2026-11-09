@@ -6,7 +6,7 @@
     <sql id="messageColumns">
         id, session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
         status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
-        cache_read_tokens, cache_write_tokens, created_at
+        cache_read_tokens, cache_write_tokens, pi_entry_id, active_branch, created_at
     </sql>
 
     <!-- Idempotent projection write (ADR-0006); MySQL 8 alias form. -->
@@ -41,6 +41,7 @@
         SELECT <include refid="messageColumns"/>
         FROM messages
         WHERE session_id = #{sessionId}
+          AND active_branch = TRUE
         <if test="beforeId != null">
           AND id &lt; #{beforeId}
         </if>
@@ -68,6 +69,7 @@
         SELECT EXISTS (
             SELECT 1 FROM messages
             WHERE session_id = #{sessionId}
+              AND active_branch = TRUE
               AND id &lt; #{id}
         )
     </select>
@@ -81,7 +83,8 @@
     </update>
 
     <select id="maxIdBySession" resultType="java.lang.Long">
-        SELECT MAX(id) FROM messages WHERE session_id = #{sessionId}
+        SELECT MAX(id) FROM messages
+        WHERE session_id = #{sessionId} AND active_branch = TRUE
     </select>
 
     <select id="existsBySession" resultType="boolean">
@@ -98,6 +101,30 @@
               AND turn_id &lt;&gt; #{turnId}
         )
     </select>
+
+    <select id="findOwned" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND id = #{messageId}
+          AND active_branch = TRUE
+    </select>
+
+    <update id="bindPiEntryId">
+        UPDATE messages
+        SET pi_entry_id = #{piEntryId}
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND role = 'user'
+    </update>
+
+    <update id="deactivateAfter">
+        UPDATE messages
+        SET active_branch = FALSE
+        WHERE session_id = #{sessionId}
+          AND id &gt; #{afterId}
+          AND active_branch = TRUE
+    </update>
 
     <delete id="deleteBySession">
         DELETE FROM messages

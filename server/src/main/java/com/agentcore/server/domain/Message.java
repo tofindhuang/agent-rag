@@ -19,6 +19,10 @@ public class Message {
     private String thinking;
     private String toolCalls;
     private String details;
+    /** pi entry id of the user message; enables "branch from here" (ADR-0035). */
+    private String piEntryId;
+    /** False for the abandoned tail after a branch; rows are kept, never deleted. */
+    private Boolean activeBranch;
     private String status;
     private String deliveryStatus;
     private String runId;
@@ -100,6 +104,22 @@ public class Message {
 
     public void setDetails(String details) {
         this.details = details;
+    }
+
+    public String getPiEntryId() {
+        return piEntryId;
+    }
+
+    public void setPiEntryId(String piEntryId) {
+        this.piEntryId = piEntryId;
+    }
+
+    public Boolean getActiveBranch() {
+        return activeBranch;
+    }
+
+    public void setActiveBranch(Boolean activeBranch) {
+        this.activeBranch = activeBranch;
     }
 
     public String getStatus() {

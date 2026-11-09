@@ -27,6 +27,7 @@ public enum AuditAction {
     SESSION_PURGE("session.purge"),
     SESSION_ARCHIVE("session.archive"),
     SESSION_RESTORE("session.restore"),
+    SESSION_BRANCH("session.branch"),
     KB_DOCUMENT_DELETE("kb.document.delete"),
     KB_DELETE("kb.delete"),
     MEMORY_FACT_DELETE("memory.fact.delete"),
