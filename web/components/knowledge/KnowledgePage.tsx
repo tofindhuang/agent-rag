@@ -21,6 +21,14 @@ import { SettingsPanel } from "./SettingsPanel";
 import { UploadPanel } from "./UploadPanel";
 import styles from "./knowledge.module.css";
 
+type KnowledgeTab = "documents" | "retrieval" | "services";
+
+const TABS: Array<{ key: KnowledgeTab; label: string }> = [
+  { key: "documents", label: "文档" },
+  { key: "retrieval", label: "检索与评测" },
+  { key: "services", label: "服务设置" },
+];
+
 /** Knowledge base selector/management plus the scoped document workspace. */
 export function KnowledgePage() {
   const [knowledgeBases, setKnowledgeBases] = useState<KbKnowledgeBase[]>([]);
@@ -31,6 +39,7 @@ export function KnowledgePage() {
   const [editMode, setEditMode] = useState<"create" | "rename" | null>(null);
   const [editName, setEditName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<KbKnowledgeBase | null>(null);
+  const [tab, setTab] = useState<KnowledgeTab>("documents");
 
   const loadKnowledgeBases = useCallback(async (preferredId?: string | null) => {
     const items = await fetchKnowledgeBases();
@@ -170,34 +179,59 @@ export function KnowledgePage() {
         <p className={styles.hint}>还没有知识库，先新建一个。</p>
       ) : null}
 
+      <div className={styles.tabs} role="tablist" aria-label="知识库页签">
+        {TABS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.key}
+            className={[styles.tab, tab === item.key ? styles.tabActive : ""]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       <div className={styles.sections}>
-        <UploadPanel
-          busy={knowledge.busy}
-          onUploadFile={knowledge.uploadFile}
-          onUploadUrl={knowledge.uploadUrl}
-        />
-        <DocumentList
-          documents={knowledge.documents}
-          usage={knowledge.usage}
-          busy={knowledge.busy}
-          onReingest={knowledge.reingest}
-          onReingestAll={knowledge.reingestAll}
-          onDelete={knowledge.remove}
-        />
-        <RetrievalPanel
-          kbId={kbId}
-          processingCount={
-            knowledge.documents.filter(
-              (document) =>
-                document.status === "queued" || document.status === "processing",
-            ).length
-          }
-          staleCount={
-            knowledge.documents.filter((document) => document.status === "stale")
-              .length
-          }
-        />
-        <SettingsPanel />
+        {tab === "documents" ? (
+          <>
+            <UploadPanel
+              busy={knowledge.busy}
+              onUploadFile={knowledge.uploadFile}
+              onUploadUrl={knowledge.uploadUrl}
+            />
+            <DocumentList
+              documents={knowledge.documents}
+              usage={knowledge.usage}
+              busy={knowledge.busy}
+              onReingest={knowledge.reingest}
+              onReingestAll={knowledge.reingestAll}
+              onDelete={knowledge.remove}
+            />
+          </>
+        ) : null}
+
+        {tab === "retrieval" ? (
+          <RetrievalPanel
+            kbId={kbId}
+            processingCount={
+              knowledge.documents.filter(
+                (document) =>
+                  document.status === "queued" || document.status === "processing",
+              ).length
+            }
+            staleCount={
+              knowledge.documents.filter((document) => document.status === "stale")
+                .length
+            }
+          />
+        ) : null}
+
+        {tab === "services" ? <SettingsPanel /> : null}
       </div>
 
       {editMode ? (
