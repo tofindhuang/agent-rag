@@ -5,7 +5,7 @@ import com.agentcore.server.common.audit.AuditService;
 import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
-import com.agentcore.server.common.export.ExportService;
+import com.agentcore.server.service.ExportService;
 import com.agentcore.server.dto.export.ExportRequest;
 import com.agentcore.server.service.AuthService;
 import java.io.IOException;

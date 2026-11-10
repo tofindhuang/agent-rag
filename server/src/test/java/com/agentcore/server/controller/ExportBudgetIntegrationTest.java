@@ -31,18 +31,38 @@ class ExportBudgetIntegrationTest extends AbstractIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    void rejectsAnOversizeExportAndThenTheDailyCap() throws Exception {
+    void anOversizeExportDoesNotBurnTheDailyAttempts() throws Exception {
         String email = "export-budget-" + UUID.randomUUID() + "@example.com";
         AuthTestCalls.register(mockMvc, email, "correct-horse");
         String token = AuthTestCalls.login(mockMvc, email, "correct-horse");
         seedConversation(token);
 
-        mockMvc.perform(post("/api/export/me")
+        // The budget check runs before the daily counter, so a too_large
+        // account can retry freely without spending its attempts.
+        for (int attempt = 0; attempt < 3; attempt++) {
+            mockMvc.perform(post("/api/export/me")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"password\":\"correct-horse\"}"))
+                    .andExpect(status().isPayloadTooLarge())
+                    .andExpect(jsonPath("$.error.code").value("EXPORT_TOO_LARGE"));
+        }
+    }
+
+    @Test
+    void theDailyCapCountsOnlySuccessfulGatePasses() throws Exception {
+        String email = "export-cap-" + UUID.randomUUID() + "@example.com";
+        AuthTestCalls.register(mockMvc, email, "correct-horse");
+        String token = AuthTestCalls.login(mockMvc, email, "correct-horse");
+        // No messages: the estimate stays within the tiny byte budget.
+
+        MvcResult first = mockMvc.perform(post("/api/export/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"password\":\"correct-horse\"}"))
-                .andExpect(status().isPayloadTooLarge())
-                .andExpect(jsonPath("$.error.code").value("EXPORT_TOO_LARGE"));
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mockMvc.perform(asyncDispatch(first)).andExpect(status().isOk());
 
         mockMvc.perform(post("/api/export/me")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
