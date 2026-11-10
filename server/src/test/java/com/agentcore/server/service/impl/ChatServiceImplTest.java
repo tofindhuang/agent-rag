@@ -19,7 +19,9 @@ import com.agentcore.server.dao.RunDao;
 import com.agentcore.server.dao.SessionModelDao;
 import com.agentcore.server.dao.SessionCompactionDao;
 import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.domain.Message;
 import com.agentcore.server.domain.Session;
+import com.agentcore.server.service.ChatService;
 import com.agentcore.server.service.KbKnowledgeBaseService;
 import com.agentcore.server.service.SessionModelChoice;
 import com.agentcore.server.service.ChatProjectionService;
@@ -40,6 +42,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -65,6 +68,10 @@ class ChatServiceImplTest {
     private final AtomicReference<String> lastUserId = new AtomicReference<>();
     private final AtomicReference<String> lastTurnId = new AtomicReference<>();
     private final AtomicReference<Boolean> lastRequireExisting = new AtomicReference<>();
+    private final AtomicInteger putCount = new AtomicInteger();
+    private final AtomicInteger branchCount = new AtomicInteger();
+    private final AtomicReference<Integer> ensureBeforeBranch = new AtomicReference<>();
+    private final AtomicReference<String> lastBranchBody = new AtomicReference<>();
     private final TestRateLimitService rateLimit = new TestRateLimitService();
     private final ProfileFactService profileFacts = mock(ProfileFactService.class);
 
@@ -286,6 +293,26 @@ class ChatServiceImplTest {
         assertEquals("1", lastUserId.get());
     }
 
+    @Test
+    void branchEnsuresTheGatewaySessionBeforePosting() {
+        String sessionId = service.createSession(1L, null, null, false, null, false);
+        Message userMessage = new Message();
+        userMessage.setId(9L);
+        userMessage.setSessionId(sessionId);
+        userMessage.setRole("user");
+        userMessage.setPiEntryId("entry-\"quoted\"");
+        when(messageDao.findOwned(sessionId, 9L)).thenReturn(userMessage);
+
+        com.agentcore.server.domain.BranchResult result = service.branch(1L, sessionId, 9L);
+
+        // Ensure first: an idle-evicted or restarted gateway must not 404.
+        assertEquals("POST", lastMethod.get());
+        assertNotNull(ensureBeforeBranch.get());
+        // The entry id is serialized, never hand-concatenated.
+        assertThat(lastBranchBody.get()).contains("entry-\\\"quoted\\\"");
+        assertThat(result.editorText()).isEqualTo("上一轮的问题");
+    }
+
     private PromptStream openPrompt(String mode) {
         promptMode.set(mode);
         String sessionId = service.createSession(1L, null, null, false, null, false);
@@ -304,11 +331,22 @@ class ChatServiceImplTest {
         lastMethod.set(method);
 
         if ("PUT".equals(method) && path.startsWith("/sessions/")) {
+            putCount.incrementAndGet();
             lastUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             lastRequireExisting.set(
                     body.isBlank() || mapper.readTree(body).path("requireExisting").asBoolean(false));
             respond(exchange, 200, "{\"sessionId\":\"s\",\"created\":true,\"restored\":false}");
+            return;
+        }
+
+        if ("POST".equals(method) && path.endsWith("/branch")) {
+            branchCount.incrementAndGet();
+            ensureBeforeBranch.set(putCount.get());
+            lastUserId.set(exchange.getRequestHeaders().getFirst("X-User-Id"));
+            lastBranchBody.set(
+                    new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            respond(exchange, 200, "{\"editorText\":\"上一轮的问题\",\"cancelled\":false}");
             return;
         }
 

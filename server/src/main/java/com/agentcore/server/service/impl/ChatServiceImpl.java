@@ -396,12 +396,24 @@ public class ChatServiceImpl implements ChatService {
                     "branching is only supported from a user message");
         }
 
-        SessionTarget target = client.sessionTarget(sessionId);
+        // Like the prompt flow: a branch needs a resident AgentSession. The
+        // gateway forgets idle sessions (15 min) and restarts, so ensure first.
+        // A branch point proves the session has messages, so requireExisting.
+        SessionModelChoice choice = sessionModelService.forExistingSession(userId, sessionId);
+        EnsureOutcome ensured = ensureGatewaySession(sessionId, userId, choice, true);
+
+        String payload;
+        try {
+            payload = objectMapper.writeValueAsString(
+                    java.util.Map.of("entryId", message.getPiEntryId()));
+        } catch (IOException ex) {
+            throw new ApiException(ErrorCode.INTERNAL, "failed to serialize branch request", ex);
+        }
+
         HttpResponse<String> response = client.send(
-                gatewaySession(target, sessionId, userId, "/branch")
+                gatewaySession(ensured.target(), sessionId, userId, "/branch")
                         .header("content-type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.ofString(
-                                "{\"entryId\":\"" + message.getPiEntryId() + "\"}"))
+                        .POST(HttpRequest.BodyPublishers.ofString(payload))
                         .build());
         if (response.statusCode() == 409) {
             throw new ApiException(ErrorCode.RUN_IN_PROGRESS,
