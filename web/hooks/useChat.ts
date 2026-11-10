@@ -428,6 +428,10 @@ export function useChat() {
   const permanentDeleteSession = useCallback(
     async (sessionId: string) => {
       try {
+        const deletedTitle =
+          archivedSessions.find((session) => session.id === sessionId)?.title ??
+          sessions.find((session) => session.id === sessionId)?.title ??
+          null;
         await permanentDeleteChatSession(sessionId);
         setArchivedSessions((previous) => previous.filter((session) => session.id !== sessionId));
         // The main area must not keep rendering a purged session.
@@ -442,12 +446,15 @@ export function useChat() {
           setBusy(false);
         }
         clearError();
-        setNotice("会话已彻底删除");
+        // Never imply the *current* conversation was deleted: name the target.
+        setNotice(
+          deletedTitle ? `已彻底删除会话「${deletedTitle}」` : "会话已彻底删除",
+        );
       } catch (cause: unknown) {
         fail(cause);
       }
     },
-    [clearError, fail],
+    [archivedSessions, clearError, fail, sessions],
   );
 
   const loadOlder = useCallback(async () => {
