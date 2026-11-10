@@ -1,5 +1,35 @@
 /* Settings page (ticket visual-05). Tokens only; no hex colours. */
 
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover,
+.tab:focus-visible {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+}
+
 .section {
   padding: var(--space-5);
   border: 1px solid var(--border);

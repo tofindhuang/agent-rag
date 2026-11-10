@@ -4,7 +4,7 @@ import { SettingsPage } from "@/components/settings/SettingsPage";
 export default function Page() {
   return (
     <AuthGate>
-      <SettingsPage />
+      <SettingsPage initialTab="account" />
     </AuthGate>
   );
 }
