@@ -87,6 +87,7 @@ docker build -t agent-core-sandbox:python-3.12 -f sandbox/Dockerfile.python sand
 | `GATEWAY_URLS` | 多实例时列出全部 gateway，如 `http://10.0.0.11:3001,http://10.0.0.12:3001` |
 | `GATEWAY_API_TOKEN` | server↔gateway 内部令牌（两侧一致） |
 | `GATEWAY_SESSION_DIR` | **所有 gateway 实例共享同一路径**（宿主机卷） |
+| `GATEWAY_WORK_DIR` | pi 的中性工作目录（默认 `/tmp/agent-core-work`）；**切勿指向仓库目录**——pi 会把它写进系统提示 |
 | `SANDBOX_*` | 至少确认镜像名与宿主机 Docker 可用 |
 
 ### 4.2 上线建议改

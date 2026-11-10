@@ -202,6 +202,7 @@ npm run dev        # Next.js，监听 :3000
 | `GATEWAY_URL` / `GATEWAY_URLS` / `GATEWAY_API_TOKEN` | `http://localhost:3001` / 空 / 空 | Java → gateway；多实例用 `GATEWAY_URLS` 静态种子，`GATEWAY_URL` 保留单实例兼容 |
 | `GATEWAY_INSTANCE_ID` / `GATEWAY_PUBLIC_URL` | hostname:port / 本机地址 | gateway 实例身份与 Java 可达地址 |
 | `GATEWAY_MAX_SESSIONS` / `GATEWAY_IDLE_EVICT_MS` / `GATEWAY_DRAIN_GRACE_MS` | 60 / 900000 / 600000 | 单实例上限、空闲驱逐、排空宽限 |
+| `GATEWAY_WORK_DIR` | `/tmp/agent-core-work` | pi 会话的中性工作目录；**不要**指向仓库（会被写进系统提示） |
 | `SESSION_ARCHIVE_AFTER_DAYS` | 90（0 关闭） | 未活动会话冷归档阈值 |
 | `MYSQL_*` / `REDIS_*` | 见 `.env.example` | 基础设施连接 |
 | `EMBEDDING_*` / `RERANK_*` | 空 | KB 部署级兜底（用户级设置优先） |
