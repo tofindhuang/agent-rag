@@ -204,6 +204,7 @@ async function startServer(
     profileExtractMaxChars: 6_000,
     profileExtractMaxCandidates: 5,
     sessionDir,
+    workDir: "/tmp/agent-core-work",
     instanceId: "test-app",
     instanceIncarnation: "test-inc",
     publicUrl: "http://127.0.0.1:0",

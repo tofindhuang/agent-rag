@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { GatewayConfig } from "./config.js";
@@ -45,6 +48,7 @@ function toolFor(url: string): CapturedTool {
     sandboxApiUrl: url,
     apiToken: "shared-token",
     sessionDir: "/tmp",
+    workDir: "/tmp/agent-core-work",
     allowPrivateModelEndpoints: false,
     compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
     profileExtractMinIntervalMs: 60_000,
@@ -220,6 +224,7 @@ function kbSearchToolFor(url: string): CapturedTool {
     sandboxApiUrl: url,
     apiToken: "shared-token",
     sessionDir: "/tmp",
+    workDir: "/tmp/agent-core-work",
     allowPrivateModelEndpoints: false,
     compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
     profileExtractMinIntervalMs: 60_000,

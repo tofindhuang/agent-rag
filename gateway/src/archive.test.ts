@@ -18,6 +18,7 @@ function config(url: string): GatewayConfig {
     sandboxApiUrl: url,
     apiToken: "shared-token",
     sessionDir: "/tmp",
+    workDir: "/tmp/agent-core-work",
     instanceId: "test",
     instanceIncarnation: "test-inc",
     publicUrl: "http://127.0.0.1:0",

@@ -32,6 +32,7 @@ function config(): GatewayConfig {
     profileExtractMaxChars: 6_000,
     profileExtractMaxCandidates: 5,
     sessionDir: dir,
+    workDir: dir,
     instanceId: "test-pool",
     instanceIncarnation: "test-inc",
     publicUrl: "http://127.0.0.1:0",
@@ -160,7 +161,7 @@ test("ensure echoes the requested model and keeps its key off disk", async () =>
 
   const sidecar = readFileSync(join(cfg.sessionDir, "s-model.meta.json"), "utf8");
   assert.ok(!sidecar.includes("sk-secret-key"));
-  const file = SessionManager.findById(process.cwd(), "s-model", cfg.sessionDir);
+  const file = SessionManager.findById(cfg.workDir, "s-model", cfg.sessionDir);
   assert.ok(file);
   assert.ok(!readFileSync(file, "utf8").includes("sk-secret-key"));
 
@@ -188,7 +189,7 @@ test("ensure creates, dispose keeps the file, restart restores", async () => {
   const created = await first.ensure("s1", "u1");
 
   assert.deepEqual(created, { created: true, restored: false });
-  const file = SessionManager.findById(process.cwd(), "s1", cfg.sessionDir);
+  const file = SessionManager.findById(cfg.workDir, "s1", cfg.sessionDir);
   assert.ok(file && existsSync(file));
 
   await first.disposeAll();
@@ -236,7 +237,7 @@ test("evicts an idle session, keeps its file, and rehydrates on the next ensure"
   });
 
   await pool.ensure("s-idle", "u1");
-  const file = SessionManager.findById(process.cwd(), "s-idle", cfg.sessionDir);
+  const file = SessionManager.findById(cfg.workDir, "s-idle", cfg.sessionDir);
   assert.ok(file && existsSync(file));
 
   await new Promise((resolve) => setTimeout(resolve, 20));

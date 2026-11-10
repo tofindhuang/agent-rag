@@ -19,6 +19,8 @@ export interface GatewayConfig {
   apiToken?: string;
   /** Directory holding pi session files and ownership sidecars (ADR-0008). */
   sessionDir: string;
+  /** Neutral working directory for pi sessions; never the repository path. */
+  workDir: string;
   /** Stable identity of this gateway instance (ADR-0024). */
   instanceId: string;
   /** Process-incarnation token; distinguishes restarts that reuse instanceId. */
@@ -71,6 +73,9 @@ export function loadConfig(): GatewayConfig {
     sandboxApiUrl: process.env.SANDBOX_API_URL ?? "http://localhost:8080",
     apiToken: process.env.GATEWAY_API_TOKEN,
     sessionDir: resolve(process.env.GATEWAY_SESSION_DIR ?? "data/sessions"),
+    // Neutral runtime directory: pi puts <cwd> into the system prompt, so the
+    // repository path (and the OS user name) must never be used here.
+    workDir: resolve(process.env.GATEWAY_WORK_DIR ?? "/tmp/agent-core-work"),
     instanceId: process.env.GATEWAY_INSTANCE_ID?.trim() || `${hostname()}:${port}`,
     instanceIncarnation: randomUUID(),
     publicUrl: process.env.GATEWAY_PUBLIC_URL?.trim() || `http://127.0.0.1:${port}`,

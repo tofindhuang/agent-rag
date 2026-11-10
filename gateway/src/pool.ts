@@ -19,6 +19,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { mkdirSync } from "node:fs";
 import type { GatewayConfig } from "./config.js";
 import { logInfo, logWarn } from "./log.js";
 import {
@@ -111,6 +112,7 @@ export class SessionPool implements GatewayPool {
   private readonly entries = new Map<string, PoolEntry>();
   private readonly pendingCreates = new Map<string, Promise<EnsureOutcome>>();
   private readonly store: SessionFileStore;
+  private readonly workDir: string;
   private readonly factory: SessionFactory;
   private readonly options: SessionPoolOptions;
   private evictionTimer: ReturnType<typeof setInterval> | undefined;
@@ -121,7 +123,9 @@ export class SessionPool implements GatewayPool {
     options: SessionPoolOptions = {},
   ) {
     this.options = options;
-    this.store = new SessionFileStore(process.cwd(), config.sessionDir, {
+    this.workDir = config.workDir;
+    mkdirSync(this.workDir, { recursive: true });
+    this.store = new SessionFileStore(this.workDir, config.sessionDir, {
       instanceId: config.instanceId,
       instanceIncarnation: config.instanceIncarnation,
       lockHeartbeatMs: config.lockHeartbeatMs,
@@ -262,12 +266,16 @@ export class SessionPool implements GatewayPool {
     modelConfig: SessionModelConfig | undefined,
     profileRef: ProfileRef,
   ): Promise<PiSession> {
-    const settingsManager = SettingsManager.create(process.cwd(), getAgentDir());
+    const settingsManager = SettingsManager.create(this.workDir, getAgentDir());
     const sessionRef: { current?: PiSession } = {};
     const loader = new DefaultResourceLoader({
-      cwd: process.cwd(),
+      cwd: this.workDir,
       agentDir: getAgentDir(),
       settingsManager,
+      // pi would otherwise load AGENTS.md/CONTEXT.md from the gateway's working
+      // directory into every conversation. That is repo context, not product
+      // context: it leaks internal paths and deploy conventions to end users.
+      noContextFiles: true,
       // Replace pi's coding prompt entirely (requirements.md §1.1).
       systemPromptOverride: () =>
         buildSystemPrompt({ userName: userId }),
