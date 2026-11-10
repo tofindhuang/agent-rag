@@ -35,6 +35,12 @@ public interface AuthService {
     UserProfile profile(long userId);
 
     /**
+     * Re-authentication gate for sensitive actions: an account with a local
+     * password must present it; OAuth-only accounts pass without one.
+     */
+    void verifyCurrentPassword(long userId, String presented);
+
+    /**
      * Verifies the current password, replaces it and revokes every refresh
      * token of the user (including the one behind the calling session).
      * A wrong current password fails with 401, a policy-violating new password

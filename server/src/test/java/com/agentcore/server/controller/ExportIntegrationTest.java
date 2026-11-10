@@ -58,12 +58,18 @@ class ExportIntegrationTest extends AbstractIntegrationTest {
         assertThat(whole).doesNotContain("$2a$").doesNotContain("password_hash");
         assertThat(whole.toLowerCase()).doesNotContain("refresh_token");
 
+        // MySQL returns IS NOT NULL as Long; the flag must still be true.
+        assertThat(files.get("account.json")).contains("\"hasPassword\":true");
+
         long userId = jdbc.queryForObject(
                 "SELECT id FROM users WHERE email = ?", Long.class, email);
-        Integer exports = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM audit_events WHERE actor_user_id = ? AND action = ?",
-                Integer.class, userId, "user.data.export");
-        assertThat(exports).isPositive();
+        String successDetail = jdbc.queryForObject("""
+                SELECT detail FROM audit_events
+                WHERE actor_user_id = ? AND action = 'user.data.export'
+                  AND outcome = 'success' ORDER BY id DESC LIMIT 1
+                """, String.class, userId);
+        // Spec: the success audit records the exported entry count.
+        assertThat(successDetail).contains("\"entries\":");
     }
 
     @Test
@@ -85,7 +91,8 @@ class ExportIntegrationTest extends AbstractIntegrationTest {
                 WHERE actor_user_id = ? AND action = 'user.data.export'
                   AND outcome = 'failed' ORDER BY id DESC LIMIT 1
                 """, String.class, userId);
-        assertThat(reason).contains("UNAUTHORIZED");
+        // Spec tokens, not ErrorCode names (data-export spec §2).
+        assertThat(reason).contains("wrong_password");
     }
 
     @Test

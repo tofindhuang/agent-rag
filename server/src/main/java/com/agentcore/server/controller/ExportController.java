@@ -6,9 +6,8 @@ import com.agentcore.server.common.auth.AuthenticatedUser;
 import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.common.export.ExportService;
-import com.agentcore.server.domain.User;
-import com.agentcore.server.dao.UserDao;
 import com.agentcore.server.dto.export.ExportRequest;
+import com.agentcore.server.service.AuthService;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.Map;
@@ -16,7 +15,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,18 +28,15 @@ public class ExportController {
 
     private final ExportService exportService;
     private final AuditService audit;
-    private final UserDao userDao;
-    private final PasswordEncoder passwordEncoder;
+    private final AuthService authService;
 
     public ExportController(
             ExportService exportService,
             AuditService audit,
-            UserDao userDao,
-            PasswordEncoder passwordEncoder) {
+            AuthService authService) {
         this.exportService = exportService;
         this.audit = audit;
-        this.userDao = userDao;
-        this.passwordEncoder = passwordEncoder;
+        this.authService = authService;
     }
 
     @PostMapping("/me")
@@ -50,21 +45,21 @@ public class ExportController {
             @RequestBody(required = false) ExportRequest request) {
         long userId = user.userId();
         try {
-            requirePassword(userId, request == null ? null : request.password());
-            exportService.requireWithinDailyLimit(userId);
+            authService.verifyCurrentPassword(userId, request == null ? null : request.password());
             exportService.requireWithinBudget(userId);
+            exportService.requireWithinDailyLimit(userId);
         } catch (ApiException ex) {
             audit.record(AuditAction.USER_DATA_EXPORT, AuditService.Outcome.FAILED,
                     userId, "user", String.valueOf(userId),
-                    Map.of("reason", ex.code().name()));
+                    Map.of("reason", failureReason(ex.code())));
             throw ex;
         }
 
         StreamingResponseBody body = (out) -> {
             try {
-                exportService.write(userId, out);
+                long entries = exportService.write(userId, out);
                 audit.success(AuditAction.USER_DATA_EXPORT, userId,
-                        "user", String.valueOf(userId));
+                        "user", String.valueOf(userId), Map.of("entries", entries));
             } catch (IOException | RuntimeException ex) {
                 audit.record(AuditAction.USER_DATA_EXPORT, AuditService.Outcome.FAILED,
                         userId, "user", String.valueOf(userId),
@@ -81,18 +76,13 @@ public class ExportController {
                 .body(body);
     }
 
-    /** Accounts with a local password must re-enter it; OAuth-only accounts may not. */
-    private void requirePassword(long userId, String presented) {
-        User user = userDao.selectById(userId);
-        if (user == null) {
-            throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
-        }
-        if (user.getPasswordHash() == null) {
-            return;
-        }
-        if (presented == null || presented.isBlank()
-                || !passwordEncoder.matches(presented, user.getPasswordHash())) {
-            throw new ApiException(ErrorCode.UNAUTHORIZED, "current password is required");
-        }
+    /** Spec failure tokens for the audit detail (data-export spec §2). */
+    private static String failureReason(ErrorCode code) {
+        return switch (code) {
+            case UNAUTHORIZED -> "wrong_password";
+            case EXPORT_TOO_LARGE -> "too_large";
+            case RATE_LIMITED -> "rate_limited";
+            default -> code.name().toLowerCase(java.util.Locale.ROOT);
+        };
     }
 }

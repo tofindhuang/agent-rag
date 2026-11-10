@@ -155,6 +155,21 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public void verifyCurrentPassword(long userId, String presented) {
+        User user = userDao.selectById(userId);
+        if (user == null) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "account not found");
+        }
+        if (user.getPasswordHash() == null) {
+            return;
+        }
+        if (presented == null || presented.isBlank()
+                || !passwordEncoder.matches(presented, user.getPasswordHash())) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "current password is required");
+        }
+    }
+
+    @Override
     @Transactional
     public void changePassword(long userId, String currentPassword, String newPassword) {
         User user = userDao.selectById(userId);

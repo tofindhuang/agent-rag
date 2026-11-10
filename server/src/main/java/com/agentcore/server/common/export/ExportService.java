@@ -4,6 +4,7 @@ import com.agentcore.server.common.error.ApiException;
 import com.agentcore.server.common.error.ErrorCode;
 import com.agentcore.server.config.ExportProperties;
 import com.agentcore.server.config.UsageProperties;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -21,6 +22,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 
 /**
@@ -33,6 +35,31 @@ public class ExportService {
 
     private static final int FORMAT_VERSION = 1;
     private static final String COUNT_PREFIX = "export:count:";
+
+    /** The two unbounded domains, streamed instead of materialised. */
+    private static final String MESSAGES_SQL = """
+            SELECT m.session_id, m.turn_id, m.ordinal, m.role, m.content, m.thinking,
+                   m.tool_calls, m.details, m.status, m.tokens_in, m.tokens_out,
+                   m.cache_read_tokens, m.cache_write_tokens, m.created_at
+            FROM messages m
+            JOIN sessions s ON s.id = m.session_id
+            WHERE s.user_id = ?
+            ORDER BY m.session_id, m.id
+            """;
+
+    private static final String AUDIT_SQL = """
+            SELECT action, outcome, target_type, target_id, ip, created_at, detail
+            FROM audit_events WHERE actor_user_id = ? ORDER BY id
+            """;
+
+    private static final String COUNT_MESSAGES = """
+            SELECT COUNT(*) FROM messages m
+            JOIN sessions s ON s.id = m.session_id
+            WHERE s.user_id = ?
+            """;
+
+    private static final String COUNT_AUDIT =
+            "SELECT COUNT(*) FROM audit_events WHERE actor_user_id = ?";
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
@@ -53,7 +80,11 @@ public class ExportService {
         this.redis = redis;
     }
 
-    /** Rejects the request before any stream bytes are produced. */
+    /**
+     * Rejects the request before any stream bytes are produced. Checked
+     * before the daily counter so an oversized account does not burn one of
+     * its three attempts (spec: failure reason {@code too_large}).
+     */
     public void requireWithinBudget(long userId) {
         long estimated = estimateBytes(userId);
         if (estimated > properties.maxBytes()) {
@@ -95,34 +126,42 @@ public class ExportService {
         Long factChars = jdbc.queryForObject(
                 "SELECT COALESCE(SUM(CHAR_LENGTH(fact_text)), 0) FROM profile_facts WHERE user_id = ?",
                 Long.class, userId);
+        // Spec: 消息正文 + 记忆 + 评测标注的字符量.
+        Long labelChars = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(CHAR_LENGTH(query) + CHAR_LENGTH(expectation)), 0)
+                FROM kb_eval_labels WHERE user_id = ?
+                """, Long.class, userId);
         long chars = (messageChars == null ? 0 : messageChars)
-                + (factChars == null ? 0 : factChars);
+                + (factChars == null ? 0 : factChars)
+                + (labelChars == null ? 0 : labelChars);
         // JSON escaping plus the neighbouring rows: a 2x factor is deliberately
         // pessimistic so the stream is never aborted halfway.
         return chars * 2;
     }
 
-    /** Writes the package; callers own the HTTP response. */
-    public void write(long userId, OutputStream out) throws IOException {
+    /**
+     * Writes the package; callers own the HTTP response.
+     *
+     * @return the entry count recorded in the manifest (spec: audit on success)
+     */
+    public long write(long userId, OutputStream out) throws IOException {
         Map<String, Object> account = account(userId);
         List<Map<String, Object>> sessions = sessions(userId);
-        List<Map<String, Object>> messages = messages(userId);
         List<Map<String, Object>> compactions = compactions(userId);
         Map<String, Object> profile = profile(userId);
         Map<String, Object> knowledge = knowledge(userId);
         Map<String, Object> usageData = usageData(userId);
-        List<Map<String, Object>> audit = audit(userId);
 
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("formatVersion", FORMAT_VERSION);
         manifest.put("exportedAt", Instant.now().toString());
         manifest.put("counts", Map.of(
                 "sessions", sessions.size(),
-                "messages", messages.size(),
+                "messages", countRows(userId, COUNT_MESSAGES),
                 "compactions", compactions.size(),
                 "profileFacts", ((List<?>) profile.get("facts")).size(),
                 "knowledgeBases", ((List<?>) knowledge.get("knowledgeBases")).size(),
-                "auditEvents", audit.size()));
+                "auditEvents", countRows(userId, COUNT_AUDIT)));
         manifest.put("excluded", List.of(
                 "passwordHash", "apiKeys", "refreshTokens", "otherUsers",
                 "vectors", "objectStorageBinaries"));
@@ -131,13 +170,26 @@ public class ExportService {
             writeJson(zip, "manifest.json", manifest);
             writeJson(zip, "account.json", account);
             writeJson(zip, "sessions.json", sessions);
-            writeJson(zip, "messages.json", messages);
+            // The two unbounded domains stream row-by-row so a large account
+            // never materialises its whole history on the heap.
+            writeJsonStreamed(zip, "messages.json", userId, MESSAGES_SQL);
             writeJson(zip, "compactions.json", compactions);
             writeJson(zip, "profile.json", profile);
             writeJson(zip, "knowledge-bases.json", knowledge);
             writeJson(zip, "usage.json", usageData);
-            writeJson(zip, "audit.json", audit);
+            writeJsonStreamed(zip, "audit.json", userId, AUDIT_SQL);
         }
+        return totalEntries(manifest);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static long totalEntries(Map<String, Object> manifest) {
+        Map<String, Object> counts = (Map<String, Object>) manifest.get("counts");
+        long total = 0;
+        for (Object value : counts.values()) {
+            if (value instanceof Number number) total += number.longValue();
+        }
+        return total;
     }
 
     private void writeJson(ZipOutputStream zip, String name, Object value) throws IOException {
@@ -146,10 +198,40 @@ public class ExportService {
         zip.closeEntry();
     }
 
+    /** Streams one JSON array row-by-row; the driver keeps a cursor open. */
+    private void writeJsonStreamed(ZipOutputStream zip, String name, long userId, String sql)
+            throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        // AUTO_CLOSE_TARGET stays off: closing the generator must not close
+        // the shared ZipOutputStream, only flush its buffers.
+        try (JsonGenerator generator = objectMapper.getFactory().createGenerator(zip)
+                .disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)) {
+            generator.writeStartArray();
+            jdbc.query(sql, (RowCallbackHandler) (row) -> {
+                try {
+                    int columns = row.getMetaData().getColumnCount();
+                    Map<String, Object> value = new LinkedHashMap<>();
+                    for (int index = 1; index <= columns; index++) {
+                        value.put(row.getMetaData().getColumnLabel(index), row.getObject(index));
+                    }
+                    objectMapper.writeValue(generator, value);
+                } catch (IOException ex) {
+                    throw new IllegalStateException("failed to stream an export row", ex);
+                }
+            }, userId);
+            generator.writeEndArray();
+        }
+        zip.closeEntry();
+    }
+
+    private long countRows(long userId, String countSql) {
+        Long count = jdbc.queryForObject(countSql, Long.class, userId);
+        return count == null ? 0 : count;
+    }
+
     private Map<String, Object> account(long userId) {
         Map<String, Object> row = jdbc.queryForMap("""
-                SELECT email, role, created_at, password_hash IS NOT NULL AS has_password
-                FROM users WHERE id = ?
+                SELECT email, role, created_at FROM users WHERE id = ?
                 """, userId);
         List<Map<String, Object>> identities = jdbc.queryForList("""
                 SELECT issuer, created_at, last_login_at
@@ -159,7 +241,10 @@ public class ExportService {
         account.put("email", row.get("email"));
         account.put("role", row.get("role"));
         account.put("createdAt", instant(row.get("created_at")));
-        account.put("hasPassword", Boolean.TRUE.equals(row.get("has_password")));
+        Long hasPassword = jdbc.queryForObject(
+                "SELECT (password_hash IS NOT NULL) FROM users WHERE id = ?",
+                Long.class, userId);
+        account.put("hasPassword", hasPassword != null && hasPassword != 0L);
         account.put("identities", identities.stream().map((identity) -> Map.of(
                 "issuer", identity.get("issuer"),
                 "linkedAt", instant(identity.get("created_at")),
@@ -171,18 +256,6 @@ public class ExportService {
         return jdbc.queryForList("""
                 SELECT id, title, status, last_active_at, created_at
                 FROM sessions WHERE user_id = ? ORDER BY created_at
-                """, userId);
-    }
-
-    private List<Map<String, Object>> messages(long userId) {
-        return jdbc.queryForList("""
-                SELECT m.session_id, m.turn_id, m.ordinal, m.role, m.content, m.thinking,
-                       m.tool_calls, m.details, m.status, m.tokens_in, m.tokens_out,
-                       m.cache_read_tokens, m.cache_write_tokens, m.created_at
-                FROM messages m
-                JOIN sessions s ON s.id = m.session_id
-                WHERE s.user_id = ?
-                ORDER BY m.session_id, m.id
                 """, userId);
     }
 
@@ -252,13 +325,6 @@ public class ExportService {
                 FROM exec_records WHERE user_id = ? ORDER BY id
                 """, userId));
         return result;
-    }
-
-    private List<Map<String, Object>> audit(long userId) {
-        return jdbc.queryForList("""
-                SELECT action, outcome, target_type, target_id, ip, created_at, detail
-                FROM audit_events WHERE actor_user_id = ? ORDER BY id
-                """, userId);
     }
 
     private static String instant(Object value) {
