@@ -67,9 +67,15 @@ class FakeSession implements GatewaySession {
   }
 
   navigateCalls: string[] = [];
+  private readonly userEntries: Array<{ entryId: string; text: string }> = [];
 
   getUserMessagesForForking(): Array<{ entryId: string; text: string }> {
-    return [{ entryId: "entry-1", text: "first question" }];
+    return [...this.userEntries];
+  }
+
+  /** Test seam: appends an entry as if pi persisted a user message. */
+  appendUserEntry(entryId: string, text: string): void {
+    this.userEntries.push({ entryId, text });
   }
 
   async navigateTree(
@@ -90,6 +96,8 @@ class FakePool implements GatewayPool {
   readonly entries = new Map<string, FakeEntry>();
   readonly removedFiles: Array<{ sessionId: string; userId: string }> = [];
   deferRuns = false;
+  /** When set, the next run() throws before emitting anything. */
+  failNextRun: Error | undefined;
   ensureError: Error | undefined;
 
   get size(): number {
@@ -157,6 +165,11 @@ class FakePool implements GatewayPool {
   async run(sessionId: string, _text: string): Promise<void> {
     const entry = this.entries.get(sessionId);
     if (!entry) throw new Error("session missing");
+    if (this.failNextRun) {
+      const error = this.failNextRun;
+      this.failNextRun = undefined;
+      throw error;
+    }
     if (this.deferRuns) {
       await new Promise<void>((resolve) => {
         entry.session.onAbort = resolve;
@@ -447,6 +460,84 @@ test("prompt streams contract v1 frames and releases the run slot", async () => 
     assert.match(stream, /event: run_settled\ndata: \{"status":"completed","turnId":"t1"\}\n/);
     assert.equal((stream.match(/event: run_settled/g) ?? []).length, 1);
     assert.equal(pool.entries.get("s1")?.activeRun, null);
+  });
+});
+
+test("settled runs carry this turn's user entry id", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const entry = pool.get("s1");
+    assert.ok(entry);
+    const originalRun = pool.run.bind(pool);
+    let runCalls = 0;
+    pool.run = async (sessionId: string, text: string) => {
+      runCalls += 1;
+      if (runCalls === 1) {
+        // A completed earlier turn, so a naive "last entry" lookup has data.
+        entry.session.emit({
+          type: "message_end",
+          message: { role: "user", content: "earlier" },
+        } as unknown as AgentSessionEvent);
+        entry.session.appendUserEntry("entry-1", "earlier");
+        entry.session.emit({
+          type: "agent_settled",
+          aborted: false,
+        } as unknown as AgentSessionEvent);
+        return;
+      }
+      return originalRun(sessionId, text);
+    };
+
+    const first = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "earlier", turnId: "t1" }),
+    });
+    await first.text();
+
+    // A second turn whose user entry is appended, then the run fails: the
+    // terminal must bind THIS turn's entry, not the previous one.
+    pool.run = async () => {
+      entry.session.emit({
+        type: "message_end",
+        message: { role: "user", content: "second" },
+      } as unknown as AgentSessionEvent);
+      entry.session.appendUserEntry("entry-2", "second");
+      throw new Error("model exploded");
+    };
+
+    const second = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "second", turnId: "t2" }),
+    });
+    const stream = await second.text();
+    assert.match(
+      stream,
+      /"userEntryId":"entry-2"/,
+    );
+  });
+});
+
+test("a run that fails before the user entry must not bind one", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const entry = pool.get("s1");
+    assert.ok(entry);
+
+    // Seed one earlier user entry so a buggy implementation would have a
+    // previous-turn id to mis-bind.
+    entry.session.appendUserEntry("entry-1", "earlier");
+
+    pool.failNextRun = new Error("model exploded before the user message");
+    const response = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    const stream = await response.text();
+    assert.match(stream, /"status":"error","turnId":"t1"/);
+    assert.doesNotMatch(stream, /userEntryId/);
   });
 });
 
@@ -801,6 +892,7 @@ test("DELETE /sessions/:id/files requires X-User-Id", async () => {
 test("branch moves the leaf back and returns the text to edit", async () => {
   await withServer(async ({ base, pool }) => {
     await fetch(`${base}/sessions/s1`, { method: "PUT", headers: { "x-user-id": "u1" } });
+    pool.get("s1")?.session.appendUserEntry("entry-1", "first question");
 
     const response = await fetch(`${base}/sessions/s1/branch`, {
       method: "POST",

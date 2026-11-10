@@ -327,18 +327,41 @@ export function createApp({ config, pool, lifecycle, gate }: AppDependencies): E
 
     for (const event of translator.start()) sendEvent(event);
 
+    // pi persists the user entry only after dispatching message_end, and the
+    // agent_settled event arrives after it. Track whether this turn's user
+    // message reached the transcript; only then may we bind its entry id —
+    // otherwise a run that fails early would bind the previous turn's entry.
+    let userMessageAppended = false;
+    const isUserMessageEnd = (event: unknown): boolean => {
+      const raw = event as { type?: string; message?: { role?: string } };
+      return raw.type === "message_end" && raw.message?.role === "user";
+    };
+
     try {
       // Subscribe before prompting: fast completions must not race the listener.
       unsubscribe = running.session.subscribe((event) => {
         logPiEvent({ sessionId: req.params.id, runId, turnId }, event);
+        if (isUserMessageEnd(event)) userMessageAppended = true;
+        // agent_settled is emitted synchronously before prompt() resolves, so
+        // the terminal translate() below is the last safe place to bind.
+        if (
+          (event as { type?: string }).type === "agent_settled" &&
+          userMessageAppended
+        ) {
+          translator.setUserEntryId(lastUserEntryId(running.session));
+        }
         for (const domainEvent of translator.translate(event)) sendEvent(domainEvent);
       });
 
       await pool.run(req.params.id, text);
-      translator.setUserEntryId(lastUserEntryId(running.session));
+      if (userMessageAppended) {
+        translator.setUserEntryId(lastUserEntryId(running.session));
+      }
       for (const event of translator.finish("completed")) sendEvent(event);
     } catch (err) {
-      translator.setUserEntryId(lastUserEntryId(running.session));
+      if (userMessageAppended) {
+        translator.setUserEntryId(lastUserEntryId(running.session));
+      }
       const message = err instanceof Error ? err.message : String(err);
       for (const event of translator.fail("MODEL_ERROR", message)) sendEvent(event);
     } finally {
