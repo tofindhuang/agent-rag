@@ -307,7 +307,6 @@ public class ChatProjectionServiceImpl implements ChatProjectionService {
         return cleaned.substring(0, end);
     }
 
-    /** Truncates on a UTF-8 byte budget without splitting a code point. */
     /** Character-count truncation that never splits a surrogate pair. */
     private static String safePrefix(String value, int maxChars) {
         int end = maxChars;

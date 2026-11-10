@@ -106,9 +106,11 @@ public class QuotaService {
     }
 
     private long usedTokens(long userId, boolean allowCache) {
+        LocalDate today = LocalDate.now(clock.withZone(usage.offset()));
         LocalDateTime monthStart = monthStartUtc();
-        YearMonth month = YearMonth.from(monthStart.atOffset(ZoneOffset.UTC)
-                .atZoneSameInstant(usage.offset()));
+        // The key uses the same month the query covers, so a large UTC offset
+        // (e.g. UTC+13) can never split one queried month across two keys.
+        YearMonth month = YearMonth.from(today);
         String key = CACHE_PREFIX + userId + ":" + month;
         if (allowCache) {
             try {

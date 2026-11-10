@@ -60,6 +60,20 @@ class ClientIpResolverTest {
     }
 
     @Test
+    void takesTheLeftmostAddressWhenEveryHopIsTrusted() {
+        // Spec: 全部可信则取最左 (M2 hardening §2).
+        assertThat(resolver("10.0.0.0/8", "192.168.0.0/16")
+                        .resolve(request("10.1.2.3", "192.168.1.1", "10.2.3.4")))
+                .isEqualTo("192.168.1.1");
+        // A single fully-trusted chain still yields its left-most literal.
+        assertThat(resolver("10.0.0.0/8").resolve(request("10.1.2.3", "10.2.3.4")))
+                .isEqualTo("10.2.3.4");
+        // Only literals count even in the all-trusted fallback.
+        assertThat(resolver("10.0.0.0/8").resolve(request("10.1.2.3", "bad", "10.9.9.9")))
+                .isEqualTo("10.9.9.9");
+    }
+
+    @Test
     void fallsBackToRemoteAddrWhenTheHeaderHasNoLiteralAddress() {
         assertThat(resolver("10.0.0.0/8").resolve(request("10.1.2.3", "not-an-ip")))
                 .isEqualTo("10.1.2.3");

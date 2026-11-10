@@ -5,7 +5,6 @@ import com.agentcore.server.dao.AuditEventDao;
 import com.agentcore.server.domain.AuditEvent;
 import com.agentcore.server.dto.admin.AuditEventView;
 import com.agentcore.server.dto.admin.AuditPage;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,21 +34,7 @@ public class AuditController {
         List<AuditEvent> rows =
                 auditEventDao.listByActor(user.userId(), beforeId, capped);
         return new AuditPage(
-                rows.stream().map((row) -> view(row, false)).toList(),
+                rows.stream().map((row) -> AuditEventView.of(row, false)).toList(),
                 rows.size() < capped ? null : rows.get(rows.size() - 1).getId());
-    }
-
-    private static AuditEventView view(AuditEvent event, boolean includeDetail) {
-        return new AuditEventView(
-                event.getId(),
-                event.getActorUserId(),
-                event.getActorType(),
-                event.getAction(),
-                event.getTargetType(),
-                event.getTargetId(),
-                event.getOutcome(),
-                event.getIp(),
-                event.getCreatedAt() == null ? null : event.getCreatedAt().toInstant(ZoneOffset.UTC),
-                includeDetail ? event.getDetail() : null);
     }
 }

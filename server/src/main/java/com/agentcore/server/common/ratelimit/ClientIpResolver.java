@@ -53,6 +53,13 @@ public class ClientIpResolver {
                 return candidate;
             }
         }
+        // Spec (M2 hardening §2): every hop is trusted — take the left-most.
+        for (String hop : hops) {
+            String candidate = hop.trim();
+            if (isLiteralAddress(candidate)) {
+                return candidate;
+            }
+        }
         return remote;
     }
 

@@ -65,24 +65,8 @@ public class AdminController {
         int capped = Math.min(Math.max(limit, 1), 200);
         java.util.List<AuditEvent> rows = auditEventDao.listAll(action, beforeId, capped);
         return new AuditPage(
-                rows.stream().map(AdminController::auditView).toList(),
+                rows.stream().map((event) -> AuditEventView.of(event, true)).toList(),
                 rows.size() < capped ? null : rows.get(rows.size() - 1).getId());
-    }
-
-    private static AuditEventView auditView(AuditEvent event) {
-        return new AuditEventView(
-                event.getId(),
-                event.getActorUserId(),
-                event.getActorType(),
-                event.getAction(),
-                event.getTargetType(),
-                event.getTargetId(),
-                event.getOutcome(),
-                event.getIp(),
-                event.getCreatedAt() == null
-                        ? null
-                        : event.getCreatedAt().toInstant(java.time.ZoneOffset.UTC),
-                event.getDetail());
     }
 
     @GetMapping("/overview")
