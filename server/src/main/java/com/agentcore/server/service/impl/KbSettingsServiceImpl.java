@@ -398,17 +398,17 @@ public class KbSettingsServiceImpl implements KbSettingsService {
 
     @Override
     public KbSettingsView clearEmbedding(long userId) {
-        audit.success(AuditAction.KB_SETTINGS_RESET, userId, "kb_settings", "embedding");
         availability.requireEnabled();
         settingsDao.clearEmbedding(userId);
+        audit.success(AuditAction.KB_SETTINGS_RESET, userId, "kb_settings", "embedding");
         return toView(userId, settingsDao.selectById(userId));
     }
 
     @Override
     public KbSettingsView clearRerank(long userId) {
-        audit.success(AuditAction.KB_SETTINGS_RESET, userId, "kb_settings", "rerank");
         availability.requireEnabled();
         settingsDao.clearRerank(userId);
+        audit.success(AuditAction.KB_SETTINGS_RESET, userId, "kb_settings", "rerank");
         return toView(userId, settingsDao.selectById(userId));
     }
 

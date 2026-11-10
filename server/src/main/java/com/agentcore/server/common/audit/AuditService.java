@@ -10,6 +10,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,16 +92,34 @@ public class AuditService {
         event.setCreatedAt(LocalDateTime.now(ZoneOffset.UTC));
         try {
             auditEventDao.insert(event);
-            auditLog.info(
-                    "audit action={} outcome={} actor={} target={}/{} ip={}",
-                    event.getAction(), event.getOutcome(), actorUserId,
-                    targetType, targetId, ip);
+            logAuditLine(event);
         } catch (RuntimeException ex) {
             Counter.builder("agentcore_audit_write_failures_total")
                     .register(meterRegistry)
                     .increment();
             log.warn("audit write failed for {} (actor {}): {}",
                     event.getAction(), actorUserId, ex.getMessage());
+        }
+    }
+
+    /** Spec: every successful write also logs one JSON line on logger "audit". */
+    private void logAuditLine(AuditEvent event) {
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("action", event.getAction());
+        line.put("outcome", event.getOutcome());
+        line.put("actorUserId", event.getActorUserId());
+        line.put("targetType", event.getTargetType());
+        line.put("targetId", event.getTargetId());
+        line.put("ip", event.getIp());
+        line.put("createdAt", event.getCreatedAt());
+        try {
+            auditLog.info(objectMapper.writeValueAsString(line));
+        } catch (JsonProcessingException ex) {
+            // The row is already persisted; only the mirror line is lost.
+            auditLog.info(
+                    "audit action={} outcome={} actor={} target={}/{}",
+                    event.getAction(), event.getOutcome(), event.getActorUserId(),
+                    event.getTargetType(), event.getTargetId());
         }
     }
 

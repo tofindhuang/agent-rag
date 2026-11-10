@@ -33,7 +33,6 @@ public class KbDocumentDeletionServiceImpl implements KbDocumentDeletionService 
 
     @Override
     public void delete(long userId, String documentId) {
-        audit.success(AuditAction.KB_DOCUMENT_DELETE, userId, "document", documentId);
         KbDocument document = documentDao.findOwned(documentId, userId);
         if (document == null || !KbDocument.STATUS_DELETING.equals(document.getStatus())) {
             return;
@@ -41,5 +40,6 @@ public class KbDocumentDeletionServiceImpl implements KbDocumentDeletionService 
         objectStore.delete(document.getOriginalKey());
         vectorStore.deleteByDocument(userId, documentId);
         documentDao.deleteOwned(documentId, userId);
+        audit.success(AuditAction.KB_DOCUMENT_DELETE, userId, "document", documentId);
     }
 }

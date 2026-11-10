@@ -334,10 +334,10 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void archiveSession(long userId, String sessionId) {
-        audit.success(AuditAction.SESSION_ARCHIVE, userId, "session", sessionId);
         if (sessionDao.archive(sessionId, userId, nowUtc()) == 0) {
             throw sessionNotFound();
         }
+        audit.success(AuditAction.SESSION_ARCHIVE, userId, "session", sessionId);
 
         // The gateway is allowed to forget the AgentSession; a restart already
         // means it has nothing to dispose, so this stays best-effort.

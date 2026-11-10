@@ -161,6 +161,11 @@ class OAuthLoginIntegrationTest extends AbstractIntegrationTest {
         assertThat(jdbc.queryForObject(
                 "SELECT user_id FROM user_identities WHERE issuer = ? AND subject = ?",
                 Long.class, OIDC.issuer(), subject)).isEqualTo(userId);
+        // The spec's credential group includes auth.identity.link.
+        Integer links = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM audit_events WHERE actor_user_id = ? AND action = ?",
+                Integer.class, userId, "auth.identity.link");
+        assertThat(links).isEqualTo(1);
 
         String identities = mockMvc.perform(get("/api/auth/identities")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + session.accessToken()))

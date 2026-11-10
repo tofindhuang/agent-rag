@@ -119,11 +119,11 @@ public class ProfileFactServiceImpl implements ProfileFactService {
 
     @Override
     public void delete(long userId, String factId) {
-        audit.success(AuditAction.MEMORY_FACT_DELETE, userId, "profile_fact", factId);
         factDao.markDeleted(factId, userId, now());
         if (factDao.findOwned(factId, userId) == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "profile fact not found");
         }
+        audit.success(AuditAction.MEMORY_FACT_DELETE, userId, "profile_fact", factId);
     }
 
     @Override

@@ -81,7 +81,6 @@ public class KbKnowledgeBaseServiceImpl implements KbKnowledgeBaseService {
     @Override
     @Transactional
     public void delete(long userId, String id) {
-        audit.success(AuditAction.KB_DELETE, userId, "kb", id);
         KbKnowledgeBase kb = requireOwned(userId, id);
         if (Boolean.TRUE.equals(kb.getIsDefault())) {
             throw new ApiException(ErrorCode.CONFLICT, "the default knowledge base cannot be deleted");
@@ -93,6 +92,7 @@ public class KbKnowledgeBaseServiceImpl implements KbKnowledgeBaseService {
             throw new ApiException(ErrorCode.CONFLICT, "switch bound sessions to another knowledge base first");
         }
         kbDao.deleteById(id);
+        audit.success(AuditAction.KB_DELETE, userId, "kb", id);
     }
 
     @Override

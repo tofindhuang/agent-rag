@@ -199,6 +199,8 @@ public class OAuthServiceImpl implements OAuthService {
         if (existing != null) {
             if (Objects.equals(existing.getUserId(), stored.userId())) {
                 touch(existing);
+                audit.success(AuditAction.AUTH_IDENTITY_LINK, stored.userId(),
+                        "user_identity", profile.issuer());
                 return;
             }
             throw new ApiException(ErrorCode.OAUTH_IDENTITY_IN_USE,
@@ -229,6 +231,8 @@ public class OAuthServiceImpl implements OAuthService {
             throw new ApiException(ErrorCode.OAUTH_ALREADY_LINKED,
                     "account already has another identity for this provider", ex);
         }
+        audit.success(AuditAction.AUTH_IDENTITY_LINK, stored.userId(),
+                "user_identity", profile.issuer());
     }
 
     @Override
@@ -245,8 +249,6 @@ public class OAuthServiceImpl implements OAuthService {
 
     @Override
     public void unlink(long userId, long identityId) {
-        audit.success(AuditAction.AUTH_IDENTITY_UNLINK, userId,
-                "user_identity", String.valueOf(identityId));
         UserIdentity identity = identityDao.findByIdAndUserId(identityId, userId);
         if (identity == null) {
             throw new ApiException(ErrorCode.NOT_FOUND, "identity not found");
@@ -261,6 +263,8 @@ public class OAuthServiceImpl implements OAuthService {
                     "set a password or link another login method before unlinking");
         }
         identityDao.deleteByIdAndUserId(identityId, userId);
+        audit.success(AuditAction.AUTH_IDENTITY_UNLINK, userId,
+                "user_identity", String.valueOf(identityId));
     }
 
     private void requireCurrentSession(long userId, String refreshToken) {

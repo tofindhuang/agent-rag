@@ -162,6 +162,18 @@ class AuditLogIntegrationTest extends AbstractIntegrationTest {
                 AuditAction.AUTH_PASSWORD_CHANGE.wire(),
                 AuditAction.SESSION_ARCHIVE.wire(),
                 AuditAction.SESSION_PURGE.wire());
+
+        // The audit row must only appear for an archive that actually happened:
+        // another user's session id is NOT_FOUND and must leave no success row.
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/chat/sessions/not-my-session")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNotFound());
+        Integer bogusArchive = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM audit_events WHERE actor_user_id = ? "
+                        + "AND action = ? AND target_id = 'not-my-session'",
+                Integer.class, userId, AuditAction.SESSION_ARCHIVE.wire());
+        assertThat(bogusArchive).isZero();
     }
 
     private String createSession(String token) throws Exception {
