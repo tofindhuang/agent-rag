@@ -133,6 +133,7 @@ export function ChatPage() {
             notice={chat.notice}
             historyLoading={chat.historyLoading}
             compactions={chat.compactions}
+            compactionsTruncated={chat.compactionsTruncated}
             liveCompactions={chat.liveCompactions}
             latestCompactionRef={chat.latestCompactionRef}
             historyHasMore={chat.historyHasMore}

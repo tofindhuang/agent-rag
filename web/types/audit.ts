@@ -17,5 +17,3 @@ export interface AuditPage {
   items: AuditEvent[];
   nextBeforeId: number | null;
 }
-
-export type AdminTab = "overview" | "users" | "trace" | "audit";

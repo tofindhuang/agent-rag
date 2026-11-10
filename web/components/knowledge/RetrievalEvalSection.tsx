@@ -69,6 +69,7 @@ export function RetrievalEvalSection({
                 <th>recall@5</th>
                 <th>MRR@5</th>
                 <th>池 recall@10</th>
+                <th>直搜 recall@5</th>
                 <th>拒答准确率</th>
                 <th>阈值</th>
                 <th>状态</th>
@@ -96,6 +97,7 @@ export function RetrievalEvalSection({
                         <Delta current={run} baseline={baseline} field="mrr5" />
                       </td>
                       <td>{formatMetric(run.metrics.poolRecall10)}</td>
+                      <td>{formatMetric(run.metrics.baselineRecall5)}</td>
                       <td>{formatMetric(run.metrics.refusalAccuracy)}</td>
                       <td>{formatThreshold(run)}</td>
                       <td>
@@ -119,7 +121,7 @@ export function RetrievalEvalSection({
                     </tr>
                     {expanded ? (
                       <tr>
-                        <td colSpan={9} className={styles.evalDiffCell}>
+                        <td colSpan={10} className={styles.evalDiffCell}>
                           <RunDiff
                             current={quality.runDetails[run.runId]}
                             baseline={

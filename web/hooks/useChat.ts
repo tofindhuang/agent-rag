@@ -120,8 +120,11 @@ export function useChat() {
   const [contextCompacted, setContextCompacted] = useState(false);
   // Summaries come from the server projection; live ones arrive mid-session.
   const [compactions, setCompactions] = useState<CompactionSummary[]>([]);
+  const [compactionsTotal, setCompactionsTotal] = useState(0);
   const [liveCompactions, setLiveCompactions] = useState<CompactionSummary[]>([]);
   const latestCompactionRef = useRef<HTMLDivElement | null>(null);
+  /** Last projected message id; anchors live compaction cards (spec). */
+  const lastHistoryIdRef = useRef<number | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,12 +187,26 @@ export function useChat() {
     }
   }, [fail]);
 
+  // The newest projected id anchors live compaction cards (see the
+  // "compaction" case); keep the ref in sync with every page state.
+  useEffect(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const id = messages[index].historyId;
+      if (id != null) {
+        lastHistoryIdRef.current = id;
+        return;
+      }
+    }
+    lastHistoryIdRef.current = null;
+  }, [messages]);
+
   /** Summaries are optional UI data: a failure must never surface as a chat error. */
   const loadCompactions = useCallback(async (sessionId: string) => {
     try {
       const page = await fetchCompactions(sessionId);
       if (currentIdRef.current !== sessionId) return;
       setCompactions(page.items);
+      setCompactionsTotal(page.total);
       if (page.items.length > 0) setContextCompacted(true);
     } catch (cause: unknown) {
       if (currentIdRef.current !== sessionId) return;
@@ -234,6 +251,7 @@ export function useChat() {
       setContextUsage(null);
       setContextCompacted(false);
       setCompactions([]);
+      setCompactionsTotal(0);
       setLiveCompactions([]);
       setHistoryHasMore(false);
       setNextBeforeId(null);
@@ -626,11 +644,13 @@ export function useChat() {
             setNotice("上下文已压缩");
             const summary = event.data.summary;
             if (typeof summary === "string" && summary.trim().length > 0) {
+              // Spec: anchor on the current last message id so the card lands
+              // right after it, not at the top of the loaded window.
               setLiveCompactions((previous) => [
                 ...previous,
                 {
                   id: -(previous.length + 1),
-                  afterMessageId: null,
+                  afterMessageId: lastHistoryIdRef.current,
                   reason: event.data.reason,
                   summary,
                   truncated: false,
@@ -759,6 +779,8 @@ export function useChat() {
     contextCompacted,
     quotaWarning,
     compactions,
+    /** Server-reported total; > items.length means the 50-cap hint shows. */
+    compactionsTruncated: compactionsTotal > compactions.length,
     liveCompactions,
     latestCompactionRef,
     scrollToLatestCompaction,

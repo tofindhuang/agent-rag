@@ -15,8 +15,10 @@ interface MessageListProps {
   historyLoading?: boolean;
   /** Projected summaries, oldest first; placed after their anchor message. */
   compactions?: CompactionSummary[];
-  /** Summaries received live in this session; always rendered at the end. */
+  /** Summaries received live in this session; anchored like projected ones. */
   liveCompactions?: CompactionSummary[];
+  /** True when the server reported more compactions than the 50-item page. */
+  compactionsTruncated?: boolean;
   latestCompactionRef?: RefObject<HTMLDivElement | null>;
   /** When false the oldest page is loaded, so unanchored cards go on top. */
   historyHasMore?: boolean;
@@ -31,6 +33,7 @@ export function MessageList({
   historyLoading = false,
   compactions = [],
   liveCompactions = [],
+  compactionsTruncated = false,
   latestCompactionRef,
   historyHasMore = false,
   onBranch,
@@ -41,15 +44,19 @@ export function MessageList({
 
   const byAnchor = new Map<number, CompactionSummary[]>();
   const unanchored: CompactionSummary[] = [];
-  for (const item of compactions) {
+  const liveTail: CompactionSummary[] = [];
+  const place = (item: CompactionSummary, live: boolean) => {
     if (item.afterMessageId == null) {
-      unanchored.push(item);
-      continue;
+      if (live) liveTail.push(item);
+      else unanchored.push(item);
+      return;
     }
     const bucket = byAnchor.get(item.afterMessageId);
     if (bucket) bucket.push(item);
     else byAnchor.set(item.afterMessageId, [item]);
-  }
+  };
+  for (const item of compactions) place(item, false);
+  for (const item of liveCompactions) place(item, true);
   const latestId =
     liveCompactions[liveCompactions.length - 1]?.id ??
     compactions[compactions.length - 1]?.id ??
@@ -84,6 +91,11 @@ export function MessageList({
           </p>
         </div>
       ) : null}
+      {!historyHasMore && compactionsTruncated ? (
+        <div className={styles.status} role="status">
+          仅显示最近 50 次压缩
+        </div>
+      ) : null}
       {!historyHasMore ? unanchored.map(renderCard) : null}
       {messages.map((message, index) => {
         const anchored =
@@ -95,7 +107,7 @@ export function MessageList({
           </Fragment>
         );
       })}
-      {liveCompactions.map(renderCard)}
+      {liveTail.map(renderCard)}
       {busy && !streaming && (
         <div className={styles.status} role="status">
           正在准备回复…
