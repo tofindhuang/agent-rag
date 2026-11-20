@@ -1,0 +1,137 @@
+{
+  "users": 200,
+  "rounds": 1,
+  "turns": 200,
+  "durationMs": 25282,
+  "statusCounts": {
+    "completed": 200
+  },
+  "errors": {
+    "none": 200,
+    "hard_error": 0,
+    "rate_limited": 0,
+    "upstream_429": 0,
+    "upstream_unavailable": 0,
+    "disconnected": 0
+  },
+  "retries": 0,
+  "retryReasons": {},
+  "firstTokenMs": {
+    "count": 200,
+    "min": 638,
+    "p50": 1475,
+    "p95": 11892,
+    "p99": 14759,
+    "max": 15853
+  },
+  "turnMs": {
+    "count": 200,
+    "min": 1620,
+    "p50": 3355,
+    "p95": 12195,
+    "p99": 15111,
+    "max": 16169
+  },
+  "toolLatencyMs": {
+    "count": 20,
+    "min": 4138.105708000003,
+    "p50": 9081.162667000004,
+    "p95": 13124.332292,
+    "p99": 13660.668667000005,
+    "max": 13660.668667000005
+  },
+  "byWorkload": {
+    "chat": {
+      "turns": 180,
+      "firstTokenMs": {
+        "count": 180,
+        "min": 638,
+        "p50": 1411,
+        "p95": 2460,
+        "p99": 3447,
+        "max": 3486
+      },
+      "turnMs": {
+        "count": 180,
+        "min": 1620,
+        "p50": 3247,
+        "p95": 4848,
+        "p99": 6273,
+        "max": 6295
+      },
+      "toolLatencyMs": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      }
+    },
+    "run_code": {
+      "turns": 20,
+      "firstTokenMs": {
+        "count": 20,
+        "min": 6669,
+        "p50": 11892,
+        "p95": 15487,
+        "p99": 15853,
+        "max": 15853
+      },
+      "turnMs": {
+        "count": 20,
+        "min": 7153,
+        "p50": 12195,
+        "p95": 15875,
+        "p99": 16169,
+        "max": 16169
+      },
+      "toolLatencyMs": {
+        "count": 20,
+        "min": 4138.105708000003,
+        "p50": 9081.162667000004,
+        "p95": 13124.332292,
+        "p99": 13660.668667000005,
+        "max": 13660.668667000005
+      }
+    },
+    "kb_search": {
+      "turns": 0,
+      "firstTokenMs": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "turnMs": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      },
+      "toolLatencyMs": {
+        "count": 0,
+        "min": null,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "max": null
+      }
+    }
+  },
+  "baseline": null,
+  "netFirstTokenMs": null,
+  "verification": {
+    "sessionsChecked": 200,
+    "turnsChecked": 200,
+    "missing": [],
+    "duplicates": [],
+    "roleMismatches": [],
+    "textMismatches": [],
+    "errors": []
+  }
+}

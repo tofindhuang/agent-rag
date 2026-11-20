@@ -1,0 +1,5 @@
+sandbox_container_lifecycle_ms_count 20
+sandbox_container_lifecycle_ms_sum 45440.0
+sandbox_container_lifecycle_ms_max 3793.0
+sandbox_pool_creating 0.0
+sandbox_pool_idle 0.0

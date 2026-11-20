@@ -1,0 +1,46 @@
+package com.agentcore.server.common.vector;
+
+import java.time.Duration;
+import java.util.List;
+
+/**
+ * Vector-store boundary (Qdrant, ADR-0005). Collections are per user
+ * ({@code kb_passages_u{userId}}) and created lazily with a locked dimension.
+ */
+public interface VectorStore {
+
+    String collectionName(long userId);
+
+    /** All collections known to the store, including non-KB ones. */
+    List<VectorCollection> collections();
+
+    /**
+     * Creates the user's collection on first use. An existing collection with a
+     * different dimension raises {@link
+     * com.agentcore.server.common.kb.KbDimensionMismatchException}.
+     */
+    void ensureCollection(long userId, int dimension);
+
+    /** Drops and recreates the user's collection at a new dimension. */
+    void recreateCollection(long userId, int dimension);
+
+    /** Upserts points after ensuring the collection exists. */
+    void upsert(long userId, int dimension, List<VectorPoint> points);
+
+    /** Deletes every point of one document; idempotent. */
+    void deleteByDocument(long userId, String documentId);
+
+    /** Top-k similarity search restricted to the user; empty when no collection. */
+    default List<VectorHit> search(long userId, float[] query, int limit) {
+        return search(userId, null, query, limit, Duration.ofSeconds(15));
+    }
+
+    /** Same search with a caller-supplied deadline (retrieval's 20s budget). */
+    default List<VectorHit> search(long userId, float[] query, int limit, Duration timeout) {
+        return search(userId, null, query, limit, timeout);
+    }
+
+    /** Search restricted to one KB when kbId is non-null. */
+    List<VectorHit> search(
+            long userId, String kbId, float[] query, int limit, Duration timeout);
+}

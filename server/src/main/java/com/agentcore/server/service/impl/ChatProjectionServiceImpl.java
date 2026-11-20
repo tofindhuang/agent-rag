@@ -1,0 +1,348 @@
+package com.agentcore.server.service.impl;
+
+import com.agentcore.server.dao.CompactionEventDao;
+import com.agentcore.server.dao.MessageCache;
+import com.agentcore.server.dao.MessageDao;
+import com.agentcore.server.dao.RunDao;
+import com.agentcore.server.dao.SessionCompactionDao;
+import com.agentcore.server.dao.SessionDao;
+import com.agentcore.server.domain.CompactionEvent;
+import com.agentcore.server.domain.Message;
+import com.agentcore.server.domain.Run;
+import com.agentcore.server.domain.Session;
+import com.agentcore.server.domain.SessionCompaction;
+import com.agentcore.server.domain.TurnKey;
+import com.agentcore.server.service.ChatProjectionService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+@Service
+public class ChatProjectionServiceImpl implements ChatProjectionService {
+
+    private static final int TOOL_CONTENT_LIMIT_BYTES = 65_536;
+    private static final int TOOL_DETAILS_LIMIT_BYTES = 8_192;
+    private static final int ERROR_MESSAGE_LIMIT_BYTES = 1_024;
+    private static final int TITLE_LIMIT = 20;
+    /** Guard against a runaway summarizer; real summaries are ~1-2k tokens. */
+    private static final int SUMMARY_LIMIT_CHARS = 200_000;
+
+    private final MessageDao messageDao;
+    private final RunDao runDao;
+    private final CompactionEventDao compactionEventDao;
+    private final SessionCompactionDao sessionCompactionDao;
+    private final SessionDao sessionDao;
+    private final MessageCache messageCache;
+    private final ObjectMapper objectMapper;
+
+    public ChatProjectionServiceImpl(
+            MessageDao messageDao,
+            RunDao runDao,
+            CompactionEventDao compactionEventDao,
+            SessionCompactionDao sessionCompactionDao,
+            SessionDao sessionDao,
+            MessageCache messageCache,
+            ObjectMapper objectMapper) {
+        this.messageDao = messageDao;
+        this.runDao = runDao;
+        this.compactionEventDao = compactionEventDao;
+        this.sessionCompactionDao = sessionCompactionDao;
+        this.sessionDao = sessionDao;
+        this.messageCache = messageCache;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    @Transactional
+    public void startTurn(TurnKey turn, String userText, String requestId, String modelId) {
+        LocalDateTime now = nowUtc();
+
+        Run run = new Run();
+        run.setId(turn.runRowId());
+        run.setSessionId(turn.sessionId());
+        run.setTurnId(turn.turnId());
+        run.setRequestId(requestId);
+        run.setModelId(modelId);
+        run.setStatus("running");
+        run.setStartedAt(now);
+        runDao.insert(run);
+
+        Message user = new Message();
+        user.setSessionId(turn.sessionId());
+        user.setTurnId(turn.turnId());
+        user.setOrdinal(0);
+        user.setRole("user");
+        user.setContent(userText);
+        user.setDeliveryStatus("pending");
+        user.setRunId(turn.runRowId());
+        messageDao.upsert(user);
+
+        sessionDao.autoTitle(turn.sessionId(), titleFrom(userText), Session.DEFAULT_TITLE);
+        sessionDao.touch(turn.sessionId(), now);
+    }
+
+    @Override
+    public void gatewayAccepted(String runRowId, String gatewayRunId) {
+        runDao.markGatewayRunId(runRowId, gatewayRunId);
+    }
+
+    @Override
+    public void appendAssistant(
+            TurnKey turn,
+            int ordinal,
+            String text,
+            String thinking,
+            String toolCallsJson,
+            Integer seqInTurn,
+            long tokensIn,
+            long tokensOut,
+            long cacheReadTokens,
+            long cacheWriteTokens,
+            String status) {
+        Message message = baseMessage(turn, ordinal, "assistant");
+        message.setContent(text);
+        message.setThinking(thinking);
+        message.setToolCalls(toolCallsJson);
+        message.setAssistantSeqInTurn(seqInTurn);
+        message.setTokensIn(tokensIn);
+        message.setTokensOut(tokensOut);
+        message.setCacheReadTokens(cacheReadTokens);
+        message.setCacheWriteTokens(cacheWriteTokens);
+        message.setStatus(status);
+        messageDao.upsert(message);
+        if ("complete".equals(status) || "partial".equals(status)) {
+            cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
+        }
+    }
+
+    @Override
+    public void appendTool(
+            TurnKey turn, int ordinal, String content, String toolName, String detailsJson) {
+        Message message = baseMessage(turn, ordinal, "tool");
+        message.setContent(truncateUtf8(content, TOOL_CONTENT_LIMIT_BYTES));
+        message.setDetails(toolDetails(detailsJson, toolName));
+        messageDao.upsert(message);
+        cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), ordinal));
+    }
+
+    @Override
+    @Transactional
+    public void recordCompaction(
+            TurnKey turn,
+            long userId,
+            String requestId,
+            String reason,
+            Long tokensBefore,
+            Long tokensAfter,
+            String summary) {
+        CompactionEvent event = new CompactionEvent();
+        event.setUserId(userId);
+        event.setSessionId(turn.sessionId());
+        event.setRunId(turn.runRowId());
+        event.setTurnId(turn.turnId());
+        event.setRequestId(requestId);
+        event.setReason(reason);
+        event.setTokensBefore(tokensBefore);
+        event.setTokensAfter(tokensAfter);
+        event.setCreatedAt(nowUtc());
+        compactionEventDao.insert(event);
+
+        if (summary == null || summary.isBlank()) {
+            // Older gateways omit the summary; the card is simply absent.
+            return;
+        }
+        SessionCompaction compaction = new SessionCompaction();
+        compaction.setSessionId(turn.sessionId());
+        compaction.setAfterMessageId(messageDao.maxIdBySession(turn.sessionId()));
+        compaction.setReason(reason);
+        boolean truncated = summary.length() > SUMMARY_LIMIT_CHARS;
+        compaction.setSummary(truncated ? safePrefix(summary, SUMMARY_LIMIT_CHARS) : summary);
+        compaction.setTruncated(truncated);
+        compaction.setTokensBefore(tokensBefore);
+        compaction.setTokensAfter(tokensAfter);
+        compaction.setCreatedAt(nowUtc());
+        sessionCompactionDao.insert(compaction);
+        if (truncated) {
+            org.slf4j.LoggerFactory.getLogger(ChatProjectionServiceImpl.class).warn(
+                    "compaction summary truncated to {} chars (session {})",
+                    SUMMARY_LIMIT_CHARS, turn.sessionId());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void settleRun(
+            TurnKey turn,
+            String contractStatus,
+            String errorCode,
+            String errorMessage,
+            long tokensIn,
+            long tokensOut,
+            long cacheReadTokens,
+            long cacheWriteTokens,
+            String userEntryId) {
+        runDao.settle(
+                turn.runRowId(),
+                mapRunStatus(contractStatus),
+                errorCode,
+                truncateUtf8(errorMessage, ERROR_MESSAGE_LIMIT_BYTES),
+                tokensIn,
+                tokensOut,
+                cacheReadTokens,
+                cacheWriteTokens,
+                nowUtc());
+        messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "sent");
+        bindUserEntryId(turn, userEntryId);
+        cacheAfterCommit(messageDao.findByOrdinal(turn.sessionId(), turn.turnId(), 0));
+    }
+
+    @Override
+    @Transactional
+    public void failBeforeStream(TurnKey turn, String errorCode, String errorMessage) {
+        runDao.settle(
+                turn.runRowId(),
+                "failed",
+                errorCode,
+                truncateUtf8(errorMessage, ERROR_MESSAGE_LIMIT_BYTES),
+                0L,
+                0L,
+                0L,
+                0L,
+                nowUtc());
+        messageDao.markUserDelivery(turn.sessionId(), turn.turnId(), "failed");
+    }
+
+    /**
+     * details is JSON: truncation would corrupt it, so an oversized payload is
+     * dropped entirely (history then degrades to the plain tool card).
+     */
+    /** Keeps the tool name for history rendering without a schema change. */
+    private String toolDetails(String detailsJson, String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return boundedDetails(detailsJson);
+        }
+        ObjectNode node = null;
+        if (detailsJson != null && !detailsJson.isBlank()) {
+            try {
+                JsonNode parsed = objectMapper.readTree(detailsJson);
+                if (parsed.isObject()) {
+                    node = (ObjectNode) parsed;
+                }
+            } catch (JsonProcessingException ignored) {
+                // Malformed details from an upstream version; keep the tool name.
+            }
+        }
+        if (node == null) {
+            node = objectMapper.createObjectNode();
+        }
+        node.put("toolName", toolName);
+        try {
+            return boundedDetails(objectMapper.writeValueAsString(node));
+        } catch (JsonProcessingException ex) {
+            return boundedDetails(detailsJson);
+        }
+    }
+
+    private static String boundedDetails(String detailsJson) {
+        if (detailsJson == null || detailsJson.isBlank()) {
+            return null;
+        }
+        if (detailsJson.getBytes(StandardCharsets.UTF_8).length > TOOL_DETAILS_LIMIT_BYTES) {
+            org.slf4j.LoggerFactory.getLogger(ChatProjectionServiceImpl.class).warn(
+                    "dropping tool details larger than {} bytes", TOOL_DETAILS_LIMIT_BYTES);
+            return null;
+        }
+        return detailsJson;
+    }
+
+    /** The cache is auxiliary and must only see committed rows. */
+    private void cacheAfterCommit(Message message) {
+        if (message == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    messageCache.add(message);
+                }
+            });
+        } else {
+            messageCache.add(message);
+        }
+    }
+
+    private static Message baseMessage(TurnKey turn, int ordinal, String role) {
+        Message message = new Message();
+        message.setSessionId(turn.sessionId());
+        message.setTurnId(turn.turnId());
+        message.setOrdinal(ordinal);
+        message.setRole(role);
+        message.setRunId(turn.runRowId());
+        return message;
+    }
+
+    private static String mapRunStatus(String contractStatus) {
+        return switch (contractStatus) {
+            case "completed" -> "completed";
+            case "aborted" -> "aborted";
+            default -> "failed";
+        };
+    }
+
+    private static String titleFrom(String text) {
+        String cleaned = text == null ? "" : text.strip().replaceAll("\\s+", " ");
+        if (cleaned.isEmpty()) {
+            return Session.DEFAULT_TITLE;
+        }
+        int end = Math.min(cleaned.length(), TITLE_LIMIT);
+        return cleaned.substring(0, end);
+    }
+
+    /** Character-count truncation that never splits a surrogate pair. */
+    private static String safePrefix(String value, int maxChars) {
+        int end = maxChars;
+        if (Character.isHighSurrogate(value.charAt(end - 1))) {
+            end -= 1;
+        }
+        return value.substring(0, end);
+    }
+
+    /** Branch support: the user row of this turn learns its pi entry id. */
+    private void bindUserEntryId(TurnKey turn, String userEntryId) {
+        if (userEntryId == null || userEntryId.isBlank()) {
+            return;
+        }
+        messageDao.bindPiEntryId(turn.sessionId(), turn.turnId(), userEntryId);
+    }
+
+    private static String truncateUtf8(String value, int maxBytes) {
+        if (value == null || value.getBytes(StandardCharsets.UTF_8).length <= maxBytes) {
+            return value;
+        }
+        int bytes = 0;
+        int index = 0;
+        while (index < value.length()) {
+            int codePoint = value.codePointAt(index);
+            int size = new String(Character.toChars(codePoint)).getBytes(StandardCharsets.UTF_8).length;
+            if (bytes + size > maxBytes) {
+                break;
+            }
+            bytes += size;
+            index += Character.charCount(codePoint);
+        }
+        return value.substring(0, index);
+    }
+
+    private static LocalDateTime nowUtc() {
+        return LocalDateTime.now(ZoneOffset.UTC);
+    }
+}

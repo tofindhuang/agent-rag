@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.ExportQueryDao">
+
+    <!-- account.json -->
+
+    <select id="findAccount" resultType="map">
+        SELECT email, role, created_at FROM users WHERE id = #{userId}
+    </select>
+
+    <select id="listIdentities" resultType="map">
+        SELECT issuer, created_at, last_login_at
+        FROM user_identities WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="hasPassword" resultType="long">
+        SELECT (password_hash IS NOT NULL) FROM users WHERE id = #{userId}
+    </select>
+
+    <!-- sessions.json -->
+
+    <select id="listSessions" resultType="map">
+        SELECT id, title, status, last_active_at, created_at
+        FROM sessions WHERE user_id = #{userId} ORDER BY created_at
+    </select>
+
+    <!-- messages.json -->
+
+    <select id="streamMessages" resultType="map" fetchSize="500" resultSetType="FORWARD_ONLY">
+        SELECT m.session_id, m.turn_id, m.ordinal, m.role, m.content, m.thinking,
+               m.tool_calls, m.details, m.status, m.tokens_in, m.tokens_out,
+               m.cache_read_tokens, m.cache_write_tokens, m.created_at
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = #{userId}
+        ORDER BY m.session_id, m.id
+    </select>
+
+    <select id="countMessages" resultType="long">
+        SELECT COUNT(*) FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = #{userId}
+    </select>
+
+    <!-- compactions.json -->
+
+    <select id="listCompactions" resultType="map">
+        SELECT c.session_id, c.reason, c.summary, c.truncated, c.tokens_before,
+               c.tokens_after, c.created_at
+        FROM session_compactions c
+        JOIN sessions s ON s.id = c.session_id
+        WHERE s.user_id = #{userId}
+        ORDER BY c.id
+    </select>
+
+    <!-- profile.json -->
+
+    <select id="listFacts" resultType="map">
+        SELECT id, category, fact_key, fact_title, fact_value, fact_text, status,
+               supersedes_id, source_session_id, collection_id, created_at, updated_at
+        FROM profile_facts WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="listCollections" resultType="map">
+        SELECT id, name, system_key, created_at FROM profile_collections
+        WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="findProfileSettings" resultType="map">
+        SELECT enabled, updated_at FROM profile_settings WHERE user_id = #{userId}
+    </select>
+
+    <!-- knowledge-bases.json -->
+
+    <select id="listKnowledgeBases" resultType="map">
+        SELECT id, name, is_default, created_at FROM knowledge_bases
+        WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="listDocuments" resultType="map">
+        SELECT id, kb_id, title, source_type, mime, size_bytes, status, chunk_count,
+               version, created_at
+        FROM kb_documents WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="listEvalLabels" resultType="map">
+        SELECT id, kb_id, query, expectation, document_id, seq, created_at
+        FROM kb_eval_labels WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="listEvalRuns" resultType="map">
+        SELECT id, kb_id, complete, label_count, no_answer_count, executed_count,
+               recall5, mrr5, refusal_accuracy, threshold_used, threshold_source, created_at
+        FROM kb_eval_runs WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <!-- usage.json -->
+
+    <select id="listRuns" resultType="map">
+        SELECT r.turn_id, r.status, r.tokens_in, r.tokens_out, r.cache_read_tokens,
+               r.cache_write_tokens, r.started_at, r.settled_at
+        FROM runs r JOIN sessions s ON s.id = r.session_id
+        WHERE s.user_id = #{userId} ORDER BY r.started_at
+    </select>
+
+    <select id="listExecutions" resultType="map">
+        SELECT id, language, status, exit_code, duration_ms, timed_out, oom_killed,
+               created_at
+        FROM exec_records WHERE user_id = #{userId} ORDER BY id
+    </select>
+
+    <!-- audit.json -->
+
+    <select id="streamAuditEvents" resultType="map" fetchSize="500" resultSetType="FORWARD_ONLY">
+        SELECT action, outcome, target_type, target_id, ip, created_at, detail
+        FROM audit_events WHERE actor_user_id = #{userId} ORDER BY id
+    </select>
+
+    <select id="countAuditEvents" resultType="long">
+        SELECT COUNT(*) FROM audit_events WHERE actor_user_id = #{userId}
+    </select>
+
+    <!-- size estimate -->
+
+    <select id="estimateMessageChars" resultType="long">
+        SELECT COALESCE(SUM(CHAR_LENGTH(m.content)
+                            + CHAR_LENGTH(COALESCE(m.thinking, ''))
+                            + CHAR_LENGTH(COALESCE(CAST(m.tool_calls AS CHAR), ''))
+                            + CHAR_LENGTH(COALESCE(CAST(m.details AS CHAR), ''))), 0)
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = #{userId}
+    </select>
+
+    <select id="estimateFactChars" resultType="long">
+        SELECT COALESCE(SUM(CHAR_LENGTH(fact_text)), 0)
+        FROM profile_facts WHERE user_id = #{userId}
+    </select>
+
+    <select id="estimateLabelChars" resultType="long">
+        SELECT COALESCE(SUM(CHAR_LENGTH(query) + CHAR_LENGTH(expectation)), 0)
+        FROM kb_eval_labels WHERE user_id = #{userId}
+    </select>
+</mapper>

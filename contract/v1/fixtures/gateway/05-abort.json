@@ -1,0 +1,95 @@
+{
+  "contractVersion": "1",
+  "kind": "gateway",
+  "name": "abort",
+  "description": "用户中断：保留已产生的 assistant 消息，终态为 aborted",
+  "input": {
+    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "events": [
+      { "type": "agent_start" },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "正在生成"
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [{ "type": "text", "text": "正在生成" }],
+          "usage": {
+            "input": 90,
+            "output": 4,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 94,
+            "cost": {
+              "input": 0.0001,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0001
+            }
+          },
+          "stopReason": "aborted"
+        }
+      },
+      { "type": "agent_settled", "aborted": true }
+    ]
+  },
+  "expected": {
+    "frames": [
+      {
+        "seq": 1,
+        "event": "run_started",
+        "data": {
+          "runId": "run-1",
+          "turnId": "turn-1",
+          "sessionId": "session-1",
+          "contractVersion": "1"
+        }
+      },
+      { "seq": 2, "event": "text_delta", "data": { "delta": "正在生成" } },
+      {
+        "seq": 3,
+        "event": "message_end",
+        "data": {
+          "seqInTurn": 1,
+          "role": "assistant",
+          "text": "正在生成",
+          "thinking": "",
+          "toolCalls": [],
+          "usage": {
+            "input": 90,
+            "output": 4,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 94,
+            "cost": {
+              "input": 0.0001,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0001
+            }
+          },
+          "stopReason": "aborted"
+        }
+      },
+      { "seq": 4, "event": "run_settled", "data": { "status": "aborted", "turnId": "turn-1" } }
+    ],
+    "invariants": {
+      "firstEvent": "run_started",
+      "lastEvent": "run_settled",
+      "terminalCount": 1,
+      "seqStartsAt": 1,
+      "seqMonotonic": true,
+      "contractVersion": "1"
+    }
+  }
+}

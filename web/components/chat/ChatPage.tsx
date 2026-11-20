@@ -1,0 +1,206 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { AccountMenu } from "@/components/auth/AccountMenu";
+import { PasswordPrompt } from "@/components/auth/PasswordPrompt";
+import type { ChatMessage } from "@/types/chat";
+import { Dialog } from "@/components/ui/Dialog";
+import { Banner } from "@/components/ui/Banner";
+import { useChat } from "@/hooks/useChat";
+import { Button } from "@/components/ui/Button";
+import { Composer } from "./Composer";
+import { MessageList } from "./MessageList";
+import { NewSessionDialog } from "./NewSessionDialog";
+import { SessionKbSelect } from "./SessionKbSelect";
+import { SessionMemorySelect } from "./SessionMemorySelect";
+import { SessionSidebar, type SessionTab } from "./SessionSidebar";
+import { SwitchModelDialog } from "./SwitchModelDialog";
+import styles from "./chat.module.css";
+
+export function ChatPage() {
+  const chat = useChat();
+  const [creating, setCreating] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [branchTarget, setBranchTarget] = useState<ChatMessage | null>(null);
+  const [branching, setBranching] = useState(false);
+  const [tab, setTab] = useState<SessionTab>("active");
+
+  const changeTab = (next: SessionTab) => {
+    setTab(next);
+    if (next === "archived") void chat.loadArchived();
+  };
+
+  // Special error codes get their own affordances instead of plain text.
+  const needsSetup = chat.errorCode === "MODEL_NOT_CONFIGURED";
+  const modelUnavailable =
+    chat.errorCode === "MODEL_UNAVAILABLE" && chat.errorSource === "send";
+  const plainError =
+    chat.error != null && !needsSetup && !modelUnavailable ? chat.error : null;
+
+  return (
+    <div className={styles.shell}>
+      <SessionSidebar
+        sessions={chat.sessions}
+        archivedSessions={chat.archivedSessions}
+        tab={tab}
+        currentSessionId={chat.currentSessionId}
+        loading={chat.sessionsLoading}
+        archivedLoading={chat.archivedLoading}
+        archivedHasMore={chat.archivedHasMore}
+        onTabChange={changeTab}
+        onCreate={() => setCreating(true)}
+        onSelect={(sessionId) => void chat.selectSession(sessionId)}
+        onRename={(sessionId, title) => void chat.renameSession(sessionId, title)}
+        onArchive={(sessionId) => void chat.archiveSession(sessionId)}
+        onRestore={(sessionId) => void chat.restoreSession(sessionId)}
+        onPermanentDelete={(sessionId) => void chat.permanentDeleteSession(sessionId)}
+        onLoadMoreArchived={() => void chat.loadMoreArchived()}
+      />
+
+      <div className={styles.mainArea}>
+        <main className={styles.chat}>
+          <header className={styles.header}>
+            <div className={styles.titleWrap}>
+              <h1 className={styles.title}>{chat.currentTitle}</h1>
+              {chat.currentModel ? (
+                <span className={styles.modelTag} title="当前会话使用的模型">
+                  {chat.currentModel}
+                </span>
+              ) : null}
+              {chat.currentSessionId ? (
+                <SessionKbSelect
+                  currentKbId={chat.currentKbId}
+                  disabled={chat.busy}
+                  onChange={(kbId) =>
+                    void chat.switchKnowledgeBase(chat.currentSessionId!, kbId)
+                  }
+                />
+              ) : null}
+              {chat.currentSessionId ? (
+                <SessionMemorySelect
+                  sessionId={chat.currentSessionId}
+                  disabled={chat.busy}
+                />
+              ) : null}
+            </div>
+            <AccountMenu />
+          </header>
+
+          <PasswordPrompt />
+
+          {needsSetup && !creating ? (
+            <Banner tone="error">
+              <span>{chat.error}</span>
+              <Link className={styles.bannerLink} href="/settings">
+                前往设置
+              </Link>
+            </Banner>
+          ) : null}
+
+          {modelUnavailable && !switching && chat.currentSessionId ? (
+            <Banner tone="error">
+              <span>{chat.error}</span>
+              <button
+                className={styles.bannerLink}
+                type="button"
+                onClick={() => setSwitching(true)}
+              >
+                切换模型
+              </button>
+            </Banner>
+          ) : null}
+
+          {chat.quotaWarning ? (
+            <Banner tone="notice">{chat.quotaWarning}</Banner>
+          ) : null}
+
+          {chat.historyHasMore ? (
+            <button
+              className={styles.loadOlder}
+              type="button"
+              onClick={() => void chat.loadOlder()}
+              disabled={chat.historyLoading}
+            >
+              {chat.historyLoading ? "加载中…" : "加载更早消息"}
+            </button>
+          ) : null}
+
+          <MessageList
+            messages={chat.messages}
+            busy={chat.busy}
+            error={plainError}
+            notice={chat.notice}
+            historyLoading={chat.historyLoading}
+            compactions={chat.compactions}
+            compactionsTruncated={chat.compactionsTruncated}
+            liveCompactions={chat.liveCompactions}
+            latestCompactionRef={chat.latestCompactionRef}
+            historyHasMore={chat.historyHasMore}
+            onBranch={(message) => setBranchTarget(message)}
+          />
+
+          <Composer
+            value={chat.input}
+            onChange={chat.setInput}
+            onSend={() => void chat.send()}
+            onStop={chat.stop}
+            disabled={!chat.currentSessionId || chat.busy || chat.historyLoading}
+            busy={chat.busy}
+            contextUsage={chat.contextUsage}
+            contextCompacted={chat.contextCompacted}
+            onCompactedClick={chat.scrollToLatestCompaction}
+          />
+        </main>
+      </div>
+
+      {branchTarget ? (
+        <Dialog
+          title="从这里重新开始？"
+          description="这条消息之后的内容会从对话中隐藏（仍保留在存档里），你可以修改内容后重新发送。"
+          onClose={() => setBranchTarget(null)}
+        >
+          <div className={styles.branchDialog}>
+            <div className={styles.branchActions}>
+              <Button variant="ghost" size="sm" onClick={() => setBranchTarget(null)}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                disabled={branching}
+                onClick={async () => {
+                  const target = branchTarget;
+                  if (!target?.historyId) return;
+                  setBranching(true);
+                  const ok = await chat.branchFrom(target.historyId);
+                  setBranching(false);
+                  if (ok) setBranchTarget(null);
+                }}
+              >
+                {branching ? "处理中…" : "确认"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {creating ? (
+        <NewSessionDialog
+          error={chat.errorSource === "create" ? chat.error : null}
+          errorCode={chat.errorSource === "create" ? chat.errorCode : null}
+          onSubmit={async (options) => chat.createSession(options)}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
+
+      {switching && chat.currentSessionId ? (
+        <SwitchModelDialog
+          sessionId={chat.currentSessionId}
+          error={chat.errorSource === "switch" ? chat.error : null}
+          onSwitch={async (sessionId, modelId) => chat.switchModel(sessionId, modelId)}
+          onClose={() => setSwitching(false)}
+        />
+      ) : null}
+    </div>
+  );
+}

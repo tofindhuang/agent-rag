@@ -1,0 +1,104 @@
+{
+  "contractVersion": "1",
+  "kind": "gateway",
+  "name": "compaction-aborted",
+  "description": "压缩被中断：不发 compaction 事件，避免假的「已压缩」提示与运营计数",
+  "input": {
+    "run": { "runId": "run-1", "turnId": "turn-1", "sessionId": "session-1" },
+    "events": [
+      { "type": "agent_start" },
+      { "type": "compaction_start", "reason": "overflow" },
+      {
+        "type": "compaction_end",
+        "reason": "overflow",
+        "result": null,
+        "aborted": true,
+        "willRetry": false,
+        "errorMessage": "aborted by user"
+      },
+      {
+        "type": "message_update",
+        "assistantMessageEvent": {
+          "type": "text_delta",
+          "contentIndex": 0,
+          "delta": "压缩没成功，我们继续。"
+        }
+      },
+      {
+        "type": "message_end",
+        "message": {
+          "role": "assistant",
+          "content": [{ "type": "text", "text": "压缩没成功，我们继续。" }],
+          "usage": {
+            "input": 8000,
+            "output": 12,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 8012,
+            "cost": {
+              "input": 0.001,
+              "output": 0.0001,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0011
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "type": "agent_settled", "aborted": false }
+    ]
+  },
+  "expected": {
+    "frames": [
+      {
+        "seq": 1,
+        "event": "run_started",
+        "data": {
+          "runId": "run-1",
+          "turnId": "turn-1",
+          "sessionId": "session-1",
+          "contractVersion": "1"
+        }
+      },
+      { "seq": 2, "event": "text_delta", "data": { "delta": "压缩没成功，我们继续。" } },
+      {
+        "seq": 3,
+        "event": "message_end",
+        "data": {
+          "seqInTurn": 1,
+          "role": "assistant",
+          "text": "压缩没成功，我们继续。",
+          "thinking": "",
+          "toolCalls": [],
+          "usage": {
+            "input": 8000,
+            "output": 12,
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 8012,
+            "cost": {
+              "input": 0.001,
+              "output": 0.0001,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0.0011
+            }
+          },
+          "stopReason": "stop"
+        }
+      },
+      { "seq": 4, "event": "run_settled", "data": { "status": "completed", "turnId": "turn-1" } }
+    ],
+    "invariants": {
+      "firstEvent": "run_started",
+      "lastEvent": "run_settled",
+      "terminalCount": 1,
+      "seqStartsAt": 1,
+      "seqMonotonic": true,
+      "contractVersion": "1"
+    }
+  }
+}

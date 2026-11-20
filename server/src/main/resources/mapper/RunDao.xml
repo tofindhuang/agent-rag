@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.RunDao">
+
+    <update id="markGatewayRunId">
+        UPDATE runs
+        SET gateway_run_id = #{gatewayRunId}
+        WHERE id = #{id}
+    </update>
+
+    <update id="settle">
+        UPDATE runs
+        SET status = #{status},
+            error_code = #{errorCode},
+            error_message = #{errorMessage},
+            tokens_in = #{tokensIn},
+            tokens_out = #{tokensOut},
+            cache_read_tokens = #{cacheReadTokens},
+            cache_write_tokens = #{cacheWriteTokens},
+            settled_at = #{settledAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findForTrace" resultType="com.agentcore.server.domain.AdminTraceRun">
+        SELECT r.id AS run_id,
+               r.session_id AS session_id,
+               r.turn_id AS turn_id,
+               r.request_id AS request_id,
+               r.model_id AS model_id,
+               r.status AS status,
+               r.error_code AS error_code,
+               r.error_message AS error_message,
+               r.tokens_in AS tokens_in,
+               r.tokens_out AS tokens_out,
+               r.cache_read_tokens AS cache_read_tokens,
+               r.cache_write_tokens AS cache_write_tokens,
+               r.started_at AS started_at,
+               r.settled_at AS settled_at,
+               s.user_id AS user_id,
+               u.email AS email
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        JOIN users u ON u.id = s.user_id
+        <choose>
+            <when test="requestId != null">WHERE r.request_id = #{requestId}</when>
+            <when test="turnId != null">WHERE r.turn_id = #{turnId}</when>
+            <otherwise>WHERE r.id = #{runId}</otherwise>
+        </choose>
+        ORDER BY r.started_at DESC
+        LIMIT 1
+    </select>
+
+    <delete id="deleteBySession">
+        DELETE FROM runs
+        WHERE session_id = #{sessionId}
+    </delete>
+
+</mapper>

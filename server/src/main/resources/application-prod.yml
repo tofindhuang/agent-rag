@@ -1,0 +1,4 @@
+# Production defaults: cookies only travel over HTTPS.
+app:
+  auth:
+    cookie-secure: true

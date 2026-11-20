@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+dist/
+build/
+target/
+*.log
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+# Playwright MCP local artifacts
+.playwright-mcp/
+
+# gateway cold-start session files
+gateway/data/
+/data/
+
+# loadtest harness scratch (metrics, logs, pids)
+tools/loadtest/.run/

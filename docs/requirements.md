@@ -52,7 +52,7 @@ Next.js (SSE) ──HTTPS──> Java (Spring Boot)
                                           └─ JSONL 事件流 → Java → SSE 转发
 ```
 
-*向量库选型为开放问题，见 §8。
+*向量库已定为 Qdrant，embedding/rerank 走可配置端点，见 ADR-0005。
 
 组件职责：
 
@@ -73,7 +73,7 @@ Next.js (SSE) ──HTTPS──> Java (Spring Boot)
 - 多轮上下文：完整消息历史持久化，刷新/重连不丢失
 - 流式输出：token 级增量推送到前端（SSE）
 - 中断与继续：用户可中断当前回复（abort）；中断后可继续对话
-- 会话分支：pi 原生支持消息树分支，本期仅保留能力不暴露 UI（P2 再暴露）
+- 会话分支：pi 原生支持消息树分支；「从这里重新开始」（分支后隐藏旧分支、保留原文）已交付（ADR-0035），完整树视图仍为后续
 - 冷启动恢复：gateway 重启或会话换宿主后，可从存储恢复上下文继续对话
 
 AC：
@@ -83,24 +83,26 @@ AC：
 
 ### FR-2 知识库 / RAG（P0）
 
-- 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与原文入 MySQL
+- 文档摄取管线：上传 → 格式解析 → 切分 → embedding → 向量库；元数据与切片文本入 MySQL，原文入 S3 兼容对象存储（默认 Silo，MinIO 兼容 fork，见 ADR-0013），向量入 Qdrant（ADR-0005）
 - 支持格式（首期）：PDF、Markdown、TXT、docx、HTML URL 抓取
-- 检索工具 `kb_search`：模型在对话中按需调用；Java 侧执行向量检索 + 重排（rerank），返回 top-k 片段
+- 检索工具 `kb_search`：模型在对话中按需调用；Java 侧执行向量检索 + 重排（rerank），返回 top-k 片段；配置拒答阈值后，最高分不足时返回「无相关内容」（已交付，见 `docs/tickets/kb-refusal-eval/`）
 - 知识库隔离：按用户/工作区隔离，检索只命中授权范围
 - 引用溯源：回答中被引用的知识片段可展示来源文档与定位
 - 增量更新：文档重新上传后旧切片失效并重建
+- 检索质量可评测：按知识库维护「问题 → 期望 Passage」标注集，运行评测得到 recall@5 / MRR@5，并区分 embedding 召回（候选池 recall）与 rerank 排序的表现；文档记录 embedding 模型指纹，变更后检索前校验
 
-AC：
+AC:
 1. 上传 100 页 PDF 后 5 分钟内可被检索命中
 2. 回答引用知识库内容时，前端可展示「来自文档 X 第 Y 段」
 3. 用户 A 的检索请求不返回用户 B 的文档切片
+4. 用真实文档建立至少 10 条标注后，评测可给出可复算的 recall@5 / MRR@5；换 embedding 模型后未重建的文档不得被检索命中
 
 ### FR-3 沙箱代码执行（P0）
 
 - 工具 `run_code`：模型在对话中提交代码，沙箱执行后回传结果
 - 首期语言：Python；执行环境镜像版本固定
 - 隔离要求（每词含义见下）：
-  - 临时容器：一次执行一个容器，结束即销毁
+  - 临时容器：一次执行一个容器，结束即销毁。允许提前创建并启动 idle 容器（预热池），但每次执行仍独占一个容器，执行结束即销毁、不回流复用
   - 资源限制：CPU 配额、内存上限（默认 512MB）、磁盘 tmpfs 只写工作目录
   - 网络禁用：容器无网络能力
   - 非 root 运行
@@ -122,7 +124,7 @@ AC：
 - 复用 pi 内置 compaction：上下文接近模型窗口上限时，自动将较早消息摘要压缩
 - 策略可配：触发阈值（token 占比）、保留最近 N 轮原文
 - 不失忆保障：摘要替换的原文仍持久化（pi session 存储 + MySQL 投影），可按需回捞
-- 摘要可见：用户可查看当前会话的压缩摘要（P1）
+- 摘要可见：用户可查看当前会话的压缩摘要（P1，已交付，见 `docs/tickets/compaction-summary/`）
 
 AC：
 1. 单会话连续对话至 3 倍模型窗口长度，仍能正确引用第 1 轮明确过的关键事实
@@ -158,14 +160,23 @@ AC：
 - 用量统计：token 用量、执行次数、按用户/会话聚合；成本估算
 - 关键链路 trace：请求 → gateway → 模型/工具 → 响应，全链路 request_id 贯穿
 - 运营指标看板：活跃会话数、compaction 频次、检索命中率、沙箱排队时长
+- 配额：每用户每月 token 上限（部署级默认，0 = 不限制）；超额返回 429 `QUOTA_EXCEEDED` 与重置时间（ADR-0032）
+- 权限：admin 为只读观测角色；普通用户可查看自己的用量；admin 不可查看对话正文、代码与密钥
+
+AC：
+1. admin 能查看全局用量与运营指标；普通用户访问 admin 接口返回 403
+2. 用户能在设置页看到今天与 7/30 天的 token、成本、执行与检索次数，未配置价格的模型显式标注
+3. 按 request_id / turn_id / run_id 可还原一次对话轮次的完整时间线，且响应不包含正文、代码、stdout/stderr
+4. 指标按部署时区分桶，管理员与用户看到的用量口径一致
 
 ## 4. 非功能需求
 
 | 项 | 要求 |
 |---|---|
-| 并发 | 单 gateway 进程 ≥50 活跃会话（PoC 实测校准）；gateway 可横向扩展，会话按 hash 亲和路由 |
+| 并发 | 单 gateway 进程 ≥50 活跃会话（M1 实测）；目标单机峰值 50–200 活跃会话、约 2000 注册用户；参考部署 5 实例、单实例软上限 60、空闲 15 分钟驱逐；会话按亲和路由，单写者由文件锁保证 |
 | 延迟 | 首 token P95 < 3s（扣除模型自身 TTFB）；`kb_search`/`run_code` 回传 P95 < 500ms（不含代码执行本身） |
-| 可用性 | Java 与 gateway 任一重启不丢已持久化消息；部署滚动更新不断流 |
+| 可用性 | Java 与 gateway 任一重启不丢已持久化消息；计划内滚动更新采用排空：在飞轮次完成，或 10 分钟宽限后 abort 成 `partial`；不承诺崩溃 / `kill -9` 时迁移半截 LLM 流 |
+| 存储 | 本地会话文件只保留 90 天内活动的会话，其余冷归档到对象存储并可透明恢复；归档对象永久保留，用户永久删除时销毁 |
 | 数据安全 | MySQL 加密存储凭证类字段；传输全程 TLS；沙箱执行产物保留 7 天后清理 |
 | 版本策略 | pi 锁定精确版本；升级前跑契约测试（RPC 事件 schema、extension API）；不依赖 experimental 包（pi-server/pi-protocol） |
 
@@ -175,12 +186,14 @@ AC：
 |---|---|---|
 | 前端 | Next.js 14+，SSE | 流式渲染；知识库与记忆管理界面 |
 | 业务层 | Java 21 + Spring Boot 3 | 认证、编排、RAG 管线、沙箱调度；HTTP 客户端调用 gateway，无需 Spring AI 的 agent 能力 |
-| agent 引擎 | Node 20+ 服务，`@earendil-works/pi-coding-agent` SDK | gateway；extension 三件套：kb_search、run_code、prompt 定制 |
+| agent 引擎 | Node 22+ 服务，`@earendil-works/pi-coding-agent` SDK | gateway；extension 三件套：kb_search、run_code、prompt 定制 |
 | 持久化 | MySQL 8 | 用户、会话、消息投影、画像、文档元数据、执行审计、用量 |
 | 缓存 | Redis 7 | 活跃会话路由表、限流、沙箱并发信号量、分布式锁 |
-| 向量库 | 待定（Qdrant / Milvus / pgvector 三选一，M0 定） | 知识切片的向量检索 |
+| 向量库 | Qdrant | 知识切片的向量检索；M0 spike 定稿（ADR-0005） |
+| 消息队列 | RabbitMQ 4 | 知识库摄取任务、TTL 重试与 DLQ（FR-2） |
+| 对象存储 | Silo（MinIO 兼容 fork） | 知识库原文；标准 S3 API，可替换云 S3（ADR-0013） |
 | 沙箱 | Docker Engine（docker-java 调用） | 首期 runc；gVisor (runsc) 作为 P2 加固选项 |
-| embedding / rerank | 待定（跟随主模型 provider 或独立服务） | M0 与向量库一并定 |
+| embedding / rerank | 可配置的 OpenAI 兼容端点（SiliconFlow / 本地 TEI 等） | 业务层调用；生成式 LLM 仍只走 gateway（ADR-0005） |
 
 ## 6. 数据模型草案（MySQL）
 
@@ -196,12 +209,15 @@ AC：
 | `doc_chunks` | id, document_id, seq, content, vector_id, token_count |
 | `exec_records` | id, session_id, user_id, language, code, exit_code, stdout/stderr_ref, duration_ms, cpu/mem_used, status |
 | `api_usage` | id, user_id, session_id, model, tokens_in/out, cost_est, created_at |
+| `session_archives` | session_id, user_id, object_prefix, jsonl_sha256, meta_sha256, size_bytes, status(archived/failed/deleted), attempts, last_error, archived_at, updated_at |
 
 Redis key 草案：
 
 | key | 用途 | TTL |
 |---|---|---|
-| `route:sess:{session_id}` | 会话→gateway 实例的路由表 | 会话活跃期 |
+| `gw:instances` | 存活 gateway 实例 ID 集合 | 随实例注销 |
+| `gw:inst:{instance_id}` | 实例地址、心跳、容量、draining 状态 | 15s，5s 续约 |
+| `route:sess:{session_id}` | 会话→gateway 实例的路由表（放置提示） | 24h，访问续期 |
 | `rl:{user_id}:{window}` | 限流计数 | 窗口期 |
 | `sem:sandbox:{user_id}` | 沙箱并发信号量 | 执行期间 |
 
@@ -213,7 +229,15 @@ Redis key 草案：
 |---|---|---|
 | M0 PoC | 1–2 周 | 端到端 demo：单 gateway 进程 + prompt 整体替换（验证 forceSystemPrompt 定制程度）+ kb_search / run_code extension 打通 + SSE 链路；冻结 Java↔gateway 事件契约 v1；定向量库与 embedding 选型 |
 | M1 MVP | 4–6 周 | 全部 P0：多租户认证、RAG 摄取管线、沙箱隔离与审计、compaction 配置化、画像提取/注入/用户可控、MySQL 消息投影 |
-| M2 硬化 | 3–4 周 | gateway 多实例与亲和路由、冷启动恢复压测、可观测看板、限流调优、gVisor 评估 |
+| M2 硬化 | 3–4 周 | **已完成**。切片 1：gateway 多实例、会话亲和路由、单写者文件锁、排空式滚动更新、空闲驱逐与容量上限、90 天冷归档、跨用户隔离与故障注入、多实例压测。切片 2：OAuth、摘要正文可见、沙箱预热/复用、检索评测扩展、无答案拒答。切片 3–5：摘要可见、无答案拒答与评测扩容、限流令牌桶与可信代理、gVisor 评估（结论：暂不启用）。FR-7 可观测看板已提前交付 |
+
+M2 已收尾（closeout 见 `docs/specs/2026-10-30-m2-closeout.md`，含证据索引、承诺边界与移出项）。
+
+| 阶段 | 周期 | 交付 |
+|---|---|---|
+| M3 运营与商业化 | 2 周 | **已完成**。切片 1 用量配额、切片 2 审计日志、切片 3 个人数据导出；另交付会话分支 UI（FR-1 P2）。closeout 见 `docs/specs/2026-11-05-m3-closeout.md` |
+
+M3 已收尾（`docs/specs/2026-11-05-m3-closeout.md`，含证据索引、承诺边界与生产化缺口）。后续项：生产化（部署/备份/告警）、多语言沙箱（O3）、AIO Sandbox workspace 层（O4）、gVisor 实测启用、完整分支树、跨主机会话迁移；admin 写操作按需再开。
 
 ## 8. 风险与开放问题
 
@@ -223,7 +247,8 @@ Redis key 草案：
 | R2 | 沙箱逃逸（容器非绝对边界） | 禁网 + 非 root + 资源上限 + 只读 rootfs；P2 评估 gVisor；镜像最小化 |
 | R3 | compaction 摘要丢细节导致「失忆」 | 原文不删（pi session + MySQL 投影双保）；摘要 prompt 迭代；M1 加「引用第 1 轮事实」回归用例 |
 | R4 | gateway 单进程内存上限未知 | M0 实测单进程可托管会话数，校准 §4 并发目标 |
-| R5 | 向量库/embedding 选型未定 | M0 用 100 页 PDF 走通摄取→检索→引用闭环后定稿 |
+| R5 | 向量库/embedding 选型未定 | 已定：Qdrant + 可配置 embedding/rerank 端点；spike 结果见 `docs/research/2026-10-23-rag-selection-spike.md`（ADR-0005） |
 | O1 | Java↔gateway 契约（事件流 schema、会话生命周期指令）需 M0 冻结 v1 | — |
-| O2 | 用户画像注入的 token 预算（事实条数上限与筛选策略） | M1 实测定 |
+| O2 | 用户画像注入的 token 预算（事实条数上限与筛选策略） | 已定：20 条 / 4000 字符（真实 DeepSeek 实测，见 ADR-0020「M1 实测与结论」） |
 | O3 | 多语言沙箱扩展顺序（Python 之后） | M2 定 |
+| O4 | 浏览器渲染 / agent 工作区能力是否引入 AIO Sandbox（agent-infra/sandbox，Apache-2.0）作为独立 workspace 层 | M2 后评估；不作为 run_code 底座（ADR-0003） |

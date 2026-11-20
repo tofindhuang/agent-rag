@@ -1,0 +1,62 @@
+package com.agentcore.server.dao;
+
+import com.agentcore.server.domain.Message;
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import java.util.List;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+/** Persistence access for projected {@link Message} rows. */
+@Mapper
+public interface MessageDao extends BaseMapper<Message> {
+
+    /** Idempotent by {@code (session_id, turn_id, ordinal)} (ADR-0006). */
+    int upsert(Message message);
+
+    /** Newest-first page; {@code beforeId} is exclusive. */
+    List<Message> listPage(
+            @Param("sessionId") String sessionId,
+            @Param("beforeId") Long beforeId,
+            @Param("limit") int limit);
+
+    boolean existsBefore(@Param("sessionId") String sessionId, @Param("id") Long id);
+
+    /** Ordered turn transcript for an admin trace (projection order). */
+    List<Message> listByTurn(
+            @Param("sessionId") String sessionId, @Param("turnId") String turnId);
+
+    Message findByOrdinal(
+            @Param("sessionId") String sessionId,
+            @Param("turnId") String turnId,
+            @Param("ordinal") int ordinal);
+
+    int markUserDelivery(
+            @Param("sessionId") String sessionId,
+            @Param("turnId") String turnId,
+            @Param("deliveryStatus") String deliveryStatus);
+
+    /** Owner-scoped lookup used by the branch endpoint. */
+    Message findOwned(String sessionId, long messageId);
+
+    /** Sets the pi entry id on the user row of one turn (branching support). */
+    int bindPiEntryId(
+            @Param("sessionId") String sessionId,
+            @Param("turnId") String turnId,
+            @Param("piEntryId") String piEntryId);
+
+    /** Hides the abandoned tail after a branch; rows stay in the table. */
+    int deactivateAfter(@Param("sessionId") String sessionId, @Param("afterId") long afterId);
+
+    /** Highest projected message id in the session; anchors a compaction summary card. */
+    Long maxIdBySession(@Param("sessionId") String sessionId);
+
+    /** True once the session has any projected message; drives requireExisting. */
+    boolean existsBySession(@Param("sessionId") String sessionId);
+
+    /** True when the session has messages from an earlier turn. */
+    boolean existsBeforeTurn(
+            @Param("sessionId") String sessionId, @Param("turnId") String turnId);
+
+    /** Purge support: messages must disappear before their runs (FK order). */
+    int deleteBySession(@Param("sessionId") String sessionId);
+}

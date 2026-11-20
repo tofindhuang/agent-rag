@@ -1,0 +1,131 @@
+{
+  "kbId": "746fe531-bd64-4b37-a89a-4e72451aeafa",
+  "labels": [
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 2,
+      "query": "spike 评测的 recall@5 是在什么语料上得到的？",
+      "id": 1,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 4,
+      "query": "评测标注用什么来标识期望的 Passage？",
+      "id": 2,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 5,
+      "query": "每个知识库的评测运行历史保留多少次？",
+      "id": 3,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 6,
+      "query": "有效标注少于多少条时界面会提示样本过少？",
+      "id": 4,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 14,
+      "query": "rank_final 记录的是什么排名？",
+      "id": 5,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 16,
+      "query": "recall@5 指标的定义是什么？",
+      "id": 6,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 17,
+      "query": "候选池 recall@10 很低时，说明问题主要出在哪里？",
+      "id": 7,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 23,
+      "query": "检索闸门 KbIndexGuard 的两个方法分别校验什么？",
+      "id": 8,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 24,
+      "query": "哪些接口不接索引闸门、只校验归属？",
+      "id": 9,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 28,
+      "query": "评测的内部并发数和单条查询预算分别是多少？",
+      "id": 10,
+      "state": "ok"
+    },
+    {
+      "doc": "2026-10-25-kb-retrieval-quality.md",
+      "seq": 29,
+      "query": "修改部署默认 embedding 模型后，检索会返回什么错误？",
+      "id": 11,
+      "state": "ok"
+    },
+    {
+      "doc": "README.md",
+      "seq": 18,
+      "query": "README 路线图中 M2 计划包含哪些内容？",
+      "id": 12,
+      "state": "ok"
+    },
+    {
+      "doc": "README.md",
+      "seq": 10,
+      "query": "构建沙箱镜像时使用哪个 Dockerfile？",
+      "id": 13,
+      "state": "ok"
+    },
+    {
+      "doc": "README.md",
+      "seq": 13,
+      "query": "JWT_SECRET 的长度要求是什么？",
+      "id": 14,
+      "state": "ok"
+    },
+    {
+      "doc": "README.md",
+      "seq": 17,
+      "query": "需求文档在仓库中的位置是哪里？",
+      "id": 15,
+      "state": "ok"
+    },
+    {
+      "doc": "requirements.md",
+      "seq": 7,
+      "query": "FR-2 的 AC4 要求用真实文档建立至少多少条标注？",
+      "id": 16,
+      "state": "ok"
+    },
+    {
+      "doc": "requirements.md",
+      "seq": 16,
+      "query": "M1 MVP 的周期是多久？",
+      "id": 17,
+      "state": "ok"
+    },
+    {
+      "doc": "requirements.md",
+      "seq": 17,
+      "query": "风险 R1 的内容是什么？",
+      "id": 18,
+      "state": "ok"
+    }
+  ]
+}

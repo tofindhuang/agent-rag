@@ -1,0 +1,941 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, test } from "node:test";
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import {
+  createApp,
+  readProfileInput,
+  readRequireExisting,
+  type GatewayLifecycle,
+} from "./app.js";
+import { DrainGate } from "./drain-gate.js";
+import type { GatewayConfig } from "./config.js";
+import type { RunIdentity } from "./identity.js";
+import type {
+  GatewayPool,
+  GatewaySession,
+  GatewaySessionEntry,
+  SessionModelConfig,
+} from "./pool-contract.js";
+import {
+  SessionArchiveUnavailableError,
+  SessionCapacityError,
+  SessionConflictError,
+  SessionStateCorruptError,
+} from "./pool-contract.js";
+import { SessionBusyError } from "./session-lock.js";
+
+test("validates the optional profile payload on session ensure", () => {
+  assert.deepEqual(
+    readProfileInput({ profileFacts: ["[preference] 中文"], profileMemoryEnabled: true }),
+    { profile: { facts: ["[preference] 中文"], enabled: true } },
+  );
+  assert.deepEqual(readProfileInput({}), {});
+  assert.ok("error" in readProfileInput({ profileFacts: "not-an-array" }));
+  assert.ok("error" in readProfileInput({ profileFacts: ["a".repeat(1_001)] }));
+  assert.ok("error" in readProfileInput({ profileFacts: Array(51).fill("a") }));
+  assert.ok("error" in readProfileInput({ profileMemoryEnabled: "yes" }));
+  assert.deepEqual(readRequireExisting({ requireExisting: true }), { requireExisting: true });
+  assert.deepEqual(readRequireExisting({}), {});
+  assert.ok("error" in readRequireExisting({ requireExisting: "yes" }));
+});
+
+class FakeSession implements GatewaySession {
+  private readonly listeners = new Set<(event: AgentSessionEvent) => void>();
+  aborted = false;
+  onAbort: (() => void) | undefined;
+
+  get listenerCount(): number {
+    return this.listeners.size;
+  }
+
+  subscribe(listener: (event: AgentSessionEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  async abort(): Promise<void> {
+    this.aborted = true;
+    this.emit({ type: "agent_settled", aborted: true } as unknown as AgentSessionEvent);
+    this.onAbort?.();
+  }
+
+  emit(event: AgentSessionEvent): void {
+    for (const listener of [...this.listeners]) listener(event);
+  }
+
+  navigateCalls: string[] = [];
+  private readonly userEntries: Array<{ entryId: string; text: string }> = [];
+
+  getUserMessagesForForking(): Array<{ entryId: string; text: string }> {
+    return [...this.userEntries];
+  }
+
+  /** Test seam: appends an entry as if pi persisted a user message. */
+  appendUserEntry(entryId: string, text: string): void {
+    this.userEntries.push({ entryId, text });
+  }
+
+  async navigateTree(
+    targetId: string,
+    _options?: { summarize?: boolean },
+  ): Promise<{ editorText?: string; cancelled: boolean }> {
+    this.navigateCalls.push(targetId);
+    return { editorText: "first question", cancelled: false };
+  }
+}
+
+interface FakeEntry extends GatewaySessionEntry {
+  session: FakeSession;
+  activeRun: RunIdentity | null;
+}
+
+class FakePool implements GatewayPool {
+  readonly entries = new Map<string, FakeEntry>();
+  readonly removedFiles: Array<{ sessionId: string; userId: string }> = [];
+  deferRuns = false;
+  /** When set, the next run() throws before emitting anything. */
+  failNextRun: Error | undefined;
+  ensureError: Error | undefined;
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get(sessionId: string): FakeEntry | undefined {
+    return this.entries.get(sessionId);
+  }
+
+  async ensure(sessionId: string, userId: string, model?: SessionModelConfig) {
+    if (this.ensureError) throw this.ensureError;
+    const modelRef = model
+      ? {
+          provider: model.name ?? "custom",
+          id: model.modelId,
+          name: model.displayName ?? model.modelId,
+        }
+      : undefined;
+    const existing = this.entries.get(sessionId);
+    if (existing) {
+      if (existing.userId !== userId) throw new SessionConflictError(sessionId);
+      return { created: false, restored: false, model: modelRef };
+    }
+    this.entries.set(sessionId, {
+      sessionId,
+      userId,
+      activeRun: null,
+      session: new FakeSession(),
+    });
+    return { created: true, restored: false, model: modelRef };
+  }
+
+  beginRun(sessionId: string, identity: RunIdentity): FakeEntry | null {
+    const entry = this.entries.get(sessionId);
+    if (!entry || entry.activeRun) return null;
+    entry.activeRun = identity;
+    return entry;
+  }
+
+  endRun(sessionId: string, runId: string): void {
+    const entry = this.entries.get(sessionId);
+    if (entry?.activeRun?.runId === runId) entry.activeRun = null;
+  }
+
+  abort(sessionId: string): boolean {
+    const entry = this.entries.get(sessionId);
+    if (!entry?.activeRun) return false;
+    void entry.session.abort();
+    return true;
+  }
+
+  async dispose(sessionId: string): Promise<boolean> {
+    return this.entries.delete(sessionId);
+  }
+
+  removeFiles(sessionId: string, userId: string): void {
+    this.removedFiles.push({ sessionId, userId });
+  }
+
+  async archive(_sessionId: string, _userId: string): Promise<boolean> {
+    return false;
+  }
+
+  async run(sessionId: string, _text: string): Promise<void> {
+    const entry = this.entries.get(sessionId);
+    if (!entry) throw new Error("session missing");
+    if (this.failNextRun) {
+      const error = this.failNextRun;
+      this.failNextRun = undefined;
+      throw error;
+    }
+    if (this.deferRuns) {
+      await new Promise<void>((resolve) => {
+        entry.session.onAbort = resolve;
+      });
+      entry.session.onAbort = undefined;
+      return;
+    }
+    entry.session.emit({
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "ok" },
+    } as unknown as AgentSessionEvent);
+    entry.session.emit({ type: "agent_settled", aborted: false } as unknown as AgentSessionEvent);
+  }
+}
+
+interface TestServer {
+  base: string;
+  pool: FakePool;
+  close: () => Promise<void>;
+}
+
+const tempDirs: string[] = [];
+
+after(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+async function startServer(
+  apiToken?: string,
+  lifecycle?: GatewayLifecycle,
+  gate?: DrainGate,
+): Promise<TestServer> {
+  const sessionDir = mkdtempSync(join(tmpdir(), "gateway-app-"));
+  tempDirs.push(sessionDir);
+  const pool = new FakePool();
+  const config: GatewayConfig = {
+    port: 0,
+    javaApiUrl: "http://localhost:0",
+    sandboxApiUrl: "http://localhost:0",
+    apiToken,
+    allowPrivateModelEndpoints: true,
+    compaction: { enabled: true, reserveRatio: 0.2, keepRecentTokens: 20_000 },
+    profileExtractMinIntervalMs: 60_000,
+    profileExtractMaxMessages: 30,
+    profileExtractMaxChars: 6_000,
+    profileExtractMaxCandidates: 5,
+    sessionDir,
+    workDir: "/tmp/agent-core-work",
+    instanceId: "test-app",
+    instanceIncarnation: "test-inc",
+    publicUrl: "http://127.0.0.1:0",
+    maxSessions: 60,
+    idleEvictMs: 900_000,
+    drainGraceMs: 600_000,
+    registryHeartbeatMs: 60_000,
+    registryTtlSeconds: 15,
+    lockHeartbeatMs: 60_000,
+    lockStaleMs: 30_000,
+  };
+  const app = createApp({ config, pool, lifecycle, gate });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("server did not bind a port");
+  return {
+    base: `http://127.0.0.1:${address.port}`,
+    pool,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  };
+}
+
+async function withServer(fn: (server: TestServer) => Promise<void>, apiToken?: string): Promise<void> {
+  const server = await startServer(apiToken);
+  try {
+    await fn(server);
+  } finally {
+    await server.close();
+  }
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) throw new Error("waitFor timed out");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+function identity(overrides: Partial<RunIdentity> = {}): RunIdentity {
+  return {
+    userId: "u1",
+    sessionId: "s1",
+    turnId: "t1",
+    runId: "r1",
+    requestId: "q1",
+    ...overrides,
+  };
+}
+
+type ErrorBody = {
+  error: {
+    code: string;
+    message: string;
+    retryable: boolean;
+    owner?: { instanceId: string };
+  };
+};
+
+test("PUT is idempotent and rejects a different user", async () => {
+  await withServer(async ({ base }) => {
+    const first = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(first.status, 200);
+    assert.deepEqual(await first.json(), { sessionId: "s1", created: true, restored: false });
+
+    const second = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(second.status, 200);
+    assert.deepEqual(await second.json(), { sessionId: "s1", created: false, restored: false });
+
+    const conflict = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u2" },
+    });
+    assert.equal(conflict.status, 409);
+    const body = (await conflict.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_CONFLICT");
+  });
+});
+
+test("PUT maps a foreign lock to SESSION_BUSY with the owner", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionBusyError("s1", {
+      instanceId: "g2",
+      pid: 42,
+      acquiredAt: 1,
+      heartbeatAt: 2,
+    });
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_BUSY");
+    assert.equal(body.error.retryable, true);
+    assert.deepEqual(body.error.owner, { instanceId: "g2" });
+  });
+});
+
+test("PUT maps corrupt session state to SESSION_STATE_CORRUPT", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionStateCorruptError("s1", "session sidecar is missing");
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_STATE_CORRUPT");
+  });
+});
+
+test("PUT maps a missing archive to SESSION_ARCHIVE_UNAVAILABLE", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionArchiveUnavailableError("s1", "archive is missing");
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "SESSION_ARCHIVE_UNAVAILABLE");
+    assert.equal(body.error.retryable, true);
+  });
+});
+
+test("archive endpoint reports when the pool skips a session", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1/archive`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { archived: false });
+  });
+});
+
+test("PUT maps the resident cap to a retryable GATEWAY_CAPACITY", async () => {
+  await withServer(async ({ base, pool }) => {
+    pool.ensureError = new SessionCapacityError(60);
+
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+
+    assert.equal(response.status, 503);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "GATEWAY_CAPACITY");
+    assert.equal(body.error.retryable, true);
+  });
+});
+
+test("PUT rejects a non-boolean requireExisting", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ requireExisting: "yes" }),
+    });
+
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
+  });
+});
+
+test("session endpoints require X-User-Id", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1`, { method: "PUT" });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
+  });
+});
+
+test("prompt rejects a user mismatch and a missing turnId", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const mismatch = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u2", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    assert.equal(mismatch.status, 403);
+    assert.equal(((await mismatch.json()) as ErrorBody).error.code, "USER_MISMATCH");
+
+    const missingTurn = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi" }),
+    });
+    assert.equal(missingTurn.status, 400);
+    assert.equal(((await missingTurn.json()) as ErrorBody).error.code, "INVALID_REQUEST");
+  });
+});
+
+test("prompt returns 409 before opening SSE when a run is active", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    pool.entries.get("s1")!.activeRun = identity();
+    const response = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t2" }),
+    });
+    assert.equal(response.status, 409);
+    assert.equal(((await response.json()) as ErrorBody).error.code, "RUN_IN_PROGRESS");
+  });
+});
+
+test("prompt streams contract v1 frames and releases the run slot", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const response = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    assert.equal(response.status, 200);
+    const stream = await response.text();
+
+    assert.match(stream, /^id: [^:]+:1\nevent: run_started\n/m);
+    assert.match(stream, /"contractVersion":"1"/);
+    assert.match(stream, /event: text_delta\ndata: \{"delta":"ok"\}\n/);
+    assert.match(stream, /event: run_settled\ndata: \{"status":"completed","turnId":"t1"\}\n/);
+    assert.equal((stream.match(/event: run_settled/g) ?? []).length, 1);
+    assert.equal(pool.entries.get("s1")?.activeRun, null);
+  });
+});
+
+test("settled runs carry this turn's user entry id", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const entry = pool.get("s1");
+    assert.ok(entry);
+    const originalRun = pool.run.bind(pool);
+    let runCalls = 0;
+    pool.run = async (sessionId: string, text: string) => {
+      runCalls += 1;
+      if (runCalls === 1) {
+        // A completed earlier turn, so a naive "last entry" lookup has data.
+        entry.session.emit({
+          type: "message_end",
+          message: { role: "user", content: "earlier" },
+        } as unknown as AgentSessionEvent);
+        entry.session.appendUserEntry("entry-1", "earlier");
+        entry.session.emit({
+          type: "agent_settled",
+          aborted: false,
+        } as unknown as AgentSessionEvent);
+        return;
+      }
+      return originalRun(sessionId, text);
+    };
+
+    const first = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "earlier", turnId: "t1" }),
+    });
+    await first.text();
+
+    // A second turn whose user entry is appended, then the run fails: the
+    // terminal must bind THIS turn's entry, not the previous one.
+    pool.run = async () => {
+      entry.session.emit({
+        type: "message_end",
+        message: { role: "user", content: "second" },
+      } as unknown as AgentSessionEvent);
+      entry.session.appendUserEntry("entry-2", "second");
+      throw new Error("model exploded");
+    };
+
+    const second = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "second", turnId: "t2" }),
+    });
+    const stream = await second.text();
+    assert.match(
+      stream,
+      /"userEntryId":"entry-2"/,
+    );
+  });
+});
+
+test("a run that fails before the user entry must not bind one", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const entry = pool.get("s1");
+    assert.ok(entry);
+
+    // Seed one earlier user entry so a buggy implementation would have a
+    // previous-turn id to mis-bind.
+    entry.session.appendUserEntry("entry-1", "earlier");
+
+    pool.failNextRun = new Error("model exploded before the user message");
+    const response = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    const stream = await response.text();
+    assert.match(stream, /"status":"error","turnId":"t1"/);
+    assert.doesNotMatch(stream, /userEntryId/);
+  });
+});
+
+test("abort requires an active run", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    const idle = await fetch(`${base}/sessions/s1/abort`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(idle.status, 409);
+    assert.equal(((await idle.json()) as ErrorBody).error.code, "NO_ACTIVE_RUN");
+
+    pool.entries.get("s1")!.activeRun = identity();
+    const active = await fetch(`${base}/sessions/s1/abort`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(active.status, 202);
+    assert.equal(pool.entries.get("s1")!.session.aborted, true);
+  });
+});
+
+test("DELETE is idempotent and enforces ownership", async () => {
+  await withServer(async ({ base, pool }) => {
+    const absent = await fetch(`${base}/sessions/missing`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(absent.status, 204);
+
+    await pool.ensure("s1", "u1");
+    const mismatch = await fetch(`${base}/sessions/s1`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u2" },
+    });
+    assert.equal(mismatch.status, 403);
+    assert.equal(((await mismatch.json()) as ErrorBody).error.code, "USER_MISMATCH");
+
+    const deleted = await fetch(`${base}/sessions/s1`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(deleted.status, 204);
+    assert.equal(pool.entries.has("s1"), false);
+
+    const afterDelete = await fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    assert.equal(afterDelete.status, 404);
+  });
+});
+
+test("PUT echoes the requested session model", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s-model`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-user-id": "u1" },
+      body: JSON.stringify({
+        model: {
+          providerId: 7,
+          name: "SiliconFlow",
+          api: "openai-completions",
+          baseUrl: "https://api.example.com/v1",
+          apiKey: "sk-secret",
+          modelId: "deepseek-chat",
+          displayName: "DeepSeek Chat",
+        },
+      }),
+    });
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      model: { provider: string; id: string; name: string };
+    };
+    assert.deepEqual(body.model, {
+      provider: "SiliconFlow",
+      id: "deepseek-chat",
+      name: "DeepSeek Chat",
+    });
+  });
+});
+
+test("PUT rejects an invalid session model", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s-model`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-user-id": "u1" },
+      body: JSON.stringify({ model: { api: "nope" } }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
+  });
+});
+
+test("provider probe requires the shared token", async () => {
+  await withServer(
+    async ({ base }) => {
+      const response = await fetch(`${base}/providers/probe`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      assert.equal(response.status, 401);
+    },
+    "secret",
+  );
+});
+
+test("provider probe validates its request body", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/providers/probe`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ api: "unknown", baseUrl: "", apiKey: "" }),
+    });
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as ErrorBody;
+    assert.equal(body.error.code, "INVALID_REQUEST");
+  });
+});
+
+test("drain marks the instance and rejects new sessions and runs", async () => {
+  let draining = false;
+  const lifecycle: GatewayLifecycle = {
+    isDraining: () => draining,
+    beginDrain: () => {
+      draining = true;
+    },
+  };
+  const server = await startServer(undefined, lifecycle);
+  try {
+    const drain = await fetch(`${server.base}/admin/drain`, { method: "POST" });
+    assert.equal(drain.status, 202);
+    assert.deepEqual(await drain.json(), { draining: true });
+
+    const put = await fetch(`${server.base}/sessions/s1`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(put.status, 409);
+    assert.equal(((await put.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+
+    await server.pool.ensure("s1", "u1");
+    const prompt = await fetch(`${server.base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    assert.equal(prompt.status, 409);
+    assert.equal(((await prompt.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+  } finally {
+    await server.close();
+  }
+});
+
+test("drain rejects new admissions but lets an admitted prompt finish", async () => {
+  const gate = new DrainGate();
+  const server = await startServer(undefined, undefined, gate);
+  try {
+    await server.pool.ensure("s1", "u1");
+    server.pool.deferRuns = true;
+    const prompt = fetch(`${server.base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    await waitFor(() => server.pool.get("s1")?.activeRun !== null);
+
+    gate.beginDrain();
+
+    const rejected = await fetch(`${server.base}/sessions/s2`, {
+      method: "PUT",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(rejected.status, 409);
+    assert.equal(((await rejected.json()) as ErrorBody).error.code, "INSTANCE_DRAINING");
+
+    const drained = gate.waitForZero(1_000);
+    assert.equal(
+      await Promise.race([
+        drained.then(() => "zero"),
+        new Promise((resolve) => setTimeout(() => resolve("pending"), 30)),
+      ]),
+      "pending",
+    );
+
+    server.pool.abort("s1");
+    const response = await prompt;
+    assert.equal(response.status, 200);
+    assert.equal(await drained, true);
+  } finally {
+    await server.close();
+  }
+});
+
+test("release disposes an idle session and refuses an active one", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    pool.beginRun("s1", {
+      userId: "u1",
+      sessionId: "s1",
+      turnId: "t1",
+      runId: "r1",
+      requestId: "q1",
+    });
+
+    const busy = await fetch(`${base}/sessions/s1/release`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(busy.status, 409);
+    assert.equal(((await busy.json()) as ErrorBody).error.code, "RUN_IN_PROGRESS");
+
+    pool.endRun("s1", "r1");
+    const released = await fetch(`${base}/sessions/s1/release`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(released.status, 204);
+    assert.equal(pool.get("s1"), undefined);
+  });
+});
+
+test("health exposes instance identity and capacity", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/health`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      instanceId: string;
+      draining: boolean;
+      sessions: number;
+      maxSessions: number;
+    };
+    assert.equal(body.ok, true);
+    assert.equal(body.instanceId, "test-app");
+    assert.equal(body.draining, false);
+    assert.equal(body.sessions, 0);
+    assert.equal(body.maxSessions, 60);
+  });
+});
+
+test("shared token guards all endpoints", async () => {
+  await withServer(
+    async ({ base }) => {
+      const denied = await fetch(`${base}/health`);
+      assert.equal(denied.status, 401);
+      assert.equal(((await denied.json()) as ErrorBody).error.code, "UNAUTHORIZED");
+
+      const allowed = await fetch(`${base}/health`, {
+        headers: { authorization: "Bearer secret" },
+      });
+      assert.equal(allowed.status, 200);
+      const body = (await allowed.json()) as { contractVersion: string };
+      assert.equal(body.contractVersion, "1");
+    },
+    "secret",
+  );
+});
+
+test("abort ends the active stream with an aborted terminal", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    pool.deferRuns = true;
+
+    const prompt = fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+    });
+    await waitFor(() => pool.entries.get("s1")?.session.listenerCount === 1);
+
+    const abort = await fetch(`${base}/sessions/s1/abort`, {
+      method: "POST",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(abort.status, 202);
+
+    const stream = await (await prompt).text();
+    assert.match(stream, /event: run_settled\ndata: \{"status":"aborted","turnId":"t1"\}/);
+    await waitFor(() => pool.entries.get("s1")?.activeRun === null);
+  });
+});
+
+test("client disconnect aborts the run", async () => {
+  await withServer(async ({ base, pool }) => {
+    await pool.ensure("s1", "u1");
+    pool.deferRuns = true;
+
+    const controller = new AbortController();
+    const prompt = fetch(`${base}/sessions/s1/prompt`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ text: "hi", turnId: "t1" }),
+      signal: controller.signal,
+    });
+    void prompt.catch(() => undefined);
+
+    await waitFor(() => pool.entries.get("s1")?.session.listenerCount === 1);
+    controller.abort();
+    await waitFor(() => pool.entries.get("s1")?.session.aborted === true);
+    await waitFor(() => pool.entries.get("s1")?.activeRun === null);
+  });
+});
+
+test("DELETE /sessions/:id/files purges files, idempotently and ownership-checked", async () => {
+  await withServer(async ({ base, pool }) => {
+    const absent = await fetch(`${base}/sessions/missing/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(absent.status, 204);
+    assert.deepEqual(pool.removedFiles.at(-1), { sessionId: "missing", userId: "u1" });
+
+    await pool.ensure("s1", "u1");
+    const mismatch = await fetch(`${base}/sessions/s1/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u2" },
+    });
+    assert.equal(mismatch.status, 403);
+    assert.equal(((await mismatch.json()) as ErrorBody).error.code, "USER_MISMATCH");
+    assert.equal(pool.entries.has("s1"), true, "mismatch must not release the session");
+    const before = pool.removedFiles.length;
+
+    const purged = await fetch(`${base}/sessions/s1/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(purged.status, 204);
+    assert.equal(pool.entries.has("s1"), false);
+    assert.equal(pool.removedFiles.length, before + 1);
+
+    const again = await fetch(`${base}/sessions/s1/files`, {
+      method: "DELETE",
+      headers: { "x-user-id": "u1" },
+    });
+    assert.equal(again.status, 204);
+  });
+});
+
+test("DELETE /sessions/:id/files requires X-User-Id", async () => {
+  await withServer(async ({ base }) => {
+    const response = await fetch(`${base}/sessions/s1/files`, { method: "DELETE" });
+    assert.equal(response.status, 400);
+    assert.equal(((await response.json()) as ErrorBody).error.code, "INVALID_REQUEST");
+  });
+});
+
+test("branch moves the leaf back and returns the text to edit", async () => {
+  await withServer(async ({ base, pool }) => {
+    await fetch(`${base}/sessions/s1`, { method: "PUT", headers: { "x-user-id": "u1" } });
+    pool.get("s1")?.session.appendUserEntry("entry-1", "first question");
+
+    const response = await fetch(`${base}/sessions/s1/branch`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ entryId: "entry-1" }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      editorText: "first question",
+      cancelled: false,
+    });
+    assert.deepEqual(pool.get("s1")?.session.navigateCalls, ["entry-1"]);
+  });
+});
+
+test("branch is rejected while a run is active and for other users", async () => {
+  await withServer(async ({ base, pool }) => {
+    await fetch(`${base}/sessions/s1`, { method: "PUT", headers: { "x-user-id": "u1" } });
+    const entry = pool.get("s1");
+    assert.ok(entry);
+    entry.activeRun = {
+      userId: "u1",
+      sessionId: "s1",
+      turnId: "t1",
+      runId: "r1",
+      requestId: "req1",
+    };
+
+    const busy = await fetch(`${base}/sessions/s1/branch`, {
+      method: "POST",
+      headers: { "x-user-id": "u1", "content-type": "application/json" },
+      body: JSON.stringify({ entryId: "entry-1" }),
+    });
+    assert.equal(busy.status, 409);
+    const busyBody = (await busy.json()) as ErrorBody;
+    assert.equal(busyBody.error.code, "SESSION_BUSY");
+
+    const foreign = await fetch(`${base}/sessions/s1/branch`, {
+      method: "POST",
+      headers: { "x-user-id": "u2", "content-type": "application/json" },
+      body: JSON.stringify({ entryId: "entry-1" }),
+    });
+    assert.equal(foreign.status, 403);
+  });
+});

@@ -1,0 +1,35 @@
+-- Up-only migration (ADR-0009). run_code audit ledger (FR-3, ADR-0017).
+CREATE TABLE IF NOT EXISTS exec_records (
+    id CHAR(36) NOT NULL,
+    user_id BIGINT NOT NULL,
+    session_id CHAR(36) NOT NULL,
+    turn_id CHAR(36) NOT NULL,
+    run_id CHAR(36) NOT NULL,
+    tool_call_id VARCHAR(128) NOT NULL,
+    request_id VARCHAR(128) NULL,
+    language VARCHAR(32) NOT NULL,
+    code MEDIUMTEXT NOT NULL,
+    status ENUM('running', 'succeeded', 'failed', 'timed_out', 'aborted', 'error') NOT NULL DEFAULT 'running',
+    exit_code INT NULL,
+    duration_ms INT NULL,
+    timed_out BOOLEAN NOT NULL DEFAULT FALSE,
+    truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    oom_killed BOOLEAN NOT NULL DEFAULT FALSE,
+    peak_memory_bytes BIGINT NULL,
+    cpu_time_ms BIGINT NULL,
+    stdout MEDIUMTEXT NULL,
+    stderr MEDIUMTEXT NULL,
+    error_message VARCHAR(1024) NULL,
+    image VARCHAR(128) NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    started_at DATETIME(6) NULL,
+    finished_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    KEY idx_exec_user_created (user_id, created_at),
+    KEY idx_exec_session_created (session_id, created_at),
+    KEY idx_exec_status_created (status, created_at),
+    CONSTRAINT fk_exec_user FOREIGN KEY (user_id) REFERENCES users (id),
+    CONSTRAINT fk_exec_session FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci;

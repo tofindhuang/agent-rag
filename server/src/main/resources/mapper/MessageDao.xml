@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.MessageDao">
+
+    <sql id="messageColumns">
+        id, session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
+        status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
+        cache_read_tokens, cache_write_tokens, pi_entry_id, active_branch, created_at
+    </sql>
+
+    <!-- Idempotent projection write (ADR-0006); MySQL 8 alias form. -->
+    <insert id="upsert">
+        INSERT INTO messages (
+            session_id, turn_id, ordinal, role, content, thinking, tool_calls, details,
+            status, delivery_status, run_id, assistant_seq_in_turn, tokens_in, tokens_out,
+            cache_read_tokens, cache_write_tokens
+        ) VALUES (
+            #{sessionId}, #{turnId}, #{ordinal}, #{role}, #{content}, #{thinking}, #{toolCalls},
+            #{details},
+            #{status}, #{deliveryStatus}, #{runId}, #{assistantSeqInTurn}, #{tokensIn}, #{tokensOut},
+            #{cacheReadTokens}, #{cacheWriteTokens}
+        ) AS new
+        ON DUPLICATE KEY UPDATE
+            role = new.role,
+            content = new.content,
+            thinking = new.thinking,
+            tool_calls = new.tool_calls,
+            details = new.details,
+            status = new.status,
+            delivery_status = new.delivery_status,
+            run_id = new.run_id,
+            assistant_seq_in_turn = new.assistant_seq_in_turn,
+            tokens_in = new.tokens_in,
+            tokens_out = new.tokens_out,
+            cache_read_tokens = new.cache_read_tokens,
+            cache_write_tokens = new.cache_write_tokens
+    </insert>
+
+    <select id="listPage" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND active_branch = TRUE
+        <if test="beforeId != null">
+          AND id &lt; #{beforeId}
+        </if>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listByTurn" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+        ORDER BY ordinal ASC
+    </select>
+
+    <select id="findByOrdinal" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND ordinal = #{ordinal}
+    </select>
+
+    <select id="existsBefore" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM messages
+            WHERE session_id = #{sessionId}
+              AND active_branch = TRUE
+              AND id &lt; #{id}
+        )
+    </select>
+
+    <update id="markUserDelivery">
+        UPDATE messages
+        SET delivery_status = #{deliveryStatus}
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND role = 'user'
+    </update>
+
+    <select id="maxIdBySession" resultType="java.lang.Long">
+        SELECT MAX(id) FROM messages
+        WHERE session_id = #{sessionId} AND active_branch = TRUE
+    </select>
+
+    <select id="existsBySession" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM messages
+            WHERE session_id = #{sessionId}
+        )
+    </select>
+
+    <select id="existsBeforeTurn" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1 FROM messages
+            WHERE session_id = #{sessionId}
+              AND turn_id &lt;&gt; #{turnId}
+        )
+    </select>
+
+    <select id="findOwned" resultType="com.agentcore.server.domain.Message">
+        SELECT <include refid="messageColumns"/>
+        FROM messages
+        WHERE session_id = #{sessionId}
+          AND id = #{messageId}
+          AND active_branch = TRUE
+    </select>
+
+    <update id="bindPiEntryId">
+        UPDATE messages
+        SET pi_entry_id = #{piEntryId}
+        WHERE session_id = #{sessionId}
+          AND turn_id = #{turnId}
+          AND role = 'user'
+    </update>
+
+    <update id="deactivateAfter">
+        UPDATE messages
+        SET active_branch = FALSE
+        WHERE session_id = #{sessionId}
+          AND id &gt; #{afterId}
+          AND active_branch = TRUE
+    </update>
+
+    <delete id="deleteBySession">
+        DELETE FROM messages
+        WHERE session_id = #{sessionId}
+    </delete>
+
+</mapper>

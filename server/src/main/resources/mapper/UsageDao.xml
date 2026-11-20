@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.agentcore.server.dao.UsageDao">
+
+    <select id="sumTokensSince" resultType="long">
+        SELECT COALESCE(SUM(r.tokens_in), 0)
+             + COALESCE(SUM(r.tokens_out), 0)
+             + COALESCE(SUM(r.cache_read_tokens), 0)
+             + COALESCE(SUM(r.cache_write_tokens), 0)
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND r.started_at &gt;= #{from}
+    </select>
+
+    <select id="dailyTokens" resultType="com.agentcore.server.domain.UsageDailyRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(r.started_at, '+00:00', #{offset}), '%Y-%m-%d') AS day,
+               r.model_id AS model_id,
+               COUNT(*) AS runs,
+               COALESCE(SUM(r.tokens_in), 0) AS tokens_in,
+               COALESCE(SUM(r.tokens_out), 0) AS tokens_out,
+               COALESCE(SUM(r.cache_read_tokens), 0) AS cache_read_tokens,
+               COALESCE(SUM(r.cache_write_tokens), 0) AS cache_write_tokens
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND s.deleted_at IS NULL
+          AND r.started_at &gt;= #{from}
+        GROUP BY day, r.model_id
+        ORDER BY day
+    </select>
+
+    <select id="dailyExecutions" resultType="com.agentcore.server.domain.UsageCountRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(e.created_at, '+00:00', #{offset}), '%Y-%m-%d') AS bucket,
+               COUNT(*) AS amount
+        FROM exec_records e
+        WHERE e.user_id = #{userId}
+          AND e.created_at &gt;= #{from}
+        GROUP BY bucket
+    </select>
+
+    <select id="dailySearches" resultType="com.agentcore.server.domain.UsageCountRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(m.created_at, '+00:00', #{offset}), '%Y-%m-%d') AS bucket,
+               COUNT(*) AS amount
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = #{userId}
+          AND s.deleted_at IS NULL
+          AND m.role = 'tool'
+          AND m.created_at &gt;= #{from}
+          AND JSON_UNQUOTE(JSON_EXTRACT(m.details, '$.toolName')) = 'kb_search'
+        GROUP BY bucket
+    </select>
+
+    <select id="sessionTokens" resultType="com.agentcore.server.domain.UsageSessionRow">
+        SELECT r.session_id AS session_id,
+               s.title AS title,
+               s.created_at AS created_at,
+               s.last_active_at AS last_active_at,
+               r.model_id AS model_id,
+               COUNT(*) AS runs,
+               COALESCE(SUM(r.tokens_in), 0) AS tokens_in,
+               COALESCE(SUM(r.tokens_out), 0) AS tokens_out,
+               COALESCE(SUM(r.cache_read_tokens), 0) AS cache_read_tokens,
+               COALESCE(SUM(r.cache_write_tokens), 0) AS cache_write_tokens
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        WHERE s.user_id = #{userId}
+          AND s.deleted_at IS NULL
+          AND r.started_at &gt;= #{from}
+        GROUP BY r.session_id, s.title, s.created_at, s.last_active_at, r.model_id
+    </select>
+
+    <select id="sessionExecutions" resultType="com.agentcore.server.domain.UsageCountRow">
+        SELECT e.session_id AS bucket, COUNT(*) AS amount
+        FROM exec_records e
+        WHERE e.user_id = #{userId}
+          AND e.created_at &gt;= #{from}
+        GROUP BY e.session_id
+    </select>
+
+    <select id="dailyTokensAll" resultType="com.agentcore.server.domain.UsageDailyRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(r.started_at, '+00:00', #{offset}), '%Y-%m-%d') AS day,
+               r.model_id AS model_id,
+               COUNT(*) AS runs,
+               COALESCE(SUM(r.tokens_in), 0) AS tokens_in,
+               COALESCE(SUM(r.tokens_out), 0) AS tokens_out,
+               COALESCE(SUM(r.cache_read_tokens), 0) AS cache_read_tokens,
+               COALESCE(SUM(r.cache_write_tokens), 0) AS cache_write_tokens
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        WHERE s.deleted_at IS NULL
+          AND r.started_at &gt;= #{from}
+        GROUP BY day, r.model_id
+        ORDER BY day
+    </select>
+
+    <select id="dailyExecutionsAll" resultType="com.agentcore.server.domain.UsageCountRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(e.created_at, '+00:00', #{offset}), '%Y-%m-%d') AS bucket,
+               COUNT(*) AS amount
+        FROM exec_records e
+        WHERE e.created_at &gt;= #{from}
+        GROUP BY bucket
+    </select>
+
+    <select id="dailyCompactionsAll" resultType="com.agentcore.server.domain.CompactionDailyRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(c.created_at, '+00:00', #{offset}), '%Y-%m-%d') AS day,
+               COUNT(*) AS amount,
+               COALESCE(SUM(c.tokens_before), 0) AS tokens_before,
+               COALESCE(SUM(c.tokens_after), 0) AS tokens_after
+        FROM compaction_events c
+        WHERE c.created_at &gt;= #{from}
+        GROUP BY day
+        ORDER BY day
+    </select>
+
+    <select id="dailyRetrievalAll" resultType="com.agentcore.server.domain.RetrievalDailyRow">
+        SELECT DATE_FORMAT(CONVERT_TZ(m.created_at, '+00:00', #{offset}), '%Y-%m-%d') AS day,
+               COUNT(*) AS calls,
+               SUM(CASE WHEN JSON_LENGTH(JSON_EXTRACT(m.details, '$.passages')) &gt; 0
+                        THEN 1 ELSE 0 END) AS hit_calls,
+               COALESCE(SUM(JSON_LENGTH(JSON_EXTRACT(m.details, '$.passages'))), 0) AS passages,
+               SUM(CASE WHEN JSON_EXTRACT(m.details, '$.passages') IS NULL
+                        THEN 1 ELSE 0 END) AS failed_calls
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE s.deleted_at IS NULL
+          AND m.role = 'tool'
+          AND m.created_at &gt;= #{from}
+          AND JSON_UNQUOTE(JSON_EXTRACT(m.details, '$.toolName')) = 'kb_search'
+        GROUP BY day
+        ORDER BY day
+    </select>
+
+    <select id="executionStatuses" resultType="com.agentcore.server.domain.ExecutionStatusRow">
+        SELECT e.status AS status, COUNT(*) AS amount
+        FROM exec_records e
+        WHERE e.created_at &gt;= #{from}
+          AND e.status &lt;&gt; 'running'
+        GROUP BY e.status
+    </select>
+
+    <select id="sandboxSamples" resultType="com.agentcore.server.domain.SandboxSampleRow">
+        SELECT e.queue_ms AS queue_ms, e.duration_ms AS duration_ms
+        FROM exec_records e
+        WHERE e.created_at &gt;= #{from}
+          AND (e.queue_ms IS NOT NULL OR e.duration_ms IS NOT NULL)
+    </select>
+
+    <select id="countRunningRuns" resultType="long">
+        SELECT COUNT(*) FROM runs WHERE status = 'running'
+    </select>
+
+    <select id="countActiveSessions" resultType="long">
+        SELECT COUNT(DISTINCT r.session_id)
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        WHERE s.deleted_at IS NULL
+          AND (r.started_at &gt;= #{from} OR r.settled_at &gt;= #{from})
+    </select>
+
+    <select id="adminUsers" resultType="com.agentcore.server.domain.AdminUserRow">
+        SELECT u.id AS user_id, u.email AS email, u.created_at AS created_at
+        FROM users u
+        <where>
+            <if test="query != null and query != ''">
+                (u.email LIKE CONCAT('%', #{query}, '%') OR CAST(u.id AS CHAR) = #{query})
+            </if>
+        </where>
+        ORDER BY u.id
+    </select>
+
+    <select id="adminUser" resultType="com.agentcore.server.domain.AdminUserRow">
+        SELECT u.id AS user_id, u.email AS email, u.created_at AS created_at
+        FROM users u
+        WHERE u.id = #{userId}
+    </select>
+
+    <select id="adminUserTokens" resultType="com.agentcore.server.domain.AdminUserTokenRow">
+        SELECT s.user_id AS user_id,
+               r.model_id AS model_id,
+               COUNT(*) AS runs,
+               COALESCE(SUM(r.tokens_in), 0) AS tokens_in,
+               COALESCE(SUM(r.tokens_out), 0) AS tokens_out,
+               COALESCE(SUM(r.cache_read_tokens), 0) AS cache_read_tokens,
+               COALESCE(SUM(r.cache_write_tokens), 0) AS cache_write_tokens
+        FROM runs r
+        JOIN sessions s ON s.id = r.session_id
+        WHERE s.deleted_at IS NULL
+          AND r.started_at &gt;= #{from}
+        GROUP BY s.user_id, r.model_id
+    </select>
+
+    <select id="adminUserExecutions" resultType="com.agentcore.server.domain.AdminUserCountRow">
+        SELECT e.user_id AS user_id, COUNT(*) AS amount
+        FROM exec_records e
+        WHERE e.created_at &gt;= #{from}
+        GROUP BY e.user_id
+    </select>
+
+    <select id="adminUserSearches" resultType="com.agentcore.server.domain.AdminUserCountRow">
+        SELECT s.user_id AS user_id, COUNT(*) AS amount
+        FROM messages m
+        JOIN sessions s ON s.id = m.session_id
+        WHERE s.deleted_at IS NULL
+          AND m.role = 'tool'
+          AND m.created_at &gt;= #{from}
+          AND JSON_UNQUOTE(JSON_EXTRACT(m.details, '$.toolName')) = 'kb_search'
+        GROUP BY s.user_id
+    </select>
+
+    <select id="adminUserSessions" resultType="com.agentcore.server.domain.AdminUserSessionRow">
+        SELECT s.user_id AS user_id,
+               COUNT(*) AS sessions,
+               MAX(s.last_active_at) AS last_active_at
+        FROM sessions s
+        WHERE s.deleted_at IS NULL
+        GROUP BY s.user_id
+    </select>
+
+</mapper>

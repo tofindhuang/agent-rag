@@ -1,0 +1,24 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# OpenCV (RapidOCR dependency) needs libGL/libglib; onnxruntime needs libgomp.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt .
+# Override these build args with a local mirror when the default index is slow.
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=
+RUN pip install --default-timeout=300 --retries 10 \
+      --index-url "$PIP_INDEX_URL" \
+      $(if [ -n "$PIP_TRUSTED_HOST" ]; then echo "--trusted-host $PIP_TRUSTED_HOST"; fi) \
+      -r requirements.txt
+COPY app ./app
+
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

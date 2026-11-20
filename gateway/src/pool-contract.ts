@@ -1,0 +1,141 @@
+import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import type { RunIdentity } from "./identity.js";
+import type { CompactionPlan } from "./compaction.js";
+
+export interface GatewaySession {
+  subscribe(listener: (event: AgentSessionEvent) => void): () => void;
+  abort(): Promise<void>;
+  getContextUsage?():
+    | { tokens: number | null; contextWindow: number; percent: number | null }
+    | undefined;
+  /** User entries of the active branch, for "branch from here" (ADR-0035). */
+  getUserMessagesForForking?(): Array<{ entryId: string; text: string }>;
+  /** Moves the leaf back to an earlier entry; abandoned history stays on disk. */
+  navigateTree?(
+    targetId: string,
+    options?: { summarize?: boolean },
+  ): Promise<{ editorText?: string; cancelled: boolean }>;
+}
+
+export interface GatewaySessionEntry {
+  sessionId: string;
+  userId: string;
+  activeRun: RunIdentity | null;
+  session: GatewaySession;
+  /** Compaction policy computed for this session's model. */
+  compaction?: CompactionPlan;
+  /** Last provider-reported context size; null until the next assistant turn. */
+  lastContextTokens?: number | null;
+  profileRef?: ProfileRef;
+}
+
+import type { ProviderApi } from "./providers.js";
+
+export type { ProviderApi };
+
+/** Mutable per-session profile facts supplied by Java at ensure time. */
+export interface ProfileRef {
+  facts: string[];
+  enabled: boolean;
+  /** Gateway-side debounce for extraction. */
+  lastExtractAt: number;
+}
+
+export interface ProfileInput {
+  facts?: string[];
+  enabled?: boolean;
+}
+
+/** Per-session model configuration pushed by Java at ensure time. */
+export interface SessionModelConfig {
+  providerId?: string | number;
+  name?: string;
+  api: ProviderApi;
+  baseUrl: string;
+  apiKey: string;
+  modelId: string;
+  displayName?: string;
+  contextWindow?: number;
+  reasoning?: boolean;
+  vision?: boolean;
+}
+
+export interface ModelRef {
+  provider: string;
+  id: string;
+  name: string;
+}
+
+export interface EnsureSessionResult {
+  created: boolean;
+  restored: boolean;
+  /** Actual model of the session; absent when the engine reports none. */
+  model?: ModelRef;
+}
+
+/** The subset of SessionPool used by the HTTP layer (and by tests). */
+export interface GatewayPool {
+  readonly size: number;
+  get(sessionId: string): GatewaySessionEntry | undefined;
+  ensure(
+    sessionId: string,
+    userId: string,
+    model?: SessionModelConfig,
+    profile?: ProfileInput,
+    requireExisting?: boolean,
+  ): Promise<EnsureSessionResult>;
+  beginRun(sessionId: string, identity: RunIdentity): GatewaySessionEntry | null;
+  endRun(sessionId: string, runId: string): void;
+  abort(sessionId: string): boolean;
+  dispose(sessionId: string): Promise<boolean>;
+  /** Deletes the pi file and sidecar; ownership-checked and idempotent. */
+  removeFiles(sessionId: string, userId: string): void;
+  /** Gzips and uploads an idle session through Java; false when skipped. */
+  archive(sessionId: string, userId: string): Promise<boolean>;
+  run(sessionId: string, text: string): Promise<void>;
+}
+
+export class InvalidSessionIdError extends Error {
+  constructor(sessionId: string) {
+    super(`invalid session id: ${sessionId}`);
+  }
+}
+
+export class SessionExistsError extends Error {
+  constructor(sessionId: string) {
+    super(`session already exists: ${sessionId}`);
+  }
+}
+
+export class SessionNotFoundError extends Error {
+  constructor(sessionId: string) {
+    super(`session not found: ${sessionId}`);
+  }
+}
+
+export class SessionConflictError extends Error {
+  constructor(sessionId: string) {
+    super(`session belongs to another user: ${sessionId}`);
+  }
+}
+
+/** The session files exist but their ownership or context state is unusable. */
+export class SessionStateCorruptError extends Error {
+  constructor(sessionId: string, message = "session state is corrupt") {
+    super(`${message}: ${sessionId}`);
+  }
+}
+
+/** The instance reached its resident-session cap and cannot open more. */
+export class SessionCapacityError extends Error {
+  constructor(limit: number) {
+    super(`gateway session capacity reached: ${limit}`);
+  }
+}
+
+/** The cold archive could not be downloaded or verified. */
+export class SessionArchiveUnavailableError extends Error {
+  constructor(sessionId: string, message = "session archive is unavailable") {
+    super(`${message}: ${sessionId}`);
+  }
+}

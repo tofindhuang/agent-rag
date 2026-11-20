@@ -1,0 +1,467 @@
+/**
+ * AgentSession pool: one pi AgentSession per conversation.
+ *
+ * M1: pi sessions are file-backed under `GATEWAY_SESSION_DIR` (ADR-0008), so a
+ * gateway restart can restore the engine context and its owning user. Horizontal
+ * scaling and idle eviction remain M2.
+ *
+ * Lifecycle invariants:
+ * - session IDs are owned by Java; the gateway never generates business IDs.
+ * - PUT/ensure is idempotent, restores existing files, and enforces one userId
+ *   per session via a sidecar.
+ * - at most one Run is active per session; beginRun is the atomic gate.
+ */
+
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  getAgentDir,
+  SessionManager,
+  SettingsManager,
+} from "@earendil-works/pi-coding-agent";
+import { mkdirSync } from "node:fs";
+import type { GatewayConfig } from "./config.js";
+import { logInfo, logWarn } from "./log.js";
+import {
+  applyCompactionSettings,
+  buildCompactionPlan,
+  type CompactionPlan,
+} from "./compaction.js";
+import { kbSearchExtension, runCodeExtension } from "./extensions.js";
+import { profileExtractionExtension, profileFactsExtension } from "./profile.js";
+import type { RunIdentity, RunRef } from "./identity.js";
+import type {
+  EnsureSessionResult,
+  GatewayPool,
+  ModelRef,
+  ProfileInput,
+  ProfileRef,
+  SessionModelConfig,
+} from "./pool-contract.js";
+import {
+  SessionArchiveUnavailableError,
+  SessionCapacityError,
+  SessionConflictError,
+  SessionExistsError,
+  SessionNotFoundError,
+} from "./pool-contract.js";
+import { buildSystemPrompt } from "./prompt.js";
+import { SessionFileStore, type SessionLease } from "./session-store.js";
+import type { SessionLock } from "./session-lock.js";
+import { ArchiveError, type ArchiveTransport } from "./archive.js";
+import {
+  buildSessionModel,
+  modelRefFromConfig,
+  modelRefFromSession,
+} from "./session-model.js";
+
+export type PiSession = Awaited<ReturnType<typeof createAgentSession>>["session"];
+
+/** Injectable for tests; production builds a real pi AgentSession. */
+/** FR-6: only these extension tools are exposed to the model. */
+export const AGENT_TOOL_WHITELIST = ["kb_search", "run_code"] as const;
+
+export type SessionFactory = (
+  manager: SessionManager,
+  runRef: RunRef,
+  userId: string,
+  modelConfig: SessionModelConfig | undefined,
+  profileRef: ProfileRef,
+) => Promise<PiSession>;
+
+export interface PoolEntry {
+  sessionId: string;
+  userId: string;
+  session: PiSession;
+  createdAt: number;
+  lastActiveAt: number;
+  activeRun: RunIdentity | null;
+  runRef: RunRef;
+  model?: ModelRef;
+  /** Last model configuration applied to this runtime (credentials included). */
+  appliedModel?: SessionModelConfig;
+  /** Compaction policy computed for the session's model. */
+  compaction: CompactionPlan;
+  /** Last provider-reported context size; null until the next assistant turn. */
+  lastContextTokens: number | null;
+  profileRef: ProfileRef;
+  /** Single-writer lock held for the resident lifetime (ADR-0024). */
+  lock: SessionLock;
+}
+
+interface EnsureOutcome {
+  entry: PoolEntry;
+  created: boolean;
+  restored: boolean;
+}
+
+export interface SessionPoolOptions {
+  /** Registry probe used before taking over a stale session lock. */
+  isInstanceAlive?: (instanceId: string, incarnation?: string) => boolean | undefined;
+  /** Called after an idle session is evicted, so the caller can drop its route. */
+  onEvict?: (sessionId: string) => void;
+  /** Override the eviction scan interval (tests and tuning). */
+  evictionScanMs?: number;
+  /** Called whenever the resident session count changes. */
+  onSessionCountChange?: () => void;
+  /** Java-proxied archive transport (ADR-0025). */
+  archiveTransport?: ArchiveTransport;
+}
+
+export class SessionPool implements GatewayPool {
+  private readonly entries = new Map<string, PoolEntry>();
+  private readonly pendingCreates = new Map<string, Promise<EnsureOutcome>>();
+  private readonly store: SessionFileStore;
+  private readonly workDir: string;
+  private readonly factory: SessionFactory;
+  private readonly options: SessionPoolOptions;
+  private evictionTimer: ReturnType<typeof setInterval> | undefined;
+
+  constructor(
+    private readonly config: GatewayConfig,
+    factory?: SessionFactory,
+    options: SessionPoolOptions = {},
+  ) {
+    this.options = options;
+    this.workDir = config.workDir;
+    mkdirSync(this.workDir, { recursive: true });
+    this.store = new SessionFileStore(this.workDir, config.sessionDir, {
+      instanceId: config.instanceId,
+      instanceIncarnation: config.instanceIncarnation,
+      lockHeartbeatMs: config.lockHeartbeatMs,
+      lockStaleMs: config.lockStaleMs,
+      isInstanceAlive: options.isInstanceAlive,
+    });
+    this.factory = factory ?? ((manager, runRef, userId, modelConfig, profileRef) =>
+      this.createPiSession(manager, runRef, userId, modelConfig, profileRef));
+    if (config.idleEvictMs > 0) {
+      const scanMs = Math.max(1_000, options.evictionScanMs ?? Math.min(30_000, config.idleEvictMs / 2));
+      this.evictionTimer = setInterval(() => void this.evictIdle(), scanMs);
+      this.evictionTimer.unref?.();
+    }
+  }
+
+  get size(): number {
+    return this.entries.size;
+  }
+
+  get(sessionId: string): PoolEntry | undefined {
+    return this.entries.get(sessionId);
+  }
+
+  /**
+   * Idempotent create/restore used by PUT /sessions/:id. Concurrent calls for
+   * the same session share one creation promise, so retries cannot duplicate
+   * sessions.
+   */
+  async ensure(
+    sessionId: string,
+    userId: string,
+    modelConfig?: SessionModelConfig,
+    profile?: ProfileInput,
+    requireExisting = false,
+  ): Promise<EnsureSessionResult> {
+    const existing = this.entries.get(sessionId);
+    if (existing) {
+      if (existing.userId !== userId) throw new SessionConflictError(sessionId);
+      if (profile) {
+        if (profile.facts !== undefined) existing.profileRef.facts = profile.facts;
+        if (profile.enabled !== undefined) existing.profileRef.enabled = profile.enabled;
+      }
+      // No incoming config means "keep the resident runtime's model": only an
+      // explicit, different config justifies a rebuild.
+      if (!modelConfig || sameModelConfig(existing.appliedModel, modelConfig)) {
+        return ensureResult(false, false, existing.model);
+      }
+      // Provider credentials/endpoint changed while the session is resident
+      // (e.g. an edited API key). Rebuild now so the next turn uses them
+      // instead of silently keeping the runtime built from the old config.
+      await this.dispose(sessionId);
+    }
+
+    const inflight = this.pendingCreates.get(sessionId);
+    if (inflight) {
+      const outcome = await inflight;
+      if (outcome.entry.userId !== userId) throw new SessionConflictError(sessionId);
+      return ensureResult(false, false, outcome.entry.model);
+    }
+
+    if (this.entries.size + this.pendingCreates.size >= this.config.maxSessions) {
+      logWarn("gateway session capacity reached", { limit: this.config.maxSessions });
+      throw new SessionCapacityError(this.config.maxSessions);
+    }
+
+    const creation = this.createEntry(sessionId, userId, modelConfig, profile, requireExisting).finally(() => {
+      this.pendingCreates.delete(sessionId);
+    });
+    this.pendingCreates.set(sessionId, creation);
+
+    const outcome = await creation;
+    return ensureResult(outcome.created, outcome.restored, outcome.entry.model);
+  }
+
+  private async createEntry(
+    sessionId: string,
+    userId: string,
+    modelConfig?: SessionModelConfig,
+    profile?: ProfileInput,
+    requireExisting = false,
+  ): Promise<EnsureOutcome> {
+    if (this.entries.has(sessionId)) throw new SessionExistsError(sessionId);
+
+    if (requireExisting && this.options.archiveTransport) {
+      try {
+        await this.store.restoreMissing(
+            sessionId, userId, () => this.options.archiveTransport!.download(sessionId, userId));
+      } catch (err) {
+        if (err instanceof ArchiveError) {
+          throw new SessionArchiveUnavailableError(sessionId, err.message);
+        }
+        throw err;
+      }
+    }
+
+    const lease: SessionLease = this.store.acquire(sessionId, userId, requireExisting);
+    const runRef: RunRef = { current: null };
+    const profileRef: ProfileRef = {
+      facts: profile?.facts ?? [],
+      enabled: profile?.enabled ?? true,
+      lastExtractAt: 0,
+    };
+    let session: PiSession;
+    try {
+      session = await this.factory(lease.manager, runRef, userId, modelConfig, profileRef);
+    } catch (err) {
+      lease.lock.release();
+      throw err;
+    }
+
+    const now = Date.now();
+    const entry: PoolEntry = {
+      sessionId,
+      userId,
+      session,
+      createdAt: now,
+      lastActiveAt: now,
+      activeRun: null,
+      runRef,
+      model:
+        modelRefFromSession(session.model) ??
+        (modelConfig ? modelRefFromConfig(modelConfig) : undefined),
+      appliedModel: modelConfig,
+      compaction: buildCompactionPlan(session.model?.contextWindow, this.config.compaction),
+      lastContextTokens: null,
+      profileRef,
+      lock: lease.lock,
+    };
+    this.entries.set(sessionId, entry);
+    this.options.onSessionCountChange?.();
+    return { entry, created: lease.created, restored: lease.restored };
+  }
+
+  protected async createPiSession(
+    manager: SessionManager,
+    runRef: RunRef,
+    userId: string,
+    modelConfig: SessionModelConfig | undefined,
+    profileRef: ProfileRef,
+  ): Promise<PiSession> {
+    const settingsManager = SettingsManager.create(this.workDir, getAgentDir());
+    const sessionRef: { current?: PiSession } = {};
+    const loader = new DefaultResourceLoader({
+      cwd: this.workDir,
+      agentDir: getAgentDir(),
+      settingsManager,
+      // pi would otherwise load AGENTS.md/CONTEXT.md from the gateway's working
+      // directory into every conversation. That is repo context, not product
+      // context: it leaks internal paths and deploy conventions to end users.
+      noContextFiles: true,
+      // Replace pi's coding prompt entirely (requirements.md §1.1).
+      systemPromptOverride: () =>
+        buildSystemPrompt({ userName: userId }),
+      // Long-term profile facts (FR-5) will be fetched from Java here in M1.
+      appendSystemPromptOverride: () => [],
+      extensionFactories: [
+        kbSearchExtension(this.config, () => runRef.current),
+        runCodeExtension(this.config, () => runRef.current),
+        profileFactsExtension(profileRef),
+        profileExtractionExtension(
+          this.config,
+          () => runRef.current,
+          profileRef,
+          () => sessionRef.current,
+        ),
+      ],
+    });
+    await loader.reload();
+
+    const built = modelConfig
+      ? await buildSessionModel(modelConfig, {
+          allowPrivate: this.config.allowPrivateModelEndpoints,
+        })
+      : undefined;
+    const { session } = await createAgentSession({
+      resourceLoader: loader,
+      // Only the extension-registered tools are active; every built-in tool
+      // (bash/edit/write/read/...) is excluded (FR-6 tool whitelist).
+      tools: [...AGENT_TOOL_WHITELIST],
+      sessionManager: manager,
+      settingsManager,
+      ...(built ? { modelRuntime: built.runtime, model: built.model } : {}),
+    });
+    applyCompactionSettings(
+      settingsManager,
+      session.model?.contextWindow,
+      this.config.compaction,
+    );
+    sessionRef.current = session;
+    return session;
+  }
+
+  /** Atomically claim the single Run slot for a session. */
+  beginRun(sessionId: string, identity: RunIdentity): PoolEntry | null {
+    const entry = this.entries.get(sessionId);
+    if (!entry || entry.activeRun) return null;
+    // pi reports null after a between-runs compaction; the previous provider
+    // count is no longer a valid description of the current context.
+    const estimate = entry.session.getContextUsage?.();
+    if (estimate && estimate.tokens === null) {
+      entry.lastContextTokens = null;
+    }
+    entry.activeRun = identity;
+    entry.runRef.current = identity;
+    entry.lastActiveAt = Date.now();
+    return entry;
+  }
+
+  endRun(sessionId: string, runId: string): void {
+    const entry = this.entries.get(sessionId);
+    if (!entry) return;
+    if (entry.activeRun?.runId === runId) {
+      entry.activeRun = null;
+      entry.runRef.current = null;
+    }
+  }
+
+  abort(sessionId: string): boolean {
+    const entry = this.entries.get(sessionId);
+    if (!entry || !entry.activeRun) return false;
+    entry.session.abort().catch(() => undefined);
+    return true;
+  }
+
+  /** Run a prompt; the caller must have claimed the Run slot via beginRun. */
+  async run(sessionId: string, text: string): Promise<void> {
+    const entry = this.entries.get(sessionId);
+    if (!entry) throw new SessionNotFoundError(sessionId);
+    entry.lastActiveAt = Date.now();
+    await entry.session.prompt(text);
+  }
+
+  /**
+   * Releases the in-memory AgentSession only. The pi session file and its
+   * sidecar stay on disk (ADR-0008: M1 keeps files; DELETE must not wipe the
+   * engine context).
+   */
+  async dispose(sessionId: string): Promise<boolean> {
+    const entry = this.entries.get(sessionId);
+    if (!entry) return false;
+    const wasRunning = entry.activeRun !== null;
+    this.entries.delete(sessionId);
+    entry.activeRun = null;
+    entry.runRef.current = null;
+    try {
+      if (wasRunning) {
+        await entry.session.abort().catch(() => undefined);
+      }
+      entry.session.dispose();
+    } finally {
+      entry.lock.release();
+    }
+    this.options.onSessionCountChange?.();
+    return true;
+  }
+
+  removeFiles(sessionId: string, userId: string): void {
+    this.store.remove(sessionId, userId);
+  }
+
+  /** Archives an idle, non-resident session under its file lock. */
+  async archive(sessionId: string, userId: string): Promise<boolean> {
+    if (this.entries.has(sessionId)) return false;
+    const transport = this.options.archiveTransport;
+    if (!transport) return false;
+    return this.store.archive(sessionId, userId, (jsonl, meta) =>
+      transport.upload(sessionId, userId, jsonl, meta));
+  }
+
+  /** Releases every idle resident session; files and sidecars stay on disk. */
+  async evictIdle(now = Date.now()): Promise<string[]> {
+    const evicted: string[] = [];
+    for (const [sessionId, entry] of [...this.entries.entries()]) {
+      if (entry.activeRun) continue;
+      if (now - entry.lastActiveAt <= this.config.idleEvictMs) continue;
+      if (await this.dispose(sessionId)) {
+        evicted.push(sessionId);
+        logInfo("session evicted", { sessionId });
+        this.options.onEvict?.(sessionId);
+      }
+    }
+    return evicted;
+  }
+
+  /** True while a run or a create is still in flight. */
+  hasActiveRuns(): boolean {
+    return this.pendingCreates.size > 0
+        || [...this.entries.values()].some((entry) => entry.activeRun !== null);
+  }
+
+  /** Waits for in-flight runs up to the deadline; returns false on timeout. */
+  async waitForIdle(timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    while (this.hasActiveRuns() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !this.hasActiveRuns();
+  }
+
+  async disposeAll(): Promise<void> {
+    if (this.evictionTimer) {
+      clearInterval(this.evictionTimer);
+      this.evictionTimer = undefined;
+    }
+    await Promise.allSettled([...this.entries.keys()].map((id) => this.dispose(id)));
+  }
+}
+
+function ensureResult(
+  created: boolean,
+  restored: boolean,
+  model?: ModelRef,
+): EnsureSessionResult {
+  return model ? { created, restored, model } : { created, restored };
+}
+
+/** Compares every field that changes the built runtime (including secrets). */
+function sameModelConfig(
+  applied: SessionModelConfig | undefined,
+  incoming: SessionModelConfig | undefined,
+): boolean {
+  if (applied === undefined || incoming === undefined) {
+    return applied === incoming;
+  }
+  return (
+    applied.providerId === incoming.providerId &&
+    applied.name === incoming.name &&
+    applied.api === incoming.api &&
+    applied.baseUrl === incoming.baseUrl &&
+    applied.apiKey === incoming.apiKey &&
+    applied.modelId === incoming.modelId &&
+    applied.displayName === incoming.displayName &&
+    applied.contextWindow === incoming.contextWindow &&
+    applied.reasoning === incoming.reasoning &&
+    applied.vision === incoming.vision
+  );
+}
+
+export { SessionConflictError, SessionExistsError, SessionNotFoundError } from "./pool-contract.js";
