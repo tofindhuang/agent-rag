@@ -3,7 +3,6 @@
 日期：2026-11-04（实现与验收完成日）
 对应 spec：`docs/specs/2026-10-30-usage-quota.md`
 关联：ADR-0032、ADR-0023
-工单：`docs/tickets/usage-quota/01–04`
 
 ## 自动化
 

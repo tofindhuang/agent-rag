@@ -3,7 +3,6 @@
 日期：2026-10-29
 对应 spec：`docs/specs/2026-10-29-compaction-summary.md`
 关联：ADR-0028、ADR-0019、ADR-0023
-工单：`docs/tickets/compaction-summary/01–05`
 
 ## 范围
 

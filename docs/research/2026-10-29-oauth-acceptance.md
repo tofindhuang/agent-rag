@@ -3,7 +3,6 @@
 日期：2026-10-29
 对应 spec：`docs/specs/2026-10-26-oauth-login.md`
 关联：ADR-0027、ADR-0007
-工单：`docs/tickets/oauth/01–06`
 
 ## 范围
 

@@ -3,7 +3,6 @@
 日期：2026-11-05（实现与验收完成日）
 对应 spec：`docs/specs/2026-10-30-data-export.md`
 关联：ADR-0034、ADR-0033
-工单：`docs/tickets/data-export/01–04`
 
 ## 自动化
 

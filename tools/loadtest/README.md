@@ -1,7 +1,6 @@
 # Load-test harness（M1 closeout）
 
-50 并发活跃会话的压测工具。规格见 `docs/specs/2026-10-25-m1-load-test.md`，
-票见 `docs/tickets/m1-load-test/`。
+50 并发活跃会话的压测工具。规格见 `docs/specs/2026-10-25-m1-load-test.md`。
 
 ## 关键约束
 

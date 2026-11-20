@@ -3,7 +3,6 @@
 日期：2026-10-30
 对应 spec：`docs/specs/2026-10-29-kb-refusal-and-eval-scale.md`
 关联：ADR-0029、ADR-0022、ADR-0005
-工单：`docs/tickets/kb-refusal-eval/01–05`
 
 ## 范围
 

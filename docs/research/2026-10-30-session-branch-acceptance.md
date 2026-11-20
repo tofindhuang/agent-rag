@@ -3,7 +3,6 @@
 日期：2026-11-05（实现与验收完成日）
 对应 spec：`docs/specs/2026-10-30-session-branch.md`
 关联：ADR-0035、ADR-0006
-工单：`docs/tickets/session-branch/01–04`
 
 ## 自动化
 

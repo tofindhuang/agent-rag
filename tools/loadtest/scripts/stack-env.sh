@@ -30,7 +30,8 @@ export S3_ACCESS_KEY=agent_core
 export S3_SECRET_KEY=agent_core_dev_only
 export S3_BUCKET=agent-core-kb
 
-# auth / model credential encryption (local-only literals, never reused)
+# auth / model credential encryption. Local ephemeral load-test stack only:
+# these throwaway values must never be reused outside tools/loadtest.
 export JWT_SECRET="loadtest-jwt-secret-0123456789abcdefghij"
 export MODEL_SECRET_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 

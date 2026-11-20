@@ -1,6 +1,6 @@
 # agent-core
 
-[![CI](https://github.com/tofindhuang/agent-core/actions/workflows/ci.yml/badge.svg)](https://github.com/tofindhuang/agent-core/actions/workflows/ci.yml)
+[![CI](https://github.com/tofindhuang/agent-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/tofindhuang/agent-rag/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-339933)](https://nodejs.org/)
 [![Java](https://img.shields.io/badge/java-21-ED8B00)](https://adoptium.net/)
 [![License](https://img.shields.io/badge/license-source--available-blue)](#授权license)
@@ -28,8 +28,7 @@
 | 多实例 | gateway 横向扩展、会话哈希路由、单写者文件锁、排空式滚动更新、90 天冷归档 | ✅ M2 切片 1（200/200 零断流压测；详见报告） |
 
 M1 的验收证据（50 并发压测、重启耐久性、延迟指标）见
-[docs/research/2026-10-25-m1-load-test-report.md](docs/research/2026-10-25-m1-load-test-report.md) 与
-[docs/tickets/m1-closeout/01-closeout-record.md](docs/tickets/m1-closeout/01-closeout-record.md)。
+[docs/research/2026-10-25-m1-load-test-report.md](docs/research/2026-10-25-m1-load-test-report.md)。
 
 ## 架构
 
@@ -275,10 +274,11 @@ bash sandbox/test-isolation.sh
 | 领域词汇表 | [CONTEXT.md](CONTEXT.md) |
 | 跨模块 specs | [docs/specs/](docs/specs/) |
 | ADR | [docs/adrs/](docs/adrs/) |
-| 工单与验收记录 | [docs/tickets/](docs/tickets/) |
 | 研究与压测报告 | [docs/research/](docs/research/) |
 | Java ↔ gateway 契约 | [contract/v1/README.md](contract/v1/README.md) |
 | 开发规范（模块地图/编码/流程） | [AGENTS.md](AGENTS.md) |
+
+内部工单、决策地图与验收记录由维护者保留，不随公开仓发布。
 
 ## 路线图
 
@@ -290,13 +290,16 @@ bash sandbox/test-isolation.sh
 | M3 运营 | ✅ | 用量配额、审计日志、个人数据导出、会话分支 UI（P2）；closeout 见 [docs/specs/2026-11-05-m3-closeout.md](docs/specs/2026-11-05-m3-closeout.md) |
 | 下一主题（建议） | — | 生产化：部署交付（Helm/K8s）、备份与灾备、告警与 SLO |
 
-## 参与贡献
+## 贡献指南
 
-- 开发在 `dev` 分支进行，完成后以 PR 合并回 `main`。
-- 提交信息遵循 `{feat,fix,docs,chore,refactor,test}(scope): message`。
-- 新功能 / 架构组件 / schema 变更 / 外部集成走 spec → tickets → TDD → review 流程，详见 [AGENTS.md](AGENTS.md)。
-- 数据库迁移 **up-only**：只新增 `YYYYMMDDHHMMSS__slug.up.sql`，不要提交 `*.down.sql`。
-- 不要提交任何密钥、`.env`、模型凭证或本地数据；PR 前跑对应模块的 typecheck / 测试。
+欢迎提交 Issue 与 PR。公开仓以 `main` 为发布分支：
+
+1. 从 `main` 切出功能分支（或 fork 后提交），完成后向 `main` 发起 PR；CI 会自动运行。
+2. 提交信息遵循 `{feat,fix,docs,chore,refactor,test}(scope): message`，scope 可省略（如 `gateway`、`server`、`web`、`docs`）。
+3. 较大的功能或架构变更请先开 Issue 讨论；设计文档放在 `docs/specs/`，实现请附带测试。维护者的内部工单与验收记录不随公开仓发布。
+4. 数据库迁移只向前：如需迁移，只新增 `YYYYMMDDHHMMSS__slug.up.sql`，不要提交 `*.down.sql`；迁移由维护者审核后执行。
+5. 不要提交任何密钥、`.env`、模型凭证或本地数据；PR 前跑对应模块的 typecheck / 测试。
+6. 提交 PR 即表示你同意以本项目的 [LICENSE](LICENSE) 授权你的贡献。
 
 ## 安全
 
@@ -315,5 +318,4 @@ bash sandbox/test-isolation.sh
 - **第三方组件**：pi SDK 及其他依赖遵循其各自许可证，本授权不改变这些条款。
 - **无担保**：软件按「现状」提供，不附带任何明示或暗示担保。
 
-商业授权与合作请联系仓库维护者。正式对外发布前，建议由维护者补充一份正式的 `LICENSE` 文件；
-在补充之前，本节即项目授权说明。
+商业授权与合作请联系仓库维护者。完整条款见 [LICENSE](LICENSE)；本项目不是 OSI 认可的开源许可证。

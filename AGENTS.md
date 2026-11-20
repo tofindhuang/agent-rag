@@ -38,7 +38,7 @@ cd ocr && pytest
 docker compose up -d                # mysql + redis
 ```
 
-模型凭证：gateway 复用本机 pi 凭证存储（`~/.pi/agent/`），仓库与 `.env` 中不存任何密钥。
+模型凭证：由用户在应用内配置 provider（API Key 加密入库，ADR-0010）；gateway 仅在会话内存中使用，不写入仓库或 `.env`。
 
 ## Documentation conventions
 
@@ -47,13 +47,13 @@ docker compose up -d                # mysql + redis
 | 需求 | `docs/requirements.md` | — |
 | Specs（跨模块） | `docs/specs/YYYY-MM-DD-<slug>.md` | `/to-spec` |
 | Specs（模块内） | `<module>/docs/specs/` | `/to-spec` |
-| Tickets | `docs/tickets/<slug>/NN-<slug>.md` | `/to-tickets` |
-| 决策地图 | `docs/tickets/<slug>/MAP.md` | `/wayfinder` |
 | ADRs | `docs/adrs/`（跨模块）、`<module>/docs/adrs/`（模块内） | `/domain-modeling` |
 | 领域词汇表 | `CONTEXT.md` | `/domain-modeling` |
 | 研究/选型记录 | `docs/research/YYYY-MM-DD-<slug>.md` | `/research` |
 
-同一套 skills 存放两份：`.pi/skills/`（pi 自动发现）与 `.agents/skills/`（其他 agent 工具的通用位置）。**改动任一份后必须同步另一份**（`cp -R .pi/skills/. .agents/skills/` 或反向），保持两处一致。
+工单、决策地图与验收记录由维护者内部保留，不随公开仓发布。
+
+Agent skills（`.pi/skills/`、`.agents/skills/`）由维护者私有维护，不随公开仓发布；下文出现的 `/skill:<name>` 仅为工作流名称。
 
 ## SDD Development Process（强制）
 
@@ -100,7 +100,8 @@ docker compose up -d                # mysql + redis
 
 ## Git
 
-- 分支：`dev` 开发，功能完成后 PR 回 `main`。不要直接 push `main`。
+- 公开镜像：`main` 为发布分支；贡献者从 `main` 切分支并 PR 回 `main`。公开镜像不含 `dev` 分支与内部工单。
+- 维护者私有仓：`dev` 开发，功能完成后 PR 回 `main`。不要直接 push `main`。
 - Commit 格式：`{feat,fix,docs,chore,refactor,test}(gateway|server|web|sandbox|docs): <message>`，scope 可省略（跨模块时）。
 - 只 stage 本次工作自己改动的文件；禁止 `git add -A` / `git add .`。
 - 禁止 `git reset --hard` / `git checkout .` / `git stash` / force push。

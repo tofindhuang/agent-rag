@@ -1,3 +1,4 @@
+# Local development stack only. Default credentials below are not for production.
 services:
   mysql:
     image: mysql:8.4

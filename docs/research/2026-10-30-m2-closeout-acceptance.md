@@ -3,7 +3,6 @@
 日期：2026-10-30
 对应 spec：`docs/specs/2026-10-30-m2-hardening-closeout.md`
 关联：ADR-0030、ADR-0031
-工单：`docs/tickets/m2-hardening-closeout/01–03`
 
 ## 1. 限流令牌桶
 

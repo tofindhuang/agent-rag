@@ -3,7 +3,6 @@
 日期：2026-11-04（实现与验收完成日）
 对应 spec：`docs/specs/2026-10-30-audit-log.md`
 关联：ADR-0033、ADR-0023、ADR-0030
-工单：`docs/tickets/audit-log/01–04`
 
 ## 自动化
 

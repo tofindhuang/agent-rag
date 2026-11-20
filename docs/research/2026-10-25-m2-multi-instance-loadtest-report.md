@@ -2,7 +2,7 @@
 
 日期：2026-10-25
 环境：Apple M5 / 16 GB / macOS 26.6.2；一次性 Docker 栈（MySQL 8.4、Redis 7、Qdrant、RabbitMQ、Silo）+ 本地 Java/gateway 进程；真实 DeepSeek `deepseek-chat`；确定性假 embedding/rerank。
-关联：`docs/specs/2026-10-25-m2-multi-instance.md`、ADR-0024、`docs/tickets/m2-multi-instance/09-rolling-update-loadtest.md`
+关联：`docs/specs/2026-10-25-m2-multi-instance.md`、ADR-0024
 原始数据：`docs/research/2026-10-25-m2-loadtest-artifacts/`
 
 ## 方法
